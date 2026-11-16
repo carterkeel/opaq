@@ -29,6 +29,16 @@ class Actions(
         }
     }
 
+    /** Reads location history for [pubkey] between [from] and [to] (seconds) and hands it back on the main thread. */
+    fun history(pubkey: String, from: Long, to: Long, onResult: (List<app.quietmap.core.HistoryPoint>) -> Unit) {
+        scope.launch {
+            val points = runCatching { engine.history(pubkey, from, to) }.getOrDefault(emptyList())
+            withContext(Dispatchers.Main) { onResult(points) }
+        }
+    }
+
+    fun setHistoryDays(days: Int) = launchAction { engine.setHistoryDays(days) }
+
     fun setName(name: String) = launchAction { engine.setMyName(name) }
     fun setAvatar(color: Int?, photo: String?) = launchAction { engine.setAvatar(color, photo) }
     fun setSharing(on: Boolean) = launchAction(after = { if (on) platform.ensureSharingService() }) { engine.setSharing(on) }

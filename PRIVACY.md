@@ -40,6 +40,12 @@ Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app load
 
 An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Shared links open a static page on GitHub Pages that hands the invite to the app. The invite is in the part after `#`, which browsers never send, so GitHub only sees that someone opened an invite page, from which IP address. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
 
+## Location history
+
+Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time and activity (still, walking, cycling, driving), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
+
+How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Quietmap deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Quietmap can't prevent that.
+
 ## Backups
 
 A backup file contains your identity and circle keys, encrypted with your passphrase using Argon2id. Where you save it (your phone, a cloud drive) decides who could try to guess the passphrase. Making a backup needs your PIN and is recorded in Settings, Security log.

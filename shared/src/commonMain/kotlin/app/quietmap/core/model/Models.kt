@@ -55,6 +55,10 @@ data class AppState(
     val lastSeq: Long = 0,
     /** Newest sequence number accepted from each member, keyed "circleId|pubkey". */
     val memberSeqs: Map<String, Long> = emptyMap(),
+    /** How many days of location history this phone keeps (0 = none). See LocationHistory. */
+    val historyDays: Int = 7,
+    /** Key for the history files. Never in backups: a restored phone starts its history afresh. */
+    val historyKeyHex: String? = null,
 )
 
 @Serializable

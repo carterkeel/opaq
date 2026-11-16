@@ -8,16 +8,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import app.quietmap.core.HistoryPoint
+import app.quietmap.core.HistorySegment
+import app.quietmap.core.LocationHistory
 import app.quietmap.core.MotionPolicy
 import app.quietmap.core.Prediction
 import app.quietmap.core.model.MemberLocation
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.ln
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -34,6 +41,7 @@ import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.rememberMapState
@@ -239,6 +247,83 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
                     put("initial", mk.initial)
                     put("color", if (mk.kind == MapMarker.Kind.OFFLINE) "#9E9E9E" else mk.color)
                 }
+            }
+        }
+    }
+}.toString()
+
+/**
+ * A day of someone's history: the path coloured by activity (driving, cycling, walking) and a
+ * dot where they stayed put. Frames the whole day, or [focus] (one tapped stretch) when set.
+ */
+@Composable
+fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier) {
+    val lines = remember(segments) { historyLines(segments) }
+    val stops = remember(segments) { historyStops(segments) }
+    val mapState = rememberMapState(baseStyle = BaseStyle.Uri(STYLE_URL)) {
+        val lineSource = rememberGeoJsonSource(GeoJsonData.JsonString(lines))
+        val stopSource = rememberGeoJsonSource(GeoJsonData.JsonString(stops))
+        LineLayer(
+            id = "history-path",
+            source = lineSource,
+            color = feature["color"].convertToColor(),
+            width = const(5.dp),
+        )
+        CircleLayer(
+            id = "history-stops",
+            source = stopSource,
+            radius = const(7.dp),
+            color = feature["color"].convertToColor(),
+            strokeColor = const(Color.White),
+            strokeWidth = const(2.dp),
+        )
+    }
+    LaunchedEffect(mapState, points, focus) {
+        val frame = focus?.takeIf { it.isNotEmpty() } ?: points
+        if (frame.isEmpty()) return@LaunchedEffect
+        val minLat = frame.minOf { it.lat }; val maxLat = frame.maxOf { it.lat }
+        val minLon = frame.minOf { it.lon }; val maxLon = frame.maxOf { it.lon }
+        val midLat = (minLat + maxLat) / 2
+        val span = maxOf(maxLat - minLat, (maxLon - minLon) * cos(midLat * PI / 180), 0.0005)
+        // At zoom z the world is 512·2^z dp wide; leave room around the path in a ~300 dp map.
+        val zoom = (ln(200.0 * 360 / (512 * span)) / ln(2.0)).coerceIn(3.0, STREET_ZOOM)
+        mapState.animateCamera(CameraUpdate(center = Position((minLon + maxLon) / 2, midLat), zoom = zoom))
+    }
+    MaplibreMap(modifier = modifier, state = mapState, interactions = Interactions, overlay = {})
+}
+
+private fun historyLines(segments: List<HistorySegment>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        segments.forEachIndexed { i, seg ->
+            if (!LocationHistory.moving(seg.activity)) return@forEachIndexed
+            // Start from where the previous stretch ended, so the path has no gaps.
+            val path = listOfNotNull(segments.getOrNull(i - 1)?.points?.lastOrNull()) + seg.points
+            if (path.size < 2) return@forEachIndexed
+            addJsonObject {
+                put("type", "Feature")
+                putJsonObject("geometry") {
+                    put("type", "LineString")
+                    putJsonArray("coordinates") { path.forEach { p -> addJsonArray { add(p.lon); add(p.lat) } } }
+                }
+                putJsonObject("properties") { put("color", activityColorHex(seg.activity)) }
+            }
+        }
+    }
+}.toString()
+
+private fun historyStops(segments: List<HistorySegment>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        segments.filter { !LocationHistory.moving(it.activity) }.forEach { seg ->
+            val p = seg.points.last()
+            addJsonObject {
+                put("type", "Feature")
+                putJsonObject("geometry") {
+                    put("type", "Point")
+                    putJsonArray("coordinates") { add(p.lon); add(p.lat) }
+                }
+                putJsonObject("properties") { put("color", activityColorHex(seg.activity)) }
             }
         }
     }

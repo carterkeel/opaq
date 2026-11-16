@@ -67,6 +67,15 @@ expect fun epochSeconds(): Long
 /** Milliseconds since the Unix epoch, for smooth animation. */
 expect fun epochMillis(): Long
 
+/** Start of the phone's local calendar day that contains [epochSeconds]. */
+expect fun localDayStart(epochSeconds: Long): Long
+
+/** A time of day in the phone's style, such as "8:05 AM" or "08:05". */
+expect fun formatClock(epochSeconds: Long): String
+
+/** A short date in the phone's language, such as "Mon, Nov 9". */
+expect fun formatDay(epochSeconds: Long): String
+
 /** Whether to show speeds in mph rather than km/h, from the phone's region. */
 expect fun regionUsesMiles(): Boolean
 

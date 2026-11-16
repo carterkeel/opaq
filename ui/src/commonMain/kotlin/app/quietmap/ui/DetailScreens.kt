@@ -63,7 +63,7 @@ import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.InviteData
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
-private val Gutter = Modifier.padding(horizontal = 24.dp)
+internal val Gutter = Modifier.padding(horizontal = 24.dp)
 
 /**
  * Big centered avatar with name and a line under it, as at the top of a Signal profile. The
@@ -106,7 +106,7 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 // -------------------------------------------------------------------------------------------------
 
 @Composable
-fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit) {
+fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit, onHistory: () -> Unit = {}) {
     val circle = state.circles.firstOrNull { it.id == circleId }
     val member = circle?.members?.firstOrNull { it.pubkey == pubkey }
     if (circle == null || member == null) {
@@ -138,6 +138,12 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             title = if (isMe && !state.sharing) "Sharing paused" else Format.status(loc, now),
             subtitle = loc?.let { "Accurate to about ${it.accuracy.toInt()} m" },
             icon = AppIcons.LocationPin,
+        )
+        SettingsRow(
+            "Location history",
+            if (state.historyDays == 0) "Off · turn it on in Settings" else "Past ${Format.historyDays(state.historyDays).lowercase()}, kept on this phone",
+            AppIcons.History,
+            onClick = onHistory,
         )
         when {
             pubkey == circle.adminPubkey -> SettingsRow("Admin of ${circle.name}", "Can invite, approve and remove people", AppIcons.Star)
@@ -510,6 +516,7 @@ fun SettingsScreen(
 ) {
     var newRelay by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf<String?>(null) }
+    var showHistoryDays by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var showRelays by remember { mutableStateOf(false) }
     var settingPin by remember { mutableStateOf(false) }
@@ -587,6 +594,12 @@ fun SettingsScreen(
         SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
 
         SectionHeader("Privacy")
+        SettingsRow(
+            "Location history",
+            "${Format.historyDays(state.historyDays)} · kept only on this phone",
+            AppIcons.History,
+            onClick = { showHistoryDays = true },
+        )
         if (platform.supportsTor) {
             SwitchRow(
                 "Connect through Tor",
@@ -667,6 +680,12 @@ fun SettingsScreen(
         )
     }
     if (settingPin) SetPinSheet(actions, if (state.pin == null) "Set a PIN" else "Change PIN") { settingPin = false }
+    if (showHistoryDays) {
+        HistoryDaysSheet(state.historyDays, onPick = { days ->
+            showHistoryDays = false
+            if (days > state.historyDays) gate.require { actions.setHistoryDays(days) } else actions.setHistoryDays(days)
+        }, onDismiss = { showHistoryDays = false })
+    }
     if (confirmReset) {
         ConfirmSheet(
             title = "Get a new device code?",

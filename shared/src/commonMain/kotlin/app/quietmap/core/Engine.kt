@@ -108,7 +108,12 @@ class Engine(
      * lockouts and the PIN window. Tests use [now].
      */
     private val elapsed: () -> Long = now,
+    /** Where location history is kept; null keeps none (as in most tests). */
+    historyFiles: HistoryFiles? = null,
 ) {
+    private val historyStore = historyFiles?.let { LocationHistory(it) }
+    private var historyPrunedAt = 0L
+
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
@@ -222,6 +227,7 @@ class Engine(
         adminDuties()
         retryRosters()
         endHandovers()
+        pruneHistory()
         memberDuties()
         refreshSubscriptions()
         publishProfileIfDue()
@@ -1053,6 +1059,59 @@ class Engine(
                 locations = st.locations + st.circles.filter { it.id in sentTo }.associate { c -> c.id to (st.locations[c.id].orEmpty() + (myPubkey to location)) },
             )
         }
+        if (sentTo.isNotEmpty()) recordHistory(myPubkey, location)
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Location history (kept only on this phone)
+    // -----------------------------------------------------------------------------------------
+
+    /** The history key, made (and any unreadable old files cleared) the first time it's needed. */
+    private suspend fun historyKey(): ByteArray? {
+        val h = historyStore ?: return null
+        state.value.historyKeyHex?.let { return it.hexToBytes() }
+        h.clear()
+        val key = PlatformCrypto.randomBytes(32)
+        update { it.copy(historyKeyHex = it.historyKeyHex ?: key.toHex()) }
+        return state.value.historyKeyHex!!.hexToBytes()
+    }
+
+    private suspend fun recordHistory(pubkey: String, loc: MemberLocation) {
+        val h = historyStore ?: return
+        if (state.value.historyDays <= 0) return
+        val key = historyKey() ?: return
+        runCatching { h.record(key, pubkey, loc) }.onFailure { log("history: couldn't save (${it::class.simpleName})") }
+    }
+
+    /** Remembered positions of [pubkey] between [from] and [to] (seconds), oldest first. */
+    suspend fun history(pubkey: String, from: Long, to: Long): List<HistoryPoint> {
+        val h = historyStore ?: return emptyList()
+        if (state.value.historyDays <= 0) return emptyList()
+        val key = historyKey() ?: return emptyList()
+        return h.read(key, pubkey, maxOf(from, now() - state.value.historyDays * 86_400L), to)
+    }
+
+    /**
+     * How many days of history to keep, 0 to [LocationHistory.MAX_DAYS]. Keeping more needs the
+     * PIN, if one is set; keeping less (or none) never does, and deletes the rest straight away.
+     */
+    suspend fun setHistoryDays(days: Int) {
+        require(days in 0..LocationHistory.MAX_DAYS) { "Choose up to ${LocationHistory.MAX_DAYS} days" }
+        if (days > state.value.historyDays) requireAuthorized()
+        update { it.copy(historyDays = days) }
+        historyPrunedAt = 0
+        pruneHistory()
+    }
+
+    /** Hourly: drops days past the limit, and history of people who are no longer in any circle. */
+    private suspend fun pruneHistory() {
+        val h = historyStore ?: return
+        val t = now()
+        if (t - historyPrunedAt < 3600) return
+        historyPrunedAt = t
+        val s = state.value
+        val keep = s.circles.flatMap { c -> c.members.map { it.pubkey } }.toSet() + myPubkey
+        runCatching { h.prune(t, s.historyDays, keep) }
     }
 
     private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event {
@@ -1131,6 +1190,7 @@ class Engine(
                 memberSeqs = if (target.v2) s.memberSeqs + (seqKey to body.seq) else s.memberSeqs,
             )
         }
+        if (state.value.locations[circleId]?.get(body.from) == body.loc) recordHistory(body.from, body.loc)
     }
 
     private suspend fun handleProfile(target: TagTarget, event: Event) {

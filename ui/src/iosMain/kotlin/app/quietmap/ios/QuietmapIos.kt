@@ -57,6 +57,7 @@ object QuietmapIos {
             deviceName = UIDevice.currentDevice.model,
             // Time since boot: changing the date can't shorten a PIN lockout.
             elapsed = { NSProcessInfo.processInfo.systemUptime.toLong() },
+            historyFiles = IosHistoryFiles(),
         ).also { it.start() }
     }
 

@@ -26,6 +26,9 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/Engine.kt            The whole protocol: state, circles, invites, key rotation, profiles,
                             publishing, handling incoming events, relay subscriptions.
   core/MotionPolicy.kt      When to publish and which activity to report (still/walking/...).
+  core/Prediction.kt        Carrying a moving person's dot forward between updates (viewer side).
+  core/History.kt           On-device location history: encrypted per-person/day files, thinning,
+                            pruning, and grouping into segments (still/walking/driving).
   core/model/Models.kt      AppState (everything persisted) and data classes.
   core/protocol/Protocol.kt Message bodies, sealed DMs, circle crypto (tags, publisher keys),
                             profiles, device codes, invite links.
@@ -97,6 +100,8 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - On the receiving side, `Format.status` shows a stale moving update as "Was driving".
 
 **Between updates.** Dots glide to each new update, and someone travelling is carried forward along their heading (`Prediction`, used by `MapPane`), only for exact, accurate, moving updates and never more than `Prediction.HORIZON_SECONDS` ahead.
+
+**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 

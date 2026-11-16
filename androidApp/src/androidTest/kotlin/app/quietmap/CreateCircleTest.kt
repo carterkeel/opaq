@@ -169,6 +169,17 @@ class CreateCircleTest {
         waitFor("Share my location")
         device.pressBack()
         waitFor("Invite")
+
+        // Your profile, then your location history (#58).
+        waitFor("You").click()
+        waitFor("Location history").click()
+        waitFor("Your history")
+        waitFor("Today")
+        Thread.sleep(3_000) // let the history map load
+        device.pressBack()
+        waitFor("Location history")
+        device.pressBack()
+        waitFor("Invite")
         Thread.sleep(3_000)
     }
 }
