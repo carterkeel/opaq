@@ -298,3 +298,17 @@ The rest of QM-02 is under Phase 12 below.
 - **Map tiles over Tor.** Tiles are fetched by MapLibre's own HTTP client, which isn't routed through Orbot yet. Tile requests reveal the areas viewed, not who is where.
 
 **Remaining limitations.** One connection subscribes to all of a phone's circle tags, so a relay can still group the tags followed by the same connection, and see the two update rates (moving or still).
+
+## Supply chain and CI (Phase 13)
+
+**Changes.**
+
+- **Pinned actions.** Every GitHub Action in `android.yml` is pinned to a full commit SHA (checked against its release tag), so a moved tag can't change what runs with the workflow's write token. The token's write access is used only to push the run summary to `ci-logs`.
+- **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Gradle dependencies and Actions.
+- **Dependency updates.** Ktor 3.0.3 → 3.4.1 (relay websockets) and BouncyCastle 1.80 → 1.84 (Argon2id, AES-GCM). Other libraries were already current.
+- **APK checks.** CI verifies each APK's signature with `apksigner` and installs the R8 staging build on the emulator, so a missing ProGuard rule fails the run.
+
+**Not done.**
+
+- **Release signing.** Test builds share a CI-only key kept in the Actions cache. A real release key, kept offline by the owner, should sign Play and GitHub releases. That needs the owner.
+- **Reproducible builds and Gradle dependency verification** (`verification-metadata.xml`). Both need a machine with Maven access to generate and check hashes; this session can't reach Maven.
