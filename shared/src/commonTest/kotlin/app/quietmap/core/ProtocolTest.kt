@@ -6,7 +6,9 @@ import app.quietmap.core.model.Activity
 import app.quietmap.core.model.LocationSample
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
+import app.quietmap.core.model.LocationPrecision
 import app.quietmap.core.model.Point
+import app.quietmap.core.model.Precision
 import app.quietmap.core.nostr.Kinds
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DeviceCode
@@ -17,8 +19,12 @@ import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.JoinRequestBody
 import app.quietmap.core.protocol.LocationBody
 import app.quietmap.core.protocol.ProfileBody
+import app.quietmap.core.protocol.EpochBody
+import app.quietmap.core.protocol.Roster2Body
+import app.quietmap.core.protocol.RosterAckBody
 import app.quietmap.core.protocol.RosterBody
 import app.quietmap.core.protocol.RosterCircle
+import app.quietmap.core.protocol.RosterRequestBody
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -100,7 +106,10 @@ class ProtocolTest {
     @Test
     fun inviteLinksRoundTrip() {
         val jordan = KeyPair.generate()
-        val data = InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol"), c = "cid", cn = "Family", s = "a".repeat(32), e = now + 3600)
+        val unsigned = InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol"), c = "cid", cn = "Family", s = "a".repeat(32), e = now + 3600)
+        assertNull(InviteLinks.decode(InviteLinks.encode(unsigned)), "unsigned v1 links are refused")
+        assertNull(InviteLinks.decode(InviteLinks.encode(InviteLinks.signed(jordan, unsigned).copy(v = 1, x = null))), "no downgrading a v2 link")
+        val data = InviteLinks.signed(jordan, unsigned)
         val link = InviteLinks.encode(data)
         assertTrue(link.startsWith("quietmap://join#"))
         assertEquals(data, InviteLinks.decode(link))
@@ -189,5 +198,58 @@ class ProtocolTest {
         p.add(sample(now + 60, 41.00036, null, acc = 60f))
         assertEquals(0f, p.estimateSpeed())
         assertFalse(p.isMoving(now + 60))
+    }
+
+    @Test
+    fun v2BodiesRoundTripAndOldOnesStillDecode() {
+        val me = KeyPair.generate()
+        val rc = RosterCircle("c1", "Family", "aa".repeat(32), 2, me.publicHex, listOf(Member(me.publicHex, "Ana")), v = 2, day = 20_400, ctl = "bb".repeat(32))
+        val bodies = listOf(
+            Roster2Body(me.publicHex, now, rc),
+            RosterAckBody(me.publicHex, now, "c1", 2),
+            RosterRequestBody(me.publicHex, now, "c1", 2),
+            EpochBody(me.publicHex, now, "c1", 2, closed = true),
+            LocationBody(me.publicHex, now, "c1", 2, sampleLocation(), pub = "cc".repeat(32), seq = 42),
+            ProfileBody(me.publicHex, now, "Ana", pub = "dd".repeat(32)),
+            RosterBody(me.publicHex, now, rc.copy(v = 1, day = 0, ctl = null)),
+        )
+        bodies.forEach { assertEquals(it, Envelopes.open(Envelopes.seal(me, it))) }
+    }
+
+    @Test
+    fun ratchetIsDeterministicOneWayAndCircleSpecific() {
+        val k = KeyPair.generate().secret
+        val d5 = CircleCrypto.keyForDay(k, 1, "c", 1, 5)!!
+        assertTrue(d5.contentEquals(CircleCrypto.keyForDay(CircleCrypto.keyForDay(k, 1, "c", 1, 3)!!, 3, "c", 1, 5)!!))
+        assertNull(CircleCrypto.keyForDay(d5, 5, "c", 1, 4), "no way back to an earlier day")
+        assertFalse(d5.contentEquals(CircleCrypto.keyForDay(k, 1, "other", 1, 5)!!))
+        assertFalse(d5.contentEquals(CircleCrypto.keyForDay(k, 1, "c", 2, 5)!!))
+    }
+
+    @Test
+    fun memberPublisherKeysDependOnTheMembersOwnSecret() {
+        val a = KeyPair.generate(); val b = KeyPair.generate()
+        val pa = CircleCrypto.memberPublisher(a.secret, "c", 1, 100)
+        assertNotEquals(pa.publicHex, CircleCrypto.memberPublisher(b.secret, "c", 1, 100).publicHex)
+        assertNotEquals(pa.publicHex, CircleCrypto.memberPublisher(a.secret, "c", 1, 101).publicHex, "changes every hour")
+        assertNotEquals(CircleCrypto.closedTag(a.secret, 1), CircleCrypto.controlTag(a.secret, 1, 0))
+    }
+
+    @Test
+    fun approximateLocationsSnapToAFixedGridAndCantBeAveragedBack() {
+        val rnd = kotlin.random.Random(7)
+        val truth = 41.8819 to -87.6278
+        val snapped = (1..200).map {
+            val fix = MemberLocation(truth.first + rnd.nextDouble(-0.0005, 0.0005), truth.second + rnd.nextDouble(-0.0005, 0.0005), 5f, speed = 3f, heading = 10f, time = now)
+            LocationPrecision.apply(fix, Precision.NEIGHBORHOOD)
+        }.map { it.lat to it.lon }.toSet()
+        // Every fix in the cell gives the same answer, so averaging many updates learns nothing more.
+        assertTrue(snapped.size <= 4, "at most the cells the noise straddles: ${snapped.size}")
+        val city = LocationPrecision.apply(sampleLocation(), Precision.CITY)
+        assertTrue(kotlin.math.abs(city.lat - 41.8819) < 0.2 && kotlin.math.abs(city.lon + 87.6278) < 0.3)
+        assertNull(city.speed); assertNull(city.heading); assertTrue(city.points.isEmpty())
+        assertEquals(Precision.CITY, city.precision)
+        assertEquals(sampleLocation(), LocationPrecision.apply(sampleLocation(), Precision.EXACT))
+        assertTrue(LocationPrecision.apply(sampleLocation(), Precision.EXACT, trail = false).points.isEmpty())
     }
 }

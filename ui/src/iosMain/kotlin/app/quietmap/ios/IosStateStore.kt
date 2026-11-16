@@ -1,6 +1,7 @@
 package app.quietmap.ios
 
 import app.quietmap.core.StateStore
+import app.quietmap.core.StoredState
 import com.ionspin.kotlin.crypto.LibsodiumInitializer
 import com.ionspin.kotlin.crypto.secretbox.SecretBox
 import com.ionspin.kotlin.crypto.util.LibsodiumRandom
@@ -60,8 +61,9 @@ import platform.posix.memcpy
  * The file itself uses file protection and is excluded from iCloud and computer backups.
  *
  * Before the first unlock after a reboot, iOS keeps both the key and the file locked. Then
- * [load] throws instead of returning null, so the engine never mistakes "locked" for "no
- * state yet" and replaces the identity. [QuietmapIos.start] waits for unlock before loading.
+ * [read] reports the state as unreadable (retryable) rather than missing, so the engine never
+ * mistakes "locked" for "no state yet" and replaces the identity. [QuietmapIos.start] waits for
+ * unlock before loading. A missing key or a damaged file is also reported, never treated as empty.
  */
 @OptIn(ExperimentalForeignApi::class, ExperimentalUnsignedTypes::class, BetaInteropApi::class)
 class IosStateStore internal constructor(private val keys: KeyStore) : StateStore {
@@ -78,26 +80,38 @@ class IosStateStore internal constructor(private val keys: KeyStore) : StateStor
     }
     private val file: NSURL = dir.URLByAppendingPathComponent("state.bin")!!
 
-    override fun load(): String? {
+    override fun read(): StoredState {
         ensureSodium()
-        if (!NSFileManager.defaultManager.fileExistsAtPath(file.path!!)) return null
+        if (!NSFileManager.defaultManager.fileExistsAtPath(file.path!!)) return StoredState.Missing
         val bytes = NSData.dataWithContentsOfURL(file)?.toByteArray()
-            ?: throw IllegalStateException("Saved state is locked until the phone is unlocked")
+            ?: return StoredState.Unreadable("Saved data is locked until the phone is unlocked", retryable = true)
         val key = when (val k = keys.read(KEY_ACCOUNT)) {
             is KeyStore.Result.Found -> k.data
-            // Key gone (e.g. app data moved to a new phone): start fresh rather than crash.
-            KeyStore.Result.Missing -> return null
-            is KeyStore.Result.Error -> throw IllegalStateException("Keychain unavailable (status ${k.status})")
+            KeyStore.Result.Missing -> return StoredState.Unreadable("The key that protects your saved data is missing from this phone", retryable = false)
+            is KeyStore.Result.Error -> return StoredState.Unreadable("The Keychain isn't available right now (status ${k.status})", retryable = true)
         }
-        if (bytes.size <= NONCE_BYTES) return null
+        if (bytes.size <= NONCE_BYTES) return StoredState.Unreadable("The saved data file is damaged", retryable = false)
         return try {
-            SecretBox.openEasy(
-                bytes.copyOfRange(NONCE_BYTES, bytes.size).asUByteArray(),
-                bytes.copyOfRange(0, NONCE_BYTES).asUByteArray(),
-                key.asUByteArray(),
-            ).asByteArray().decodeToString()
+            StoredState.Found(
+                SecretBox.openEasy(
+                    bytes.copyOfRange(NONCE_BYTES, bytes.size).asUByteArray(),
+                    bytes.copyOfRange(0, NONCE_BYTES).asUByteArray(),
+                    key.asUByteArray(),
+                ).asByteArray().decodeToString(),
+            )
         } catch (_: Throwable) {
-            null
+            StoredState.Unreadable("The saved data is damaged or was encrypted with a different key", retryable = false)
+        }
+    }
+
+    /** Keeps an unreadable state file under a new name instead of overwriting it. */
+    override fun setAside() {
+        lock.lock()
+        try {
+            val target = dir.URLByAppendingPathComponent("state.bin.unreadable-${platform.Foundation.NSDate().timeIntervalSince1970.toLong()}")!!
+            NSFileManager.defaultManager.moveItemAtURL(file, toURL = target, error = null)
+        } finally {
+            lock.unlock()
         }
     }
 

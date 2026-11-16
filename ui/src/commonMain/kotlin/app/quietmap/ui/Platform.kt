@@ -40,6 +40,9 @@ interface PlatformBridge {
         onDone(true)
     }
 
+    /** Whether relays can be routed through Tor here (Android with Orbot). */
+    val supportsTor: Boolean get() = false
+
     /** How the phone shows that sharing is on, for the setup screen ("A notification shows…"). */
     val sharingIndicatorText: String
         get() = "A notification shows while you're sharing"

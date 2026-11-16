@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.quietmap.core.ShareStatus
 import app.quietmap.core.model.AppState
 import app.quietmap.core.model.Circle
 import app.quietmap.core.model.JoinRequest
@@ -113,7 +114,10 @@ fun HomeScreen(
     onJoin: () -> Unit,
     onSettings: () -> Unit,
     onRequestLocation: () -> Unit,
+    sharingBlocked: String? = null,
+    onFixSharing: () -> Unit = {},
 ) {
+    val gate = LocalPinGate.current
     val circle = state.circles.firstOrNull { it.id == selectedCircleId }
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
@@ -304,6 +308,10 @@ fun HomeScreen(
                         me = me,
                         circle = circle,
                         now = now,
+                        shareStatus = actions.shareStatus(circle),
+                        sharingBlocked = sharingBlocked,
+                        onFixSharing = onFixSharing,
+                        onStartSharing = { gate.require { actions.confirmCircle(circle.id) } },
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
@@ -348,20 +356,27 @@ fun HomeScreen(
 
     reviewing?.let { req ->
         val info = AvatarInfo(req.pubkey, req.name.ifBlank { "?" }, null, null, false)
+        val known = state.contacts[req.pubkey]?.verified == true
+        var matches by remember(req.id) { mutableStateOf(known) }
         ConfirmSheet(
             title = "Let ${req.name.ifBlank { "this person" }} join?",
             text = "They used your invite. If you approve, they'll see everyone in this circle and everyone will see them.",
             confirm = "Approve",
+            confirmEnabled = matches,
             dismiss = "Deny",
-            onConfirm = { actions.approve(req.id); reviewing = null },
+            onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); actions.approve(req.id) } },
             onDismiss = { actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
             InfoCard {
                 Caption("Their device code")
                 Mono(DeviceCode.full(req.pubkey), size = 17, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
-                Caption("If you can, check it matches the code on their screen.")
+                Caption(
+                    if (known) "You've verified this person before."
+                    else "Check it matches the code on their screen, in person or on a call. Anyone who got hold of your link could be asking.",
+                )
             }
+            if (!known) SwitchRow("Their code matches", null, matches) { matches = it }
         }
     }
 }
@@ -408,6 +423,10 @@ private fun PeopleList(
     me: String,
     circle: Circle,
     now: Long,
+    shareStatus: ShareStatus,
+    sharingBlocked: String?,
+    onFixSharing: () -> Unit,
+    onStartSharing: () -> Unit,
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
@@ -420,6 +439,34 @@ private fun PeopleList(
         item(key = "banners") {
             Column {
                 Banner(visible = state.sharing && !hasLocationPermission, text = "Allow location access so your circle can see you.", action = "Allow", onAction = onRequestLocation)
+                Banner(visible = state.sharing && sharingBlocked != null, text = sharingBlocked ?: "", action = "Turn on", onAction = onFixSharing)
+                val others = circle.members.filter { it.pubkey != me }.joinToString(", ") { avatarFor(state, it.pubkey, me, it.name).name }
+                Banner(
+                    visible = !circle.confirmed,
+                    text = "You're in ${circle.name} with $others. Nobody here sees your location until you start sharing.",
+                    action = "Start sharing",
+                    onAction = onStartSharing,
+                )
+                val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
+                Banner(
+                    visible = state.sharing && shareStatus == ShareStatus.KEY_REPLACED,
+                    text = "Sharing with ${circle.name} is paused. The circle has a new key and this phone is still waiting for it.",
+                    action = null,
+                    onAction = null,
+                )
+                Banner(
+                    visible = state.sharing && shareStatus == ShareStatus.ADMIN_AWAY,
+                    text = "Sharing with ${circle.name} is paused. $adminName hasn't been online for 3 days, so this phone can't check the circle key is still current.",
+                    action = null,
+                    onAction = null,
+                )
+                val waiting = circle.pendingAcks.count { now - it.firstSentAt > 600 && circle.members.any { m -> m.pubkey == it.pubkey } }
+                Banner(
+                    visible = waiting > 0,
+                    text = if (waiting == 1) "1 person hasn't received the circle's new key yet. Quietmap keeps trying." else "$waiting people haven't received the circle's new key yet. Quietmap keeps trying.",
+                    action = null,
+                    onAction = null,
+                )
                 requests.forEach { req ->
                     Banner(visible = true, text = "${req.name.ifBlank { "Someone" }} wants to join ${circle.name}", action = "Review") { onReview(req) }
                 }

@@ -369,6 +369,7 @@ fun ConfirmSheet(
     destructive: Boolean = false,
     dismiss: String = "Cancel",
     header: (@Composable () -> Unit)? = null,
+    confirmEnabled: Boolean = true,
     body: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     androidx.compose.material3.ModalBottomSheet(
@@ -381,7 +382,7 @@ fun ConfirmSheet(
             if (text != null) Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             body?.invoke(this)
             Spacer(Modifier.heightIn(min = 4.dp))
-            if (destructive) DangerButton(confirm, onConfirm) else PrimaryButton(confirm, onConfirm)
+            if (destructive) DangerButton(confirm, onConfirm) else PrimaryButton(confirm, onConfirm, enabled = confirmEnabled)
             androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(dismiss) }
         }
     }

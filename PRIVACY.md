@@ -1,0 +1,47 @@
+# What others can see
+
+Quietmap has no server, and every location, name, photo and battery level is end-to-end encrypted. Only the phones in a circle can read them. But data still travels through other people's computers, and they can see some things about it (metadata). This page lists exactly what, so the privacy claims stay accurate.
+
+## Relays
+
+Phones exchange encrypted messages through public [Nostr](https://nostr.com) relays (four by default; you can change them in Settings, Privacy). A relay operator **can** see:
+
+| What | Details |
+| --- | --- |
+| Your IP address, and when you're online | Unless you use Tor (below). Every phone keeps a connection open to each of its relays. |
+| Which circle tags your phone follows | Tags change every hour (locations) or every day (heartbeats and inboxes), and come from keys the relay doesn't have. But one connection asks for all of a phone's circles at once, so a relay can tell that the same phone follows those tags, and that other connections follow the same ones: roughly who shares a circle with whom, and how many people are in it. |
+| When you publish, and how often | Updates go out about every minute while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
+| The size of each event | Location updates are padded to one fixed size, so their size reveals nothing. |
+| When a circle changes | Key rotations, joins and removals send a burst of messages. |
+
+A relay **can't** see where you are, your name or photo, who sent a message (messages are signed by throwaway or hourly keys, and addressed to rotating inbox tags rather than your public key), your activity, speed or battery, or whether you share exactly or approximately.
+
+Things that help:
+
+- **Connect through Tor** (Android, Settings, Privacy; needs the Orbot app). Relays then see a Tor exit address instead of yours. If Orbot isn't running, nothing connects: it never falls back to a direct connection. Tor hides your IP; it doesn't stop a relay from linking the tags one connection asks for.
+- **Approximate location** for a circle (Settings, Circles). It's applied before encryption, so it protects you from everyone, including the people in the circle.
+- **Choosing relays you trust.** Relays only ever get encrypted data, but fewer, trusted relays mean fewer operators who see the metadata above.
+
+Not done yet, and why:
+
+- **Separate connections** for reading and publishing. They would still come from the same IP address, so a relay could link them anyway unless Tor is on.
+- **Decoy subscriptions.** Asking for extra tags to hide the real ones costs bandwidth and battery on every phone. It's worth revisiting with measurements.
+
+## The map
+
+Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app loads the area around you and around the people you look at, up to street level. The tile server (and any network in front of it) sees your IP address and which areas you view, but not who is where. Tor currently covers relays only, not the map.
+
+## Your phone's operating system
+
+- **Android:** while you're still, Quietmap uses the phone's network location, which on phones with Google services sends nearby Wi-Fi and cell information to Google if "Google Location Accuracy" is on. That's a system setting, outside Quietmap.
+- **Notifications:** Quietmap doesn't use Google or Apple push notifications, so neither company is told when you get an update.
+
+## Invite links
+
+An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
+
+## Backups
+
+A backup file contains your identity and circle keys, encrypted with your passphrase using Argon2id. Where you save it (your phone, a cloud drive) decides who could try to guess the passphrase. Making a backup needs your PIN and is recorded in Settings, Security log.
+
+See [SECURITY_IMPLEMENTATION_LOG.md](SECURITY_IMPLEMENTATION_LOG.md) for how each of these protections was built and tested.

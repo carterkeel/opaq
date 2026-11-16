@@ -44,6 +44,8 @@ class AndroidPlatform(
 
     override fun ensureSharingService() = app.ensureSharingService()
 
+    override val supportsTor: Boolean get() = true
+
     override fun pickProfilePhoto(onResult: (String?) -> Unit) = photoPicker(onResult)
 
     override fun scanQrCode(onResult: (String?) -> Unit) = qrScanner(onResult)

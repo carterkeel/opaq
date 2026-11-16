@@ -14,8 +14,15 @@ expect object PlatformCrypto {
 
     fun randomBytes(size: Int): ByteArray
 
-    /** PBKDF2-HMAC-SHA256, for turning a backup passphrase into a key. */
+    /** PBKDF2-HMAC-SHA256: the PIN hash, and v1 backups. */
     fun pbkdf2Sha256(password: String, salt: ByteArray, iterations: Int, length: Int): ByteArray
+
+    /**
+     * Argon2id (version 0x13, one lane), for turning a backup passphrase into a key. [password] must
+     * be ASCII so every platform hashes the same bytes (callers hex-encode it). BouncyCastle on
+     * Android, libsodium's crypto_pwhash on iOS.
+     */
+    fun argon2id(password: String, salt: ByteArray, memoryKiB: Int, iterations: Int, length: Int): ByteArray
 }
 
 /** RFC 5869 HKDF-SHA256 built from HMAC. */

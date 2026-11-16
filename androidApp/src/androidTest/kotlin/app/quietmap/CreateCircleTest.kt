@@ -38,6 +38,7 @@ class CreateCircleTest {
 
     private companion object {
         const val TAG = "QuietmapTest"
+        const val PIN = "2468"
     }
 
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -59,6 +60,47 @@ class CreateCircleTest {
             if (device.wait(Until.hasObject(By.text(expected)), 10_000)) return
         }
         waitFor(expected, 1_000)
+    }
+
+    /**
+     * Types into the visible text fields in order (a PIN, or a PIN and its confirmation). In a bottom
+     * sheet the keyboard stays open, because Back would close the sheet.
+     */
+    /**
+     * Types [pin] into the PIN field labelled [label]. Taps the label (which focuses its field) and
+     * types through the input method, so it works whether or not the keyboard hides other fields
+     * and survives recomposition, which made UiObject2 handles go stale.
+     */
+    private fun typePin(label: String, pin: String = PIN) {
+        repeat(5) { attempt ->
+            hideKeyboard() // the keyboard can cover the next field, so a tap on it lands on a key
+            val ok = runCatching {
+                val dots = By.text("•".repeat(pin.length))
+                val before = device.findObjects(dots).size
+                val field = device.wait(Until.findObject(By.text(label)), 5_000) ?: error("no \"$label\" field")
+                field.click()
+                device.waitForIdle()
+                device.executeShellCommand("input text $pin")
+                device.waitForIdle()
+                // The field shows one dot per digit once the text arrived.
+                val deadline = System.currentTimeMillis() + 3_000
+                while (device.findObjects(dots).size <= before && System.currentTimeMillis() < deadline) Thread.sleep(100)
+                device.findObjects(dots).size > before
+            }.getOrDefault(false)
+            if (ok) return
+            Log.e(TAG, "\"$label\" didn't take the PIN (attempt ${attempt + 1})")
+            Thread.sleep(300)
+        }
+        error("\"$label\" never took the PIN")
+    }
+
+    /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
+    private fun hideKeyboard() {
+        if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
+            device.pressBack()
+            device.waitForIdle()
+            Thread.sleep(300)
+        }
     }
 
     private fun dismissSystemDialogs() {
@@ -104,11 +146,18 @@ class CreateCircleTest {
         waitFor("Add a profile photo")
         waitFor("Skip").click()
 
-        // Step 3: create a circle.
+        // Step 3: optional PIN (set one, so the PIN prompt gets exercised later).
+        waitFor("Add a PIN?")
+        typePin("New PIN (4 to 8 digits)")
+        typePin("New PIN again")
+        hideKeyboard()
+        waitFor("Set PIN").click()
+
+        // Step 4: create a circle.
         waitFor("Create a circle").click()
         waitFor("Create").click()
 
-        // Step 4: location (already granted by the test rule).
+        // Step 5: location (already granted by the test rule).
         waitFor("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
@@ -120,9 +169,13 @@ class CreateCircleTest {
         tapUntil("Sharing", expected = "Paused")
         tapUntil("Paused", expected = "Sharing")
 
-        // Invite screen with a QR code.
+        // Invite screen with a QR code. Creating an invite asks for the PIN once the last entry is old.
         device.findObject(By.text("Invite")).click()
         waitFor("Create invite").click()
+        if (device.wait(Until.hasObject(By.text("Enter your PIN")), 5_000)) {
+            typePin("PIN")
+            waitFor("Continue").click()
+        }
         waitFor("Share link")
         device.pressBack()
 

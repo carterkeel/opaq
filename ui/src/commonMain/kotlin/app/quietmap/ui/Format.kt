@@ -53,6 +53,11 @@ object Format {
             if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += speed(s)
         }
         if (showBattery) loc.battery?.let { parts += "$it%" }
+        when (loc.precision) {
+            app.quietmap.core.model.Precision.NEIGHBORHOOD -> parts += "area only"
+            app.quietmap.core.model.Precision.CITY -> parts += "city only"
+            else -> Unit
+        }
         parts += ago(age)
         return parts.joinToString(" · ")
     }

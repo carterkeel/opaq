@@ -15,6 +15,9 @@ class Actions(
 ) {
     val me: String get() = engine.myPubkey
 
+    /** Whether this phone is currently sending its location to [circle], and if not, why. */
+    fun shareStatus(circle: app.quietmap.core.model.Circle): app.quietmap.core.ShareStatus = engine.shareStatus(circle)
+
     private fun launchAction(after: (() -> Unit)? = null, block: suspend () -> Unit) {
         scope.launch {
             try {
@@ -42,15 +45,22 @@ class Actions(
         launchAction(after = { onCreated(id); platform.ensureSharingService() }) { id = engine.createCircle(name).id }
     }
 
-    fun createInvite(circleId: String, onLink: (String) -> Unit) {
+    fun createInvite(circleId: String, hours: Int = 1, onLink: (String) -> Unit) {
         var link = ""
-        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId) }
+        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId, hours) }
     }
 
-    fun acceptInvite(invite: InviteData, onDone: () -> Unit) = launchAction(after = onDone) {
-        engine.acceptInvite(invite)
+    fun deviceCodeMatches(pubkey: String, typed: String): Boolean = engine.deviceCodeMatches(pubkey, typed)
+
+    fun acceptInvite(invite: InviteData, scannedInPerson: Boolean, typedCode: String?, keepRelays: Boolean, onDone: () -> Unit) = launchAction(after = onDone) {
+        engine.acceptInvite(invite, scannedInPerson, typedCode, keepRelays)
         engine.setSetupDone()
     }
+
+    fun setCirclePrecision(circleId: String, precision: app.quietmap.core.model.Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
+    fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }
+
+    fun confirmCircle(circleId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.confirmCircle(circleId) }
     fun approve(requestId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.approve(requestId) }
     fun deny(requestId: String) = launchAction { engine.deny(requestId) }
     fun removeMember(circleId: String, pubkey: String) = launchAction { engine.removeMember(circleId, pubkey) }
@@ -59,10 +69,51 @@ class Actions(
     fun setManager(circleId: String, pubkey: String, manager: Boolean) = launchAction { engine.setManager(circleId, pubkey, manager) }
     fun transferAdmin(circleId: String, pubkey: String) = launchAction { engine.transferAdmin(circleId, pubkey) }
 
+    /** Reads unreadable saved state again; [onDone] runs either way. */
+    fun retryLoad(onDone: () -> Unit) {
+        scope.launch {
+            val ok = runCatching { engine.retryLoad() }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                if (ok) platform.ensureSharingService() else platform.showMessage("Still can't read the saved data")
+                onDone()
+            }
+        }
+    }
+
+    fun startFresh() = launchAction { engine.startFresh() }
+
+    // PIN and security
+
+    fun isAuthorized(): Boolean = engine.isAuthorized()
+    val hasPin: Boolean get() = engine.hasPin
+
+    /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
+    fun unlock(pin: String, onResult: (app.quietmap.core.PinResult) -> Unit) {
+        scope.launch {
+            val r = engine.unlock(pin)
+            withContext(Dispatchers.Main) { onResult(r) }
+        }
+    }
+
+    fun setPin(pin: String, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.setPin(pin) }
+    fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
+    fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
+    fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }
+    fun setUseTor(on: Boolean) = launchAction { engine.setUseTor(on) }
+    fun consentDue(): Boolean = engine.consentDue()
+    fun confirmConsent() = launchAction { engine.confirmConsent() }
+
     /** Builds an encrypted backup off the main thread (PBKDF2 takes a moment) and hands back the text. */
-    fun exportBackup(passphrase: String, onReady: (String) -> Unit) {
-        var text = ""
-        launchAction(after = { onReady(text) }) { text = engine.exportBackup(passphrase) }
+    fun exportBackup(passphrase: String, onReady: (String?) -> Unit) {
+        scope.launch {
+            val text = try {
+                engine.exportBackup(passphrase)
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { platform.showMessage(t.message ?: "Couldn't make the backup") }
+                null
+            }
+            withContext(Dispatchers.Main) { onReady(text) }
+        }
     }
 
     /** Restores a backup; [onDone] gets null on success or the error to show. */

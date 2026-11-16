@@ -123,6 +123,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     var renaming by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
 
     ScreenScaffold("", onBack) {
         val subtitle = when {
@@ -140,6 +141,14 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         when {
             pubkey == circle.adminPubkey -> SettingsRow("Admin of ${circle.name}", "Can invite, approve and remove people", AppIcons.Star)
             isManager -> SettingsRow("Manager in ${circle.name}", "Can invite and approve people", AppIcons.Person)
+        }
+        val waiting = circle.pendingAcks.firstOrNull { it.pubkey == pubkey && now - it.firstSentAt > 600 }
+        if (waiting != null) {
+            SettingsRow(
+                "Hasn't received the circle's new key",
+                "Their phone may be off or offline. Quietmap keeps resending it for two weeks.",
+                AppIcons.Lock,
+            )
         }
         if (!isMe) SettingsRow("Rename", "Only changes the name on your phone", AppIcons.Edit, onClick = { renaming = true })
 
@@ -174,7 +183,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 if (isManager) "Remove as manager" else "Make a manager",
                 if (isManager) "They'll no longer be able to invite people" else "They can invite and approve people",
                 AppIcons.Person,
-                onClick = { actions.setManager(circleId, pubkey, !isManager) },
+                onClick = { gate.require { actions.setManager(circleId, pubkey, !isManager) } },
             )
             SettingsRow("Make admin", "Hand over ${circle.name}. You'll become a regular member.", AppIcons.Star, onClick = { confirmAdmin = true })
             SettingsRow("Remove from ${circle.name}", icon = AppIcons.Delete, titleColor = MaterialTheme.colorScheme.error, onClick = { confirmRemove = true })
@@ -192,7 +201,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             text = "They'll stop seeing ${circle.name}, and the circle gets a new key so they can't read anything new.",
             confirm = "Remove",
             destructive = true,
-            onConfirm = { actions.removeMember(circleId, pubkey); confirmRemove = false; onBack() },
+            onConfirm = { confirmRemove = false; gate.require { actions.removeMember(circleId, pubkey); onBack() } },
             onDismiss = { confirmRemove = false },
         )
     }
@@ -201,7 +210,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             title = "Make ${info.name} the admin?",
             text = "They'll control ${circle.name}: inviting, removing people and choosing managers. You can't undo this yourself.",
             confirm = "Make admin",
-            onConfirm = { actions.transferAdmin(circleId, pubkey); confirmAdmin = false },
+            onConfirm = { confirmAdmin = false; gate.require { actions.transferAdmin(circleId, pubkey) } },
             onDismiss = { confirmAdmin = false },
         )
     }
@@ -312,6 +321,9 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
     val platform = LocalPlatform.current
     val circle = state.circles.firstOrNull { it.id == circleId }
     var link by remember { mutableStateOf<String?>(null) }
+    var longer by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
+    val hours = if (longer) 24 else 1
 
     ScreenScaffold("Invite to ${circle?.name ?: "circle"}", onBack) {
         if (circle != null && (circle.adminPubkey == me || me in circle.managers)) {
@@ -327,12 +339,13 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                             Box(contentAlignment = Alignment.Center) { Icon(AppIcons.QrCode, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
                         }
                         Text(
-                            "Create a QR code and link for someone to join ${circle.name}. They work once, expire in 24 hours, and you approve whoever uses them.",
+                            "Create a QR code and link for someone to join ${circle.name}. They work once, and you approve whoever uses them. Scanning in person is safest: someone who joins from a link will need to hear your device code from you.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
-                        PrimaryButton("Create invite", { actions.createInvite(circle.id) { link = it } })
+                        SwitchRow("Valid for 24 hours", "Off: the invite expires in 1 hour", longer, AppIcons.Info) { longer = it }
+                        PrimaryButton("Create invite", { gate.require { actions.createInvite(circle.id, hours) { link = it } } })
                     } else {
                         Text("Have them scan this with Quietmap", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         // QR codes need dark modules on a light background, in both themes.
@@ -343,7 +356,12 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                                 modifier = Modifier.padding(20.dp).size(232.dp),
                             )
                         }
-                        Caption("On their phone: Join a circle → Scan QR code. Works once · expires in 24 hours.")
+                        Caption("On their phone: Join a circle → Scan QR code. Works once · expires in ${if (hours == 1) "1 hour" else "24 hours"}.")
+                        InfoCard {
+                            Caption("Your device code")
+                            Mono(DeviceCode.full(me), size = 17, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
+                            Caption("If you send the link instead, read this out to them on a call. Quietmap asks them to type it.")
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             TonalButton("Share link", { platform.shareText("Join my circle \"${circle.name}\" on Quietmap: $current", "Share invite link") }, Modifier.weight(1f), icon = AppIcons.Share)
                             TonalButton("Copy", { platform.copyToClipboard("Quietmap invite", current) }, Modifier.weight(1f))
@@ -398,26 +416,58 @@ fun JoinOptionsScreen(onBack: () -> Unit, onScan: () -> Unit, onJoinLink: (Strin
 }
 
 @Composable
-fun JoinScreen(state: AppState, invite: InviteData?, actions: Actions, onDone: () -> Unit) {
+fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: Actions, onDone: () -> Unit) {
     var name by remember(state.myName) { mutableStateOf(state.myName) }
+    var code by remember { mutableStateOf("") }
+    var keepRelays by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
     ScreenScaffold("Join a circle", onDone) {
         val now = epochSeconds()
         when {
-            invite == null -> Text("That isn't a Quietmap invite. Ask for a new link or QR code.", modifier = Gutter)
+            invite == null -> Text("That isn't a valid Quietmap invite, or it was changed after it was made. Ask for a new link or QR code.", modifier = Gutter)
             invite.e < now -> Text("This invite has expired. Ask ${invite.n.ifBlank { "them" }} for a new one.", modifier = Gutter)
             invite.k == actions.me -> Text("This is your own invite. Show it to the person you want to add.", modifier = Gutter)
             state.circles.any { it.id == invite.c } -> Text("You're already in ${invite.cn}.", modifier = Gutter)
             else -> {
+                val inviter = invite.n.ifBlank { "the person who invited you" }
+                val alreadyVerified = state.contacts[invite.k]?.verified == true
+                val verified = scanned || alreadyVerified || actions.deviceCodeMatches(invite.k, code)
+                val newRelays = invite.r.mapNotNull { app.quietmap.core.nostr.RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
                 ProfileHeader(
                     AvatarInfo(invite.k, invite.n.ifBlank { "?" }, null, null, false),
                     "Join ${invite.cn}?",
-                    "${invite.n.ifBlank { "Someone" }} invited you. Once they approve, everyone in ${invite.cn} sees your location, and you see theirs.",
+                    "${invite.n.ifBlank { "Someone" }} invited you. Once they approve, you'll see who's in ${invite.cn} and choose when to start sharing.",
                 )
                 Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     InfoCard {
                         Caption("${invite.n.ifBlank { "Inviter" }}'s device code")
                         Mono(DeviceCode.full(invite.k), size = 18, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
-                        Caption("Check it matches the code on their phone if you can.")
+                        when {
+                            scanned -> Caption("Verified: you scanned this from their screen.")
+                            alreadyVerified -> Caption("Verified earlier.")
+                            else -> Caption("A link can be swapped on the way. Call $inviter and ask them to read out the device code on their phone, then type it below.")
+                        }
+                    }
+                    if (!scanned && !alreadyVerified) {
+                        OutlinedTextField(
+                            value = code,
+                            onValueChange = { code = it.take(24) },
+                            label = { Text("Device code they read out") },
+                            singleLine = true,
+                            isError = code.filter { it.isLetterOrDigit() }.length >= 16 && !verified,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (code.filter { it.isLetterOrDigit() }.length >= 16 && !verified) {
+                            Text("That doesn't match this invite. Don't join: the link may have been changed.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (newRelays.isNotEmpty()) {
+                        InfoCard {
+                            Caption("This invite also uses these relays while you join:")
+                            newRelays.forEach { Mono(it.removePrefix("wss://"), size = 14, color = MaterialTheme.colorScheme.onSurface) }
+                        }
+                        SwitchRow("Keep using these relays", "Off: they're dropped once you've joined", keepRelays, AppIcons.Relay) { keepRelays = it }
                     }
                     OutlinedTextField(
                         value = name,
@@ -427,7 +477,11 @@ fun JoinScreen(state: AppState, invite: InviteData?, actions: Actions, onDone: (
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    PrimaryButton("Join and share my location", { actions.setName(name); actions.acceptInvite(invite, onDone) }, enabled = name.isNotBlank())
+                    PrimaryButton("Ask to join", {
+                        actions.setName(name)
+                        val join = { actions.acceptInvite(invite, scanned, code.takeIf { !scanned }, keepRelays, onDone) }
+                        if (keepRelays) gate.require(join) else join()
+                    }, enabled = name.isNotBlank() && verified)
                     TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
                 }
             }
@@ -450,11 +504,17 @@ fun SettingsScreen(
     onEditProfile: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
+    onSecurityLog: () -> Unit,
+    onCircle: (String) -> Unit,
 ) {
     var newRelay by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var showRelays by remember { mutableStateOf(false) }
+    var settingPin by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
+    val platform = LocalPlatform.current
 
     ScreenScaffold("Settings", onBack) {
         // Profile row, like the top of Signal's settings.
@@ -494,7 +554,7 @@ fun SettingsScreen(
                 me in c.managers -> " · you're a manager"
                 else -> ""
             }
-            SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles) {
+            SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles, onClick = { onCircle(c.id) }) {
                 when {
                     c.adminPubkey != me -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
                     c.members.size <= 1 -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
@@ -506,11 +566,39 @@ fun SettingsScreen(
             Caption("To leave a circle you run, open someone's profile and make them admin first.", Gutter)
         }
 
+        SectionHeader("Security")
+        if (state.pin == null) {
+            SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
+        } else {
+            SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
+            SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
+        }
+        SwitchRow("Hide in recent apps", "Blank Quietmap's screen in the app switcher and screenshots", state.hideInRecents, AppIcons.Shield) { on ->
+            if (on) actions.setHideInRecents(true) else gate.require { actions.setHideInRecents(false) }
+        }
+        SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
+        SettingsRow(
+            "Get a new device code",
+            "If someone may have copied this phone's identity",
+            AppIcons.Refresh,
+            titleColor = MaterialTheme.colorScheme.error,
+            onClick = { confirmReset = true },
+        )
+
         SectionHeader("Backup")
         SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
         SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
 
         SectionHeader("Privacy")
+        if (platform.supportsTor) {
+            SwitchRow(
+                "Connect through Tor",
+                if (state.useTor) "Relays see a Tor address, not yours. Needs Orbot running; nothing connects without it. The map still loads directly."
+                else "Hide your IP address from relays. Needs the Orbot app.",
+                state.useTor,
+                AppIcons.Shield,
+            ) { on -> if (on) actions.setUseTor(true) else gate.require { actions.setUseTor(false) } }
+        }
         val connected = state.relays.count { relayStatus[it] == RelayStatus.CONNECTED }
         SettingsRow("Relays", "$connected of ${state.relays.size} connected · they only see encrypted data", AppIcons.Relay, onClick = { showRelays = !showRelays })
         AnimatedVisibility(showRelays, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
@@ -528,7 +616,7 @@ fun SettingsScreen(
                             ),
                         )
                         Text(url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                        IconButton(onClick = { actions.setRelays(state.relays - url) }, enabled = state.relays.size > 1) {
+                        IconButton(onClick = { gate.require { actions.setRelays(state.relays - url) } }, enabled = state.relays.size > 1) {
                             Icon(AppIcons.Close, contentDescription = "Remove $url", modifier = Modifier.size(18.dp))
                         }
                     }
@@ -542,7 +630,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { actions.setRelays(state.relays + newRelay); newRelay = "" }, enabled = newRelay.startsWith("wss://") && newRelay.length > 8) {
+                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
                         Icon(AppIcons.Add, contentDescription = "Add relay")
                     }
                 }
@@ -577,8 +665,24 @@ fun SettingsScreen(
             text = "Everyone is removed and stops seeing each other in this circle. This can't be undone.",
             confirm = "Delete circle",
             destructive = true,
-            onConfirm = { actions.deleteCircle(id); confirmDelete = null },
+            onConfirm = { confirmDelete = null; gate.require { actions.deleteCircle(id) } },
             onDismiss = { confirmDelete = null },
+        )
+    }
+    if (settingPin) SetPinSheet(actions, if (state.pin == null) "Set a PIN" else "Change PIN") { settingPin = false }
+    if (confirmReset) {
+        ConfirmSheet(
+            title = "Get a new device code?",
+            text = "Do this if someone may have copied your identity, for example from a backup file. " +
+                "Circles you run move to your new code with new keys, so the copy loses access. " +
+                "You leave circles run by someone else, and need a new invite to rejoin them.",
+            confirm = "Get a new device code",
+            destructive = true,
+            onConfirm = {
+                confirmReset = false
+                gate.require { actions.resetIdentity { platform.showMessage("You have a new device code") } }
+            },
+            onDismiss = { confirmReset = false },
         )
     }
 }
@@ -603,12 +707,28 @@ private fun PassphraseField(value: String, onChange: (String) -> Unit, label: St
 
 /** Exports an encrypted backup file. */
 @Composable
-fun BackupScreen(actions: Actions, onBack: () -> Unit) {
+fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
     val platform = LocalPlatform.current
+    val gate = LocalPinGate.current
     var pass by remember { mutableStateOf("") }
     var again by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
+    var settingPin by remember { mutableStateOf(false) }
     val ok = pass.length >= Backups.MIN_PASSPHRASE && pass == again
+    if (settingPin) SetPinSheet(actions, "Set a PIN") { settingPin = false }
+    if (state.pin == null) {
+        ScreenScaffold("Back up", onBack) {
+            Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    "A backup can recreate you on another phone, so Quietmap asks for a PIN before making one. That way someone who picks up your unlocked phone can't quietly copy you.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PrimaryButton("Set a PIN", { settingPin = true })
+            }
+        }
+        return
+    }
     ScreenScaffold("Back up", onBack) {
         Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
@@ -624,13 +744,19 @@ fun BackupScreen(actions: Actions, onBack: () -> Unit) {
             PassphraseField(again, { again = it }, "Passphrase again")
             AnimatedVisibility(again.isNotEmpty() && pass != again) { Caption("The passphrases don't match.") }
             PrimaryButton(if (working) "Encrypting…" else "Save backup file", {
-                working = true
-                actions.exportBackup(pass) { text ->
-                    platform.saveTextFile("quietmap-backup.txt", text) { saved ->
-                        working = false
-                        if (saved) {
-                            platform.showMessage("Backup saved")
-                            onBack()
+                gate.require {
+                    working = true
+                    actions.exportBackup(pass) { text ->
+                        if (text == null) {
+                            working = false
+                            return@exportBackup
+                        }
+                        platform.saveTextFile("quietmap-backup.txt", text) { saved ->
+                            working = false
+                            if (saved) {
+                                platform.showMessage("Backup saved. It's listed in Settings, Security log.")
+                                onBack()
+                            }
                         }
                     }
                 }
@@ -643,6 +769,7 @@ fun BackupScreen(actions: Actions, onBack: () -> Unit) {
 @Composable
 fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) {
     val platform = LocalPlatform.current
+    val gate = LocalPinGate.current
     var file by remember { mutableStateOf<String?>(null) }
     var pass by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
@@ -664,6 +791,7 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
             AnimatedVisibility(error != null) { Text(error ?: "", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             PrimaryButton(if (working) "Restoring…" else "Restore", {
                 val text = file ?: return@PrimaryButton
+                gate.require {
                 working = true
                 actions.importBackup(text, pass) { err ->
                     working = false
@@ -673,6 +801,7 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
                     } else {
                         error = err
                     }
+                }
                 }
             }, enabled = file != null && pass.isNotEmpty() && !working)
             Caption("Sharing starts paused after a restore, so you can check everything first.")

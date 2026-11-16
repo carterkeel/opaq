@@ -7,6 +7,9 @@ on:
     branches-ignore: [ci-logs]
   workflow_dispatch:
 
+# Write access is only for pushing the run summary to the ci-logs branch. Third-party actions
+# are pinned to full commit SHAs (Dependabot proposes updates), so a moved tag can't change
+# what runs with this token.
 permissions:
   contents: write
 
@@ -20,19 +23,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: gradle/actions/setup-gradle@v5
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
 
       # Test builds are signed with one long-lived key so each new APK installs over the last.
       # The key lives only in the Actions cache (never in the repo); it's for test builds only.
       - name: Restore the test signing key
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.quietmap-ci-key
           key: quietmap-ci-signing-v1
@@ -66,14 +69,14 @@ jobs:
           done 2>&1 | tee apk.log
 
       - name: Upload debug APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: quietmap-debug-apk
           path: androidApp/build/outputs/apk/debug/*.apk
 
       # Optimised build (R8, not debuggable): use this one to judge smoothness and battery.
       - name: Upload staging APK
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: quietmap-staging-apk
           path: androidApp/build/outputs/apk/staging/*.apk
@@ -86,7 +89,7 @@ jobs:
 
       # Installs the debug app on an emulator and runs the first-run smoke test (androidTest/).
       - name: UI smoke test on an emulator
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           arch: x86_64
@@ -129,7 +132,7 @@ jobs:
               grep -n -A 45 "FATAL EXCEPTION" logcat.txt | head -200 || true
               echo
               echo "===== logcat: UI test notes (screen contents when a step failed) ====="
-              grep "QuietmapTest" logcat.txt | tail -90 || true
+              grep -E "QuietmapTest|E/TestRunner|didn't appear" logcat.txt | tail -90 || true
               echo
               echo "===== logcat: Quietmap and errors ====="
               grep -E " E/|Quietmap|AndroidRuntime|mbgl|[Mm]ap[Ll]ibre" logcat.txt | grep -viE "chatty|gralloc|EGL|OpenGL|cutils|netd|wifi|bluetooth|audio" | tail -80 || true

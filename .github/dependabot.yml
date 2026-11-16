@@ -1,0 +1,13 @@
+# Weekly update PRs for Gradle dependencies and GitHub Actions. Security advisories for these
+# dependencies also show up as Dependabot alerts once they're enabled in the repository settings.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

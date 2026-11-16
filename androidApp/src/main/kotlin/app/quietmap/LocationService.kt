@@ -43,6 +43,7 @@ class LocationService : LifecycleService(), LocationListener {
     private var sensorManager: SensorManager? = null
     private var significantMotion: Sensor? = null
     private var highAccuracy: Boolean? = null
+    private var lastReminderAt = 0L
 
     private val motionListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent?) {
@@ -83,6 +84,16 @@ class LocationService : LifecycleService(), LocationListener {
         lifecycleScope.launch {
             while (isActive) {
                 val now = nowSeconds()
+                // Never share without the visible notification: if it was turned off, stop.
+                if (!app.canShowSharingNotification()) {
+                    app.markSharingBlocked()
+                    stopSelf()
+                    break
+                }
+                if (app.engine.consentDue() && now - lastReminderAt > 24 * 3600) {
+                    lastReminderAt = now
+                    app.notifySharingReminder()
+                }
                 adjustAccuracy()
                 if (policy.shouldPublish(now)) {
                     val battery = batteryPercent()
