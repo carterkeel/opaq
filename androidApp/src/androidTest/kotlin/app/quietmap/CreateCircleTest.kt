@@ -71,16 +71,20 @@ class CreateCircleTest {
         values.forEachIndexed { i, v ->
             // Find the fields again each time: typing in one recomposes the screen, and a stale
             // handle can silently drop the text. Check it landed (masked as dots) and retry.
-            repeat(3) { attempt ->
+            repeat(5) { attempt ->
                 val fields = device.findObjects(By.clazz("android.widget.EditText"))
                 check(fields.size >= values.size) { "expected ${values.size} PIN fields, found ${fields.size}" }
-                fields[i].click()
-                fields[i].text = v
-                device.waitForIdle()
-                val now = device.findObjects(By.clazz("android.widget.EditText")).getOrNull(i)?.text.orEmpty()
-                if (now.length == v.length) return@forEachIndexed
+                val typed = runCatching {
+                    fields[i].click()
+                    fields[i].text = v
+                    device.waitForIdle()
+                    device.findObjects(By.clazz("android.widget.EditText")).getOrNull(i)?.text.orEmpty()
+                }.getOrElse { "" } // StaleObjectException: the screen recomposed under us
+                if (typed.length == v.length) return@forEachIndexed
                 Log.e(TAG, "PIN field ${i + 1} didn't take the text (attempt ${attempt + 1})")
+                Thread.sleep(300)
             }
+            error("PIN field ${i + 1} never took the text")
         }
         if (closeKeyboard) device.pressBack()
     }
