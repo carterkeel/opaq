@@ -20,6 +20,9 @@ for attempt in 1 2; do
   ./gradlew :androidApp:connectedDebugAndroidTest --stacktrace 2>&1 | tee -a emulator.log
   status=$?
   adb logcat -d -v time >> logcat.txt || true
+  # Screenshots the test took (light and dark), for checking screens by eye in the CI summary.
+  rm -rf screens && mkdir -p screens
+  adb pull /sdcard/Android/data/app.quietmap.debug/files/screens/. screens/ >/dev/null 2>&1 || true
   [ $status -eq 0 ] && break
 done
 exit $status

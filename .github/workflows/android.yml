@@ -146,8 +146,11 @@ jobs:
               if grep -q "<failure" "$x"; then echo "===== $x ====="; grep -A 15 "<failure" "$x" | head -120; fi
             done
           } > "$out/log.txt"
+          # Emulator screenshots (test data only), to look over each screen without a device.
+          if [ -d screens ] && ls screens/*.png >/dev/null 2>&1; then mkdir -p "$out/screens" && cp screens/*.png "$out/screens/"; fi
           cd "$out"
           git init -q -b ci-logs
           git add log.txt
+          [ -d screens ] && git add screens
           git -c user.name="quietmap-ci" -c user.email="ci@users.noreply.github.com" commit -qm "CI log for $GITHUB_SHA ($STATUS)"
           git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs
