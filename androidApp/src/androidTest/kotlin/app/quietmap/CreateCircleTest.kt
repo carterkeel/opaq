@@ -231,7 +231,7 @@ class CreateCircleTest {
         waitFor("Invite")
 
         // Your profile, then your location history (#58).
-        waitFor("You").click()
+        (device.wait(Until.findObject(By.desc("Profile")), 10_000) ?: error("no Profile button")).click()
         waitFor("Location history")
         shot("profile")
         waitFor("Location history").click()
@@ -249,7 +249,7 @@ class CreateCircleTest {
         try {
             waitFor("Invite")
             shot("dark-home")
-            waitFor("You").click()
+            (device.wait(Until.findObject(By.desc("Profile")), 10_000) ?: error("no Profile button")).click()
             waitFor("Location history")
             shot("dark-profile")
             waitFor("Location history").click()
