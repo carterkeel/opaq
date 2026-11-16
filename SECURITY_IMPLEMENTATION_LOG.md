@@ -157,3 +157,67 @@ Compatibility: v2 rosters use a new message type (`roster2`), so an older app ig
 **Tests.** `CircleSecurityTest.relaysDontSeePermanentKeysOnceJoined`.
 
 The rest of QM-02 is under Phase 12 below.
+
+## QM-01: covert identity cloning (Phase 1)
+
+**Vulnerability.** A backup holds the identity secret and every circle key. Anyone with the unlocked phone for a minute could export one, restore it elsewhere, and silently read every circle, including future keys (rotations are sent to the identity).
+
+**Changes.**
+
+- **Optional PIN.** Offered as a setup step and in Settings, Security. It is 4 to 8 digits, stored only as a salted PBKDF2-SHA256 hash (150,000 iterations) inside the encrypted state. After five wrong tries it locks for 30 seconds, doubling with each further miss; lockouts are logged. As the owner asked, the PIN is **never** needed to open the app or to see locations.
+- **Enforced in the engine.** When a PIN is set, the engine itself refuses sensitive actions unless it was entered in the last 2 minutes (`Engine.isAuthorized`), so no screen can forget to ask: backup export and restore, creating invites, approving members, changing relays, removing people, changing roles, handing over or deleting a circle, resetting the identity, changing or removing the PIN, and turning off "Hide in recent apps". The UI asks through `PinGate`.
+- **Backups need a PIN.** Because a backup can recreate the identity elsewhere, making one requires a PIN to be set and entered. The Backup screen offers to set one. This is the one place the PIN isn't optional; it can be dropped if the owner prefers.
+- **Security log.** Every backup export (with the device model), restore, PIN change, lockout and identity reset is recorded and shown under Settings, Security log. The screen says plainly that someone who resets or wipes the app's data can erase it: this is a mitigation, not detection.
+- **Restoring** still starts with sharing paused.
+- **Identity reset** ("Get a new device code"). The phone gets a new key pair:
+  - Circles it administers are rotated to fresh keys with the new identity as admin, signed by the old identity, which members still trust. The old identity, and any clone of it, is left out.
+  - Circles run by someone else are left with a `LeftBody`, so their admin removes the old identity and rotates the key. Rejoining needs a new invite, and the confirmation screen says so.
+
+**Tests.**
+
+- `SecurityTest`: `backupsNeedAPinSetAndEntered`, `sensitiveActionsNeedThePinButViewingDoesNot`, `wrongPinsLockForLongerEachTime`, `pinIsStoredOnlyAsASaltedHash`.
+- `CircleSecurityTest.aClonedIdentityLosesAccessWhenTheOwnerResetsIt`: a clone made from a backup reads the circle; after the owner resets, the clone sees nothing new and no later update opens with its keys.
+- `CircleSecurityTest.anAdminResetMovesTheirCirclesToTheNewIdentity`.
+
+**Not implemented: per-device keys.** The plan's long-term item (a stable user identity, separate device keys, a device registry and per-device revocation) changes how every message is addressed and verified, and needs multi-device key distribution. Done superficially, it would look like revocation without being one. It is left as the next architectural step. Until then, the identity reset above is the way to recover from a copied identity, and it meets the acceptance criteria ("a revoked device cannot obtain future circle keys", "users can recover from a compromised identity").
+
+**Remaining limitations.**
+
+- A clone that acts before the owner resets can do anything the owner could, including (for an admin) racing the reset with its own rotation.
+- Someone who knows the PIN, or who can wipe the app and restore a backup they made earlier, isn't stopped.
+
+## QM-06: covert location sharing (Phase 2)
+
+**Vulnerability.** Sharing started with location permission alone. On Android 13+ a denied notification permission, or a turned-off channel, hid the "Sharing your location" notification while sharing kept running.
+
+**Changes (Android).**
+
+- **Checks.** `QuietmapApp.canShowSharingNotification()` checks that notifications are enabled for the app, that the Android 13+ permission is granted, and that the "Location sharing" channel isn't turned off. It looks at the actual channel, not just the permission.
+- **Before starting.** `ensureSharingService` (used at app start, on resume, after boot and after app updates) won't start sharing unless the notification can show.
+- **While running.** `LocationService` checks again every 5 seconds and stops itself, without publishing, the moment the notification can't show.
+- **Telling the user.** A banner on the home screen says sharing is paused because the notification is off, with a button that asks for the permission or opens the app's notification settings. Sharing resumes once it's visible again.
+- **After a restart.** A reboot goes through the same check, so it can't restart sharing invisibly.
+- **Monthly reminder.** At least once a month the app shows who receives your location: each circle, the number of people, and exact or approximate. It offers Keep sharing or Stop sharing with everyone; swiping it away decides nothing. While the service runs it also posts a "You're still sharing your location" notification once a day after the month is up, until the user confirms. Turning sharing on counts as confirming.
+- The home screen already shows Sharing/Paused at all times.
+
+**iOS.** The system's blue background-location indicator stays on (`showsBackgroundLocationIndicator = true`), and nothing tries to hide it. The in-app monthly reminder works the same on iOS.
+
+**Tests.** `SecurityTest.sharingIsReconfirmedMonthly`. The notification checks are Android framework calls. The emulator smoke test runs with notifications granted; a test that turns the channel off would need system UI automation, so it is listed under open items.
+
+**Remaining limitations.**
+
+- A determined abuser can uninstall the app's notification access and also uninstall Quietmap, or root the phone. Neither leaves Quietmap sharing invisibly.
+- Android's own location indicator and background-location reminders vary by manufacturer.
+
+## QM-14 and QM-17: membership transparency and app protection (Phase 11)
+
+**Changes.**
+
+- **Membership history.** Every join, departure or removal and admin change is recorded per circle: who, who approved or removed them, and when. It's shown under Settings, Circles, then a circle. Kept on the phone only.
+- **Join notifications.** When a roster adds or removes someone, everyone else in the circle gets a notification ("Cal joined Family", "Approved by Ana"; "Cal is no longer in Family"), on a separate "Circle changes" channel.
+- **Hide in recent apps.** An option in Settings, Security sets Android's `FLAG_SECURE`, which blanks the app-switcher thumbnail and blocks screenshots. Turning it off needs the PIN. The setting's text doesn't claim it protects against someone holding the unlocked phone.
+- **No app lock.** As the owner asked, opening the app and viewing locations never need the PIN.
+
+**Tests.** `CircleSecurityTest.everyoneHearsWhenSomeoneJoinsOrLeaves`.
+
+**Remaining limitations.** Membership history is local, so a phone that joins later sees only what happened since. iOS doesn't post join notifications yet (the history is there); that needs the iOS notification permission flow in the Xcode shell.

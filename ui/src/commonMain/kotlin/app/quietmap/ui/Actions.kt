@@ -75,10 +75,37 @@ class Actions(
 
     fun startFresh() = launchAction { engine.startFresh() }
 
+    // PIN and security
+
+    fun isAuthorized(): Boolean = engine.isAuthorized()
+    val hasPin: Boolean get() = engine.hasPin
+
+    /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
+    fun unlock(pin: String, onResult: (app.quietmap.core.PinResult) -> Unit) {
+        scope.launch {
+            val r = engine.unlock(pin)
+            withContext(Dispatchers.Main) { onResult(r) }
+        }
+    }
+
+    fun setPin(pin: String, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.setPin(pin) }
+    fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
+    fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
+    fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }
+    fun consentDue(): Boolean = engine.consentDue()
+    fun confirmConsent() = launchAction { engine.confirmConsent() }
+
     /** Builds an encrypted backup off the main thread (PBKDF2 takes a moment) and hands back the text. */
-    fun exportBackup(passphrase: String, onReady: (String) -> Unit) {
-        var text = ""
-        launchAction(after = { onReady(text) }) { text = engine.exportBackup(passphrase) }
+    fun exportBackup(passphrase: String, onReady: (String?) -> Unit) {
+        scope.launch {
+            val text = try {
+                engine.exportBackup(passphrase)
+            } catch (t: Throwable) {
+                withContext(Dispatchers.Main) { platform.showMessage(t.message ?: "Couldn't make the backup") }
+                null
+            }
+            withContext(Dispatchers.Main) { onReady(text) }
+        }
     }
 
     /** Restores a backup; [onDone] gets null on success or the error to show. */

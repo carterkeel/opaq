@@ -29,7 +29,12 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import android.provider.Settings
+import android.view.WindowManager
+import androidx.lifecycle.lifecycleScope
 import app.quietmap.ui.QuietmapScreens
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
@@ -128,6 +133,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // "Hide in recent apps": FLAG_SECURE blanks the app switcher thumbnail and blocks screenshots.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.CREATED) {
+                QuietmapApp.from(this@MainActivity).engine.state.map { it.hideInRecents }.distinctUntilChanged().collect { hide ->
+                    if (hide) window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+                    else window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+        }
         incomingLink.value = intent?.dataString
         setContent { Root(incomingLink, platform) }
     }
@@ -169,6 +183,24 @@ private fun Root(incomingLink: MutableStateFlow<String?>, platform: AndroidPlatf
     }
     // Battery optimisation can change in system settings, so recheck it on every resume too.
     val sharingSettings = remember(hasBackground, resumeCount) { platform.sharingSettings(hasBackground) }
+    val blocked by app.sharingBlocked.collectAsStateWithLifecycle()
+    val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { app.ensureSharingService() }
+    val fixNotifications = {
+        val activity = context as? ComponentActivity
+        val canAsk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && activity != null &&
+            !granted(context, Manifest.permission.POST_NOTIFICATIONS) &&
+            !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) &&
+            resumeCount <= 1
+        if (canAsk) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
 
     QuietmapScreens(
         engine = app.engine,
@@ -179,6 +211,8 @@ private fun Root(incomingLink: MutableStateFlow<String?>, platform: AndroidPlatf
         sharingSettings = sharingSettings,
         incomingLink = link,
         onLinkHandled = { incomingLink.value = null },
+        sharingBlocked = if (blocked) "Sharing is paused because Quietmap's notification is turned off. It has to be visible so you always know your location is being shared." else null,
+        onFixSharing = fixNotifications,
     )
 }
 

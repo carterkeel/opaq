@@ -123,6 +123,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     var renaming by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
 
     ScreenScaffold("", onBack) {
         val subtitle = when {
@@ -182,7 +183,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 if (isManager) "Remove as manager" else "Make a manager",
                 if (isManager) "They'll no longer be able to invite people" else "They can invite and approve people",
                 AppIcons.Person,
-                onClick = { actions.setManager(circleId, pubkey, !isManager) },
+                onClick = { gate.require { actions.setManager(circleId, pubkey, !isManager) } },
             )
             SettingsRow("Make admin", "Hand over ${circle.name}. You'll become a regular member.", AppIcons.Star, onClick = { confirmAdmin = true })
             SettingsRow("Remove from ${circle.name}", icon = AppIcons.Delete, titleColor = MaterialTheme.colorScheme.error, onClick = { confirmRemove = true })
@@ -200,7 +201,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             text = "They'll stop seeing ${circle.name}, and the circle gets a new key so they can't read anything new.",
             confirm = "Remove",
             destructive = true,
-            onConfirm = { actions.removeMember(circleId, pubkey); confirmRemove = false; onBack() },
+            onConfirm = { confirmRemove = false; gate.require { actions.removeMember(circleId, pubkey); onBack() } },
             onDismiss = { confirmRemove = false },
         )
     }
@@ -209,7 +210,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             title = "Make ${info.name} the admin?",
             text = "They'll control ${circle.name}: inviting, removing people and choosing managers. You can't undo this yourself.",
             confirm = "Make admin",
-            onConfirm = { actions.transferAdmin(circleId, pubkey); confirmAdmin = false },
+            onConfirm = { confirmAdmin = false; gate.require { actions.transferAdmin(circleId, pubkey) } },
             onDismiss = { confirmAdmin = false },
         )
     }
@@ -320,6 +321,7 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
     val platform = LocalPlatform.current
     val circle = state.circles.firstOrNull { it.id == circleId }
     var link by remember { mutableStateOf<String?>(null) }
+    val gate = LocalPinGate.current
 
     ScreenScaffold("Invite to ${circle?.name ?: "circle"}", onBack) {
         if (circle != null && (circle.adminPubkey == me || me in circle.managers)) {
@@ -340,7 +342,7 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
-                        PrimaryButton("Create invite", { actions.createInvite(circle.id) { link = it } })
+                        PrimaryButton("Create invite", { gate.require { actions.createInvite(circle.id) { link = it } } })
                     } else {
                         Text("Have them scan this with Quietmap", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         // QR codes need dark modules on a light background, in both themes.
@@ -458,11 +460,17 @@ fun SettingsScreen(
     onEditProfile: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
+    onSecurityLog: () -> Unit,
+    onCircle: (String) -> Unit,
 ) {
     var newRelay by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf<String?>(null) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var showRelays by remember { mutableStateOf(false) }
+    var settingPin by remember { mutableStateOf(false) }
+    var confirmReset by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
+    val platform = LocalPlatform.current
 
     ScreenScaffold("Settings", onBack) {
         // Profile row, like the top of Signal's settings.
@@ -498,7 +506,7 @@ fun SettingsScreen(
                 me in c.managers -> " · you're a manager"
                 else -> ""
             }
-            SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles) {
+            SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles, onClick = { onCircle(c.id) }) {
                 when {
                     c.adminPubkey != me -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
                     c.members.size <= 1 -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
@@ -509,6 +517,25 @@ fun SettingsScreen(
         if (state.circles.any { it.adminPubkey == me && it.members.size > 1 }) {
             Caption("To leave a circle you run, open someone's profile and make them admin first.", Gutter)
         }
+
+        SectionHeader("Security")
+        if (state.pin == null) {
+            SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
+        } else {
+            SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
+            SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
+        }
+        SwitchRow("Hide in recent apps", "Blank Quietmap's screen in the app switcher and screenshots", state.hideInRecents, AppIcons.Shield) { on ->
+            if (on) actions.setHideInRecents(true) else gate.require { actions.setHideInRecents(false) }
+        }
+        SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
+        SettingsRow(
+            "Get a new device code",
+            "If someone may have copied this phone's identity",
+            AppIcons.Refresh,
+            titleColor = MaterialTheme.colorScheme.error,
+            onClick = { confirmReset = true },
+        )
 
         SectionHeader("Backup")
         SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
@@ -532,7 +559,7 @@ fun SettingsScreen(
                             ),
                         )
                         Text(url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                        IconButton(onClick = { actions.setRelays(state.relays - url) }, enabled = state.relays.size > 1) {
+                        IconButton(onClick = { gate.require { actions.setRelays(state.relays - url) } }, enabled = state.relays.size > 1) {
                             Icon(AppIcons.Close, contentDescription = "Remove $url", modifier = Modifier.size(18.dp))
                         }
                     }
@@ -546,7 +573,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { actions.setRelays(state.relays + newRelay); newRelay = "" }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
+                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
                         Icon(AppIcons.Add, contentDescription = "Add relay")
                     }
                 }
@@ -581,8 +608,24 @@ fun SettingsScreen(
             text = "Everyone is removed and stops seeing each other in this circle. This can't be undone.",
             confirm = "Delete circle",
             destructive = true,
-            onConfirm = { actions.deleteCircle(id); confirmDelete = null },
+            onConfirm = { confirmDelete = null; gate.require { actions.deleteCircle(id) } },
             onDismiss = { confirmDelete = null },
+        )
+    }
+    if (settingPin) SetPinSheet(actions, if (state.pin == null) "Set a PIN" else "Change PIN") { settingPin = false }
+    if (confirmReset) {
+        ConfirmSheet(
+            title = "Get a new device code?",
+            text = "Do this if someone may have copied your identity, for example from a backup file. " +
+                "Circles you run move to your new code with new keys, so the copy loses access. " +
+                "You leave circles run by someone else, and need a new invite to rejoin them.",
+            confirm = "Get a new device code",
+            destructive = true,
+            onConfirm = {
+                confirmReset = false
+                gate.require { actions.resetIdentity { platform.showMessage("You have a new device code") } }
+            },
+            onDismiss = { confirmReset = false },
         )
     }
 }
@@ -607,12 +650,28 @@ private fun PassphraseField(value: String, onChange: (String) -> Unit, label: St
 
 /** Exports an encrypted backup file. */
 @Composable
-fun BackupScreen(actions: Actions, onBack: () -> Unit) {
+fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
     val platform = LocalPlatform.current
+    val gate = LocalPinGate.current
     var pass by remember { mutableStateOf("") }
     var again by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
+    var settingPin by remember { mutableStateOf(false) }
     val ok = pass.length >= Backups.MIN_PASSPHRASE && pass == again
+    if (settingPin) SetPinSheet(actions, "Set a PIN") { settingPin = false }
+    if (state.pin == null) {
+        ScreenScaffold("Back up", onBack) {
+            Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Text(
+                    "A backup can recreate you on another phone, so Quietmap asks for a PIN before making one. That way someone who picks up your unlocked phone can't quietly copy you.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                PrimaryButton("Set a PIN", { settingPin = true })
+            }
+        }
+        return
+    }
     ScreenScaffold("Back up", onBack) {
         Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(
@@ -628,13 +687,19 @@ fun BackupScreen(actions: Actions, onBack: () -> Unit) {
             PassphraseField(again, { again = it }, "Passphrase again")
             AnimatedVisibility(again.isNotEmpty() && pass != again) { Caption("The passphrases don't match.") }
             PrimaryButton(if (working) "Encrypting…" else "Save backup file", {
-                working = true
-                actions.exportBackup(pass) { text ->
-                    platform.saveTextFile("quietmap-backup.txt", text) { saved ->
-                        working = false
-                        if (saved) {
-                            platform.showMessage("Backup saved")
-                            onBack()
+                gate.require {
+                    working = true
+                    actions.exportBackup(pass) { text ->
+                        if (text == null) {
+                            working = false
+                            return@exportBackup
+                        }
+                        platform.saveTextFile("quietmap-backup.txt", text) { saved ->
+                            working = false
+                            if (saved) {
+                                platform.showMessage("Backup saved. It's listed in Settings, Security log.")
+                                onBack()
+                            }
                         }
                     }
                 }
@@ -647,6 +712,7 @@ fun BackupScreen(actions: Actions, onBack: () -> Unit) {
 @Composable
 fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) {
     val platform = LocalPlatform.current
+    val gate = LocalPinGate.current
     var file by remember { mutableStateOf<String?>(null) }
     var pass by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
@@ -668,6 +734,7 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
             AnimatedVisibility(error != null) { Text(error ?: "", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
             PrimaryButton(if (working) "Restoring…" else "Restore", {
                 val text = file ?: return@PrimaryButton
+                gate.require {
                 working = true
                 actions.importBackup(text, pass) { err ->
                     working = false
@@ -677,6 +744,7 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
                     } else {
                         error = err
                     }
+                }
                 }
             }, enabled = file != null && pass.isNotEmpty() && !working)
             Caption("Sharing starts paused after a restore, so you can check everything first.")

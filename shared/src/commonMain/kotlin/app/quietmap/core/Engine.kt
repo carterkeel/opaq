@@ -2,6 +2,7 @@ package app.quietmap.core
 
 import app.quietmap.core.crypto.KeyPair
 import app.quietmap.core.crypto.PlatformCrypto
+import app.quietmap.core.crypto.constantTimeEquals
 import app.quietmap.core.crypto.hexToBytes
 import app.quietmap.core.crypto.toHex
 import app.quietmap.core.model.AppState
@@ -12,6 +13,11 @@ import app.quietmap.core.model.JoinRequest
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
 import app.quietmap.core.model.MemberProfile
+import app.quietmap.core.model.MembershipChange
+import app.quietmap.core.model.MembershipEvent
+import app.quietmap.core.model.PinLock
+import app.quietmap.core.model.SecurityEvent
+import app.quietmap.core.model.SecurityEventType
 import app.quietmap.core.model.OldControl
 import app.quietmap.core.model.PendingAck
 import app.quietmap.core.model.PendingJoin
@@ -41,8 +47,11 @@ import app.quietmap.core.protocol.RosterCircle
 import app.quietmap.core.protocol.RosterRequestBody
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -87,6 +96,8 @@ class Engine(
     private val log: (String) -> Unit = {},
     /** Builds the relay connection; tests pass an in-memory network instead of real relays. */
     transport: ((onEvent: suspend (relay: String, event: Event) -> Unit) -> RelayTransport)? = null,
+    /** Shown in the security log, e.g. "Pixel 8". */
+    private val deviceName: String = "this phone",
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
@@ -123,6 +134,14 @@ class Engine(
 
     private var started = false
     private var connected = false
+
+    private val _notices = MutableSharedFlow<Notice>(extraBufferCapacity = 16)
+
+    /** Things worth a notification: someone joined or left a circle. The platform shows them. */
+    val notices: SharedFlow<Notice> = _notices.asSharedFlow()
+
+    /** Until when the last correct PIN entry authorizes sensitive actions (memory only). */
+    private var authorizedUntil = 0L
 
     init {
         val found = try {
@@ -186,6 +205,7 @@ class Engine(
     /** One pass of the periodic work. Tests call it directly instead of waiting for the timer. */
     suspend fun housekeeping() {
         if (_recovery.value != null) return
+        if (state.value.consentAt == 0L) update { it.copy(consentAt = now()) }
         pruneExpired()
         advanceRatchets()
         adminDuties()
@@ -256,7 +276,8 @@ class Engine(
         publishProfileIfDue()
     }
 
-    suspend fun setSharing(on: Boolean) = update { it.copy(sharing = on) }
+    /** Turning sharing on counts as confirming it, for the monthly reminder. */
+    suspend fun setSharing(on: Boolean) = update { if (on) it.copy(sharing = true, consentAt = now()) else it.copy(sharing = false) }
 
     suspend fun setShareBattery(on: Boolean) = update { it.copy(shareBattery = on) }
 
@@ -266,14 +287,94 @@ class Engine(
 
     suspend fun setSetupDone() = update { it.copy(setupDone = true) }
 
-    /** Remote relays must use TLS (wss://); anything else is dropped, never silently downgraded. */
+    /**
+     * Changes the relay list (needs the PIN, if one is set). Remote relays must use TLS (wss://);
+     * anything else is dropped, never silently downgraded.
+     */
     suspend fun setRelays(relays: List<String>) {
+        requireAuthorized()
+        applyRelays(relays)
+    }
+
+    private suspend fun applyRelays(relays: List<String>) {
         checkReady()
         val clean = relays.mapNotNull { RelayUrls.clean(it) }.distinct()
         update { it.copy(relays = clean) }
         pool.setRelays(clean)
         refreshSubscriptions()
     }
+
+    /** Hides the app in recent apps and screenshots. Turning it off needs the PIN, if one is set. */
+    suspend fun setHideInRecents(on: Boolean) {
+        if (!on) requireAuthorized()
+        update { it.copy(hideInRecents = on) }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // PIN and the security log
+    // -----------------------------------------------------------------------------------------
+
+    val hasPin: Boolean get() = state.value.pin != null
+
+    /** True when no PIN is set, or the PIN was entered in the last couple of minutes. */
+    fun isAuthorized(): Boolean = state.value.pin == null || now() < authorizedUntil
+
+    private fun requireAuthorized() = check(isAuthorized()) { "Enter your PIN first" }
+
+    /** Checks the PIN. Five wrong tries lock it for 30 seconds, doubling with each further miss. */
+    suspend fun unlock(pin: String): PinResult {
+        val lock = state.value.pin ?: return PinResult.Ok
+        val t = now()
+        if (lock.lockedUntil > t) return PinResult.Locked(lock.lockedUntil)
+        if (constantTimeEquals(pinHash(pin, lock.saltHex.hexToBytes(), lock.iterations), lock.hashHex.hexToBytes())) {
+            authorizedUntil = t + AUTH_WINDOW_SECONDS
+            if (lock.failedAttempts != 0 || lock.lockedUntil != 0L) update { it.copy(pin = lock.copy(failedAttempts = 0, lockedUntil = 0)) }
+            return PinResult.Ok
+        }
+        val failed = lock.failedAttempts + 1
+        val lockedUntil = if (failed >= PIN_FREE_ATTEMPTS) t + (30L shl (failed - PIN_FREE_ATTEMPTS).coerceAtMost(7)) else 0L
+        update { s ->
+            s.copy(
+                pin = lock.copy(failedAttempts = failed, lockedUntil = lockedUntil),
+                securityLog = if (lockedUntil > 0) s.logged(SecurityEventType.PIN_LOCKED) else s.securityLog,
+            )
+        }
+        return if (lockedUntil > 0) PinResult.Locked(lockedUntil) else PinResult.Wrong(PIN_FREE_ATTEMPTS - failed)
+    }
+
+    /** Sets or changes the PIN (4 to 8 digits). Changing an existing PIN needs it entered first. */
+    suspend fun setPin(pin: String) {
+        require(pin.length in 4..8 && pin.all { it in '0'..'9' }) { "Use 4 to 8 digits" }
+        val had = state.value.pin != null
+        if (had) requireAuthorized()
+        val salt = PlatformCrypto.randomBytes(16)
+        val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
+        update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
+        authorizedUntil = now() + AUTH_WINDOW_SECONDS
+    }
+
+    suspend fun removePin() {
+        requireAuthorized()
+        update { it.copy(pin = null, securityLog = it.logged(SecurityEventType.PIN_REMOVED)) }
+    }
+
+    private fun pinHash(pin: String, salt: ByteArray, iterations: Int): ByteArray =
+        PlatformCrypto.pbkdf2Sha256("quietmap-pin|$pin", salt, iterations, 32)
+
+    private fun AppState.logged(type: SecurityEventType): List<SecurityEvent> =
+        (securityLog + SecurityEvent(type, now(), deviceName)).takeLast(50)
+
+    // -----------------------------------------------------------------------------------------
+    // Sharing reminders
+    // -----------------------------------------------------------------------------------------
+
+    /** True once a month while sharing: time to show who receives this phone's location. */
+    fun consentDue(): Boolean {
+        val s = state.value
+        return s.sharing && s.circles.isNotEmpty() && s.consentAt > 0 && now() - s.consentAt >= CONSENT_EVERY_SECONDS
+    }
+
+    suspend fun confirmConsent() = update { it.copy(consentAt = now()) }
 
     suspend fun setLabel(pubkey: String, label: String?) = update {
         val c = it.contacts[pubkey] ?: Contact()
@@ -305,6 +406,7 @@ class Engine(
             ctlKeyHex = CircleCrypto.newKey(),
             rotatedAt = t,
             heartbeatAt = t,
+            history = listOf(MembershipEvent(MembershipChange.CREATED, myPubkey, state.value.myName, at = t)),
         )
         update { it.copy(circles = it.circles + circle, lastCircleId = circle.id) }
         refreshSubscriptions()
@@ -319,6 +421,7 @@ class Engine(
     /** Creates a single-use invite link valid for 24 hours. Only the admin and managers can invite. */
     suspend fun createInvite(circleId: String): String {
         checkReady()
+        requireAuthorized()
         val s = state.value
         val circle = s.circles.first { it.id == circleId }
         require(canInvite(circle)) { "Only the circle admin and managers can invite" }
@@ -336,7 +439,7 @@ class Engine(
         require(invite.k != myPubkey) { "This is your own invite" }
         // Make sure we can reach the inviter's relays too (TLS ones only).
         val merged = (state.value.relays + invite.r.mapNotNull { RelayUrls.clean(it) }).distinct().take(8)
-        if (merged != state.value.relays) setRelays(merged)
+        if (merged != state.value.relays) applyRelays(merged)
         update {
             it.copy(pendingJoins = it.pendingJoins.filterNot { p -> p.circleId == invite.c } +
                 PendingJoin(invite.c, invite.cn, invite.k, invite.n, now()))
@@ -347,10 +450,14 @@ class Engine(
     }
 
     suspend fun approve(requestId: String) {
+        requireAuthorized()
         val req = state.value.joinRequests.firstOrNull { it.id == requestId } ?: return
         val circle = state.value.circles.firstOrNull { it.id == req.circleId } ?: return
         if (!canInvite(circle)) return
-        val updated = circle.copy(members = circle.members.filterNot { it.pubkey == req.pubkey } + Member(req.pubkey, req.name))
+        val updated = circle.copy(
+            members = circle.members.filterNot { it.pubkey == req.pubkey } + Member(req.pubkey, req.name),
+            history = (circle.history + MembershipEvent(MembershipChange.JOINED, req.pubkey, req.name, by = myPubkey, at = now())).takeLast(HISTORY_SIZE),
+        )
         update { s ->
             s.copy(
                 circles = s.circles.map { if (it.id == circle.id) updated else it },
@@ -368,6 +475,11 @@ class Engine(
 
     /** Removes a member and gives the circle a fresh key so they can't read anything new. */
     suspend fun removeMember(circleId: String, pubkey: String) {
+        requireAuthorized()
+        removeMemberInternal(circleId, pubkey)
+    }
+
+    private suspend fun removeMemberInternal(circleId: String, pubkey: String) {
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can remove people" }
         require(pubkey != myPubkey)
@@ -376,6 +488,7 @@ class Engine(
 
     /** Lets a member invite and approve people (admin only). */
     suspend fun setManager(circleId: String, pubkey: String, manager: Boolean) {
+        requireAuthorized()
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can choose managers" }
         require(circle.members.any { it.pubkey == pubkey } && pubkey != myPubkey)
@@ -386,16 +499,23 @@ class Engine(
 
     /** Hands the admin role to another member, so the old admin can leave (admin only). */
     suspend fun transferAdmin(circleId: String, pubkey: String) {
+        requireAuthorized()
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can do this" }
         require(circle.members.any { it.pubkey == pubkey } && pubkey != myPubkey)
-        val updated = circle.copy(adminPubkey = pubkey, managers = circle.managers - pubkey)
+        val name = circle.members.first { it.pubkey == pubkey }.name
+        val updated = circle.copy(
+            adminPubkey = pubkey,
+            managers = circle.managers - pubkey,
+            history = (circle.history + MembershipEvent(MembershipChange.NEW_ADMIN, pubkey, name, by = myPubkey, at = now())).takeLast(HISTORY_SIZE),
+        )
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) updated else it }) }
         sendRoster(updated, updated.members.map { it.pubkey })
     }
 
     /** Deletes the circle for everyone (admin only). */
     suspend fun deleteCircle(circleId: String) {
+        requireAuthorized()
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can delete it" }
         circle.members.filter { it.pubkey != myPubkey }.forEach { m ->
@@ -487,6 +607,8 @@ class Engine(
             heartbeatPublishedAt = 0,
             stale = false,
             pendingAcks = emptyList(),
+            history = (c.history + c.members.filter { m -> members.none { it.pubkey == m.pubkey } && m.pubkey != newAdmin }
+                .map { MembershipEvent(MembershipChange.LEFT, it.pubkey, it.name, by = signer.publicHex, at = t) }).takeLast(HISTORY_SIZE),
         )
         val keep = members.map { it.pubkey }.toSet()
         update { s ->
@@ -565,7 +687,7 @@ class Engine(
         state.value.circles.filter { it.version >= 2 && it.pendingAcks.isNotEmpty() && canInvite(it) }.forEach { c ->
             val memberKeys = c.members.map { it.pubkey }.toSet()
             val due = c.pendingAcks.filter { p ->
-                p.pubkey in memberKeys && p.epoch == c.epoch && t - p.firstSentAt < RETRY_WINDOW_SECONDS && t - p.lastSentAt >= retryDelay(p.attempts)
+                p.pubkey in memberKeys && p.pubkey != myPubkey && p.epoch == c.epoch && t - p.firstSentAt < RETRY_WINDOW_SECONDS && t - p.lastSentAt >= retryDelay(p.attempts)
             }
             if (due.isNotEmpty()) sendRoster(c, due.map { it.pubkey })
             // Forget entries for people no longer in the circle, or for an older key.
@@ -660,19 +782,84 @@ class Engine(
     }
 
     // -----------------------------------------------------------------------------------------
+    // Identity reset
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * Replaces this phone's identity with a new one, for when it may have been copied (for example a
+     * backup in the wrong hands). Circles this phone runs move to the new identity with fresh keys,
+     * so the old identity can't read anything new. Circles run by someone else are left: their admin
+     * removes the old identity and rotates the key, and rejoining needs a new invite.
+     */
+    suspend fun resetIdentity() {
+        checkReady()
+        requireAuthorized()
+        val old = identity
+        val fresh = KeyPair.generate()
+        state.value.circles.forEach { c ->
+            if (c.adminPubkey == old.publicHex) {
+                val members = c.members.map { if (it.pubkey == old.publicHex) Member(fresh.publicHex, it.name) else it }
+                rotate(c, members, newAdmin = fresh.publicHex, signer = old)
+            } else {
+                sendDirect(c, c.adminPubkey, LeftBody(old.publicHex, now(), c.id), signer = old)
+                forgetCircle(c.id)
+            }
+        }
+        val t = now()
+        mutex.withLock {
+            identity = fresh
+            val s = _state.value
+            val next = s.copy(
+                identitySecretHex = fresh.secret.toHex(),
+                invites = emptyList(),
+                joinRequests = emptyList(),
+                pendingJoins = emptyList(),
+                profileChangedAt = t,
+                locations = s.locations.mapValues { (_, byMember) -> byMember - old.publicHex },
+                circles = s.circles.map { c -> c.copy(pendingAcks = c.pendingAcks.filterNot { it.pubkey == fresh.publicHex }) },
+                securityLog = s.logged(SecurityEventType.IDENTITY_RESET),
+            )
+            _state.value = next
+            store.save(json.encodeToString(AppState.serializer(), next))
+        }
+        refreshSubscriptions()
+        state.value.circles.filter { it.adminPubkey == myPubkey }.forEach { publishHeartbeat(it) }
+        publishProfileIfDue()
+    }
+
+    // -----------------------------------------------------------------------------------------
     // Backups
     // -----------------------------------------------------------------------------------------
 
-    /** An encrypted backup of identity, profile, settings and circles. Slow on purpose (PBKDF2). */
-    fun exportBackup(passphrase: String): String = Backups.encrypt(Backups.fromState(state.value), passphrase)
+    /**
+     * An encrypted backup of identity, profile, settings and circles. Slow on purpose (PBKDF2).
+     * Because a backup can recreate this identity on another phone, it needs a PIN to be set and
+     * entered, and each one is recorded in the security log.
+     */
+    suspend fun exportBackup(passphrase: String): String {
+        checkReady()
+        check(hasPin) { "Set a PIN before making a backup" }
+        requireAuthorized()
+        val text = Backups.encrypt(Backups.fromState(state.value), passphrase)
+        update { it.copy(securityLog = it.logged(SecurityEventType.BACKUP_EXPORTED)) }
+        return text
+    }
 
     /**
      * Replaces everything on this device with a backup, including the identity key. Sharing starts
      * paused. Slow on purpose (PBKDF2), so call it off the main thread.
      */
     suspend fun importBackup(text: String, passphrase: String) {
+        if (_recovery.value == null) requireAuthorized()
         // Decrypting first means a wrong passphrase or damaged file changes nothing at all.
-        val restored = Backups.toState(Backups.decrypt(text, passphrase)).copy(profileChangedAt = now())
+        val decrypted = Backups.toState(Backups.decrypt(text, passphrase))
+        val restored = decrypted.copy(
+            profileChangedAt = now(),
+            consentAt = now(),
+            // Keep this phone's PIN and log; record the restore.
+            pin = state.value.pin.takeIf { _recovery.value == null },
+            securityLog = (state.value.securityLog.takeIf { _recovery.value == null }.orEmpty() + SecurityEvent(SecurityEventType.BACKUP_RESTORED, now(), deviceName)).takeLast(50),
+        )
         val keys = KeyPair(restored.identitySecretHex.hexToBytes())
         val recovering = _recovery.value != null
         // Keep the unreadable file rather than writing over it.
@@ -907,6 +1094,18 @@ class Engine(
             return
         }
         val rotated = existing != null && rc.epoch > existing.epoch
+        val t = now()
+        val oldMembers = existing?.members.orEmpty()
+        val joined = if (existing == null) emptyList() else members.filter { m -> oldMembers.none { it.pubkey == m.pubkey } }
+        val gone = if (rotated) oldMembers.filter { m -> members.none { it.pubkey == m.pubkey } } else emptyList()
+        val events = buildList {
+            if (existing == null) add(MembershipEvent(MembershipChange.JOINED, myPubkey, s.myName, by = from, at = t))
+            joined.forEach { add(MembershipEvent(MembershipChange.JOINED, it.pubkey, it.name, by = from, at = t)) }
+            gone.forEach { add(MembershipEvent(MembershipChange.LEFT, it.pubkey, it.name, by = from, at = t)) }
+            if (existing != null && fromAdmin && rc.admin != existing.adminPubkey) {
+                add(MembershipEvent(MembershipChange.NEW_ADMIN, rc.admin, members.firstOrNull { it.pubkey == rc.admin }?.name ?: "", by = from, at = t))
+            }
+        }
         val base = existing ?: Circle(id = rc.id, name = rc.name, keyHex = rc.key, epoch = rc.epoch, adminPubkey = rc.admin, members = members)
         val circle = base.copy(
             name = rc.name,
@@ -923,6 +1122,7 @@ class Engine(
             previousEpoch = if (rotated) existing!!.epoch else base.previousEpoch,
             previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
             stale = if (newEpoch) false else base.stale,
+            history = (base.history + events).takeLast(HISTORY_SIZE),
             heartbeatAt = if (fromAdmin && rc.admin == from) maxOf(if (newEpoch) 0 else base.heartbeatAt, minOf(ts, now())) else base.heartbeatAt,
         )
         update { st ->
@@ -935,6 +1135,13 @@ class Engine(
             )
         }
         refreshSubscriptions()
+        val approver = members.firstOrNull { it.pubkey == from }?.name ?: oldMembers.firstOrNull { it.pubkey == from }?.name
+        joined.filter { it.pubkey != myPubkey }.forEach {
+            _notices.tryEmit(Notice("${it.name.ifBlank { "Someone" }} joined ${rc.name}", approver?.let { a -> "Approved by $a" } ?: "They can now see where you are in ${rc.name}."))
+        }
+        gone.filter { it.pubkey != myPubkey }.forEach {
+            _notices.tryEmit(Notice("${it.name.ifBlank { "Someone" }} is no longer in ${rc.name}", "They can't see new locations in ${rc.name}."))
+        }
         // Tell the sender we have it, so they stop resending. After a handover the new admin tracks it.
         if (circle.version >= 2) {
             val ackTo = if (fromAdmin) rc.admin else from
@@ -975,7 +1182,7 @@ class Engine(
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
-        removeMember(circle.id, body.from)
+        removeMemberInternal(circle.id, body.from)
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1100,6 +1307,17 @@ class Engine(
         /** No update for this long means the person is shown as offline. */
         const val OFFLINE_AFTER_SECONDS = 45 * 60L
 
+        /** One correct PIN entry covers sensitive actions for this long. */
+        const val AUTH_WINDOW_SECONDS = 120L
+
+        const val PIN_FREE_ATTEMPTS = 5
+        const val PIN_ITERATIONS = 150_000
+
+        /** How often to remind someone that they're sharing, and with whom. */
+        const val CONSENT_EVERY_SECONDS = 30 * 24 * 3600L
+
+        const val HISTORY_SIZE = 100
+
         private const val SUB_DIRECT = "qm-dm"
         private const val SUB_CIRCLES = "qm-circles"
         private const val SUB_CONTROL = "qm-ctl"
@@ -1119,3 +1337,15 @@ enum class ShareStatus {
     /** No heartbeat from the admin for three days, so the key can't be confirmed. */
     ADMIN_AWAY,
 }
+
+/** The result of entering the PIN. */
+sealed interface PinResult {
+    data object Ok : PinResult
+    data class Wrong(val attemptsLeft: Int) : PinResult
+
+    /** Too many wrong tries: try again after [until] (unix seconds). */
+    data class Locked(val until: Long) : PinResult
+}
+
+/** Something the user should hear about even when the app is closed. */
+data class Notice(val title: String, val text: String)

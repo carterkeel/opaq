@@ -7,6 +7,7 @@ import app.quietmap.core.model.AppState
 import app.quietmap.core.model.Circle
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
+import app.quietmap.core.model.MembershipChange
 import app.quietmap.core.nostr.Event
 import app.quietmap.core.nostr.Filter
 import app.quietmap.core.nostr.Kinds
@@ -18,6 +19,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
@@ -259,6 +261,7 @@ class CircleSecurityTest {
         net.flush()
         assertNotNull(a.circle(id)!!.previousKeyHex)
         assertTrue(a.circle(id)!!.oldControls.isNotEmpty())
+        a.engine.setPin("2468")
         val restored = Backups.decrypt(a.engine.exportBackup("correct horse battery"), "correct horse battery").circles.single()
         assertNull(restored.previousKeyHex)
         assertTrue(restored.oldControls.isEmpty())
@@ -335,6 +338,85 @@ class CircleSecurityTest {
         b.engine.publishLocation(loc(7.0))
         net.flush()
         assertEquals(7.0, a.locationOf(v1.id, b.me)!!.lat)
+    }
+
+    // QM-01 ------------------------------------------------------------------------------------
+
+    @Test
+    fun aClonedIdentityLosesAccessWhenTheOwnerResetsIt() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        // Someone with Ben's unlocked phone (and his PIN) makes a backup and restores it elsewhere.
+        b.engine.setPin("1357")
+        val backup = b.engine.exportBackup("stolen passphrase")
+        val clone = Phone("Clone")
+        clone.engine.importBackup(backup, "stolen passphrase")
+        assertEquals(b.me, clone.me)
+        sync(a, b, clone)
+        a.engine.publishLocation(loc(30.0))
+        net.flush()
+        assertEquals(30.0, clone.locationOf(id, a.me)!!.lat, "the clone can read the circle, which is the threat")
+
+        // Ben notices and resets his identity. He leaves the circle, the admin rotates the key.
+        clock += 30
+        assertTrue(b.engine.unlock("1357") is PinResult.Ok)
+        b.engine.resetIdentity()
+        sync(a, b, clone)
+        assertNotEquals(clone.me, b.me)
+        assertFalse(a.circle(id)!!.members.any { it.pubkey == clone.me }, "the old identity is out")
+        val stolen = clone.circle(id)
+        clock += 60
+        a.engine.publishLocation(loc(31.0))
+        net.flush()
+        assertTrue(clone.circle(id) == null || clone.locationOf(id, a.me)?.lat != 31.0, "the clone sees nothing new")
+        if (stolen != null) assertNothingOpensWith(stolen, net.published.takeLast(5))
+    }
+
+    @Test
+    fun anAdminResetMovesTheirCirclesToTheNewIdentity() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        a.engine.setPin("1357")
+        val clone = Phone("Clone")
+        clone.engine.importBackup(a.engine.exportBackup("stolen passphrase"), "stolen passphrase")
+        val old = a.me
+        a.engine.resetIdentity()
+        sync(a, b)
+        assertNotEquals(old, a.me)
+        assertEquals(a.me, b.circle(id)!!.adminPubkey, "members follow the admin to the new identity")
+        assertFalse(b.circle(id)!!.members.any { it.pubkey == old })
+        assertEquals(a.circle(id)!!.epoch, b.circle(id)!!.epoch)
+        b.engine.publishLocation(loc(12.0))
+        net.flush()
+        assertEquals(12.0, a.locationOf(id, b.me)!!.lat)
+        // The clone of the old identity was never sent the new key.
+        sync(clone)
+        assertTrue(clone.circle(id)!!.epoch < a.circle(id)!!.epoch)
+    }
+
+    // QM-14 ------------------------------------------------------------------------------------
+
+    @Test
+    fun everyoneHearsWhenSomeoneJoinsOrLeaves() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val c = Phone("Cal")
+        val heard = mutableListOf<Notice>()
+        val id = circleWith(a, b)
+        val job = scope.launch { b.engine.notices.collect { heard += it } }
+        kotlinx.coroutines.yield()
+        val link = a.engine.createInvite(id)
+        c.engine.acceptInvite(InviteLinks.decode(link)!!)
+        sync(a, b, c)
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b, c)
+        a.engine.removeMember(id, c.me)
+        sync(a, b, c)
+        kotlinx.coroutines.delay(100)
+        job.cancel()
+        assertTrue(heard.any { it.title == "Cal joined Family" && it.text == "Approved by Ana" }, heard.toString())
+        assertTrue(heard.any { it.title == "Cal is no longer in Family" })
+        val history = b.circle(id)!!.history.map { it.change to it.name }
+        assertTrue(MembershipChange.JOINED to "Cal" in history && MembershipChange.LEFT to "Cal" in history)
+        assertEquals(a.me, b.circle(id)!!.history.last { it.name == "Cal" && it.change == MembershipChange.JOINED }.by)
     }
 
     /** Fails if any event opens with [c]'s keys for any day from its key day up to 400 days on. */

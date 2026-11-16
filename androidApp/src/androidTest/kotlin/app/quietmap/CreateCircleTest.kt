@@ -38,6 +38,7 @@ class CreateCircleTest {
 
     private companion object {
         const val TAG = "QuietmapTest"
+        const val PIN = "2468"
     }
 
     private val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
@@ -59,6 +60,21 @@ class CreateCircleTest {
             if (device.wait(Until.hasObject(By.text(expected)), 10_000)) return
         }
         waitFor(expected, 1_000)
+    }
+
+    /**
+     * Types into the visible text fields in order (a PIN, or a PIN and its confirmation). In a bottom
+     * sheet the keyboard stays open, because Back would close the sheet.
+     */
+    private fun typePin(vararg values: String, closeKeyboard: Boolean = true) {
+        device.wait(Until.hasObject(By.clazz("android.widget.EditText")), 10_000)
+        val fields = device.findObjects(By.clazz("android.widget.EditText"))
+        check(fields.size >= values.size) { "expected ${values.size} PIN fields, found ${fields.size}" }
+        values.forEachIndexed { i, v ->
+            fields[i].click()
+            fields[i].text = v
+        }
+        if (closeKeyboard) device.pressBack()
     }
 
     private fun dismissSystemDialogs() {
@@ -104,11 +120,16 @@ class CreateCircleTest {
         waitFor("Add a profile photo")
         waitFor("Skip").click()
 
-        // Step 3: create a circle.
+        // Step 3: optional PIN (set one, so the PIN prompt gets exercised later).
+        waitFor("Add a PIN?")
+        typePin(PIN, PIN)
+        waitFor("Set PIN").click()
+
+        // Step 4: create a circle.
         waitFor("Create a circle").click()
         waitFor("Create").click()
 
-        // Step 4: location (already granted by the test rule).
+        // Step 5: location (already granted by the test rule).
         waitFor("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
@@ -120,9 +141,13 @@ class CreateCircleTest {
         tapUntil("Sharing", expected = "Paused")
         tapUntil("Paused", expected = "Sharing")
 
-        // Invite screen with a QR code.
+        // Invite screen with a QR code. Creating an invite asks for the PIN once the last entry is old.
         device.findObject(By.text("Invite")).click()
         waitFor("Create invite").click()
+        if (device.wait(Until.hasObject(By.text("Enter your PIN")), 5_000)) {
+            typePin(PIN, closeKeyboard = false)
+            waitFor("Continue").click()
+        }
         waitFor("Share link")
         device.pressBack()
 

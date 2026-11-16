@@ -42,6 +42,8 @@ sealed interface Route {
     data object JoinOptions : Route
     data object Backup : Route
     data object Restore : Route
+    data object SecurityLog : Route
+    data class CircleInfo(val circleId: String) : Route
 }
 
 /**
@@ -54,6 +56,8 @@ sealed interface Route {
  * @param scope long-lived scope for engine actions, so they finish even if the screen goes away.
  * @param sharingSettings platform rows shown under Settings → Sharing.
  * @param incomingLink an invite link the app was opened with; call [onLinkHandled] once shown.
+ * @param sharingBlocked why the platform can't share right now even though sharing is on (for
+ *   example its notification is turned off), shown with a button that calls [onFixSharing].
  */
 @Composable
 fun QuietmapScreens(
@@ -65,8 +69,11 @@ fun QuietmapScreens(
     sharingSettings: List<SettingItem>,
     incomingLink: String?,
     onLinkHandled: () -> Unit,
+    sharingBlocked: String? = null,
+    onFixSharing: () -> Unit = {},
 ) {
     val actions = remember(engine, scope, platform) { Actions(engine, scope, platform) }
+    val pinGate = remember(actions) { PinGate(actions) }
     val state by engine.state.collectAsStateWithLifecycle()
     val recovery by engine.recovery.collectAsStateWithLifecycle()
     val relayStatus by engine.relayStatus.collectAsStateWithLifecycle()
@@ -100,7 +107,11 @@ fun QuietmapScreens(
 
     PlatformBackHandler(enabled = stack.size > 1) { pop() }
 
-    CompositionLocalProvider(LocalPlatform provides platform) {
+    // Once a month while sharing: who sees you, keep or stop.
+    var consentShown by remember { mutableStateOf(false) }
+    val consentDue = recovery == null && !showSetup && state.sharing && actions.consentDue()
+
+    CompositionLocalProvider(LocalPlatform provides platform, LocalPinGate provides pinGate) {
         QuietmapTheme {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {
@@ -132,6 +143,8 @@ fun QuietmapScreens(
                             onJoin = { push(Route.JoinOptions) },
                             onSettings = { push(Route.Settings) },
                             onRequestLocation = onRequestLocation,
+                            sharingBlocked = sharingBlocked,
+                            onFixSharing = onFixSharing,
                         )
                     }
 
@@ -154,15 +167,21 @@ fun QuietmapScreens(
                                         onEditProfile = { push(Route.EditProfile) },
                                         onBackup = { push(Route.Backup) },
                                         onRestore = { push(Route.Restore) },
+                                        onSecurityLog = { push(Route.SecurityLog) },
+                                        onCircle = { push(Route.CircleInfo(it)) },
                                     )
                                     Route.EditProfile -> EditProfileScreen(state, me, actions, ::pop)
-                                    Route.Backup -> BackupScreen(actions, ::pop)
+                                    Route.Backup -> BackupScreen(state, actions, ::pop)
+                                    Route.SecurityLog -> SecurityLogScreen(state, ::pop)
+                                    is Route.CircleInfo -> CircleInfoScreen(state, me, route.circleId, ::pop)
                                     Route.Restore -> RestoreScreen(actions, ::pop) { selectedCircle = null; home() }
                                     Route.Home -> Unit
                                 }
                             }
                         }
                     }
+                    PinPrompt(pinGate, actions)
+                    if (consentDue && !consentShown) ConsentSheet(state, me, actions) { consentShown = true }
                 }
             }
         }

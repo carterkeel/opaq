@@ -41,6 +41,14 @@ data class AppState(
     /** circleId -> member pubkey -> latest location */
     val locations: Map<String, Map<String, MemberLocation>> = emptyMap(),
     val seenEventIds: List<String> = emptyList(),
+    /** Optional PIN that guards sensitive actions (never opening the app or seeing locations). */
+    val pin: PinLock? = null,
+    /** Security-relevant things that happened on this phone (backups made, PIN changes...). */
+    val securityLog: List<SecurityEvent> = emptyList(),
+    /** Hide the app's screen in recent apps and screenshots (Android). */
+    val hideInRecents: Boolean = false,
+    /** When the user last confirmed they want to keep sharing (monthly reminder). 0 = not yet set. */
+    val consentAt: Long = 0,
     /** The sequence number of our last location update (v2 replay protection). */
     val lastSeq: Long = 0,
     /** Newest sequence number accepted from each member, keyed "circleId|pubkey". */
@@ -94,7 +102,50 @@ data class Circle(
     val rosterRequestedAt: Long = 0,
     /** v2 admin or manager: members who haven't confirmed the newest roster yet. */
     val pendingAcks: List<PendingAck> = emptyList(),
+    /** Who joined and left, and when; newest last. Kept on this phone only. */
+    val history: List<MembershipEvent> = emptyList(),
+    /** How precisely this phone shares its location with this circle. */
+    val precision: Precision = Precision.EXACT,
+    /** Send the last few points (the path) with each update. */
+    val shareTrail: Boolean = true,
+    /**
+     * A circle we just joined starts unconfirmed: nothing is shared with it until the user has
+     * seen who is in it and tapped Start sharing.
+     */
+    val confirmed: Boolean = true,
 )
+
+@Serializable
+enum class Precision { EXACT, NEIGHBORHOOD, CITY }
+
+@Serializable
+enum class MembershipChange { CREATED, JOINED, LEFT, NEW_ADMIN }
+
+@Serializable
+data class MembershipEvent(
+    val change: MembershipChange,
+    val pubkey: String,
+    val name: String,
+    /** Who approved the join, or removed them, when known. */
+    val by: String? = null,
+    val at: Long,
+)
+
+/** A PIN, stored only as a slow salted hash, with attempt limiting. */
+@Serializable
+data class PinLock(
+    val hashHex: String,
+    val saltHex: String,
+    val iterations: Int,
+    val failedAttempts: Int = 0,
+    val lockedUntil: Long = 0,
+)
+
+@Serializable
+enum class SecurityEventType { BACKUP_EXPORTED, BACKUP_RESTORED, PIN_SET, PIN_CHANGED, PIN_REMOVED, PIN_LOCKED, IDENTITY_RESET }
+
+@Serializable
+data class SecurityEvent(val type: SecurityEventType, val at: Long, val device: String? = null)
 
 /** A replaced epoch's control key, kept until [until] to answer and close out stragglers. */
 @Serializable

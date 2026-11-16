@@ -55,11 +55,11 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.quietmap.core.model.AppState
 
-private enum class SetupStep { Name, Photo, Circle, Location }
+private enum class SetupStep { Name, Photo, Pin, Circle, Location }
 
 /**
- * First run, one thing per screen: your name, a profile photo (optional), a circle to create or
- * join, and location access. Then the app opens on the map.
+ * First run, one thing per screen: your name, a profile photo (optional), a PIN (optional), a
+ * circle to create or join, and location access. Then the app opens on the map.
  */
 @Composable
 fun SetupScreen(
@@ -82,7 +82,7 @@ fun SetupScreen(
         // Back arrow and progress dots.
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(48.dp)) {
-                androidx.compose.animation.AnimatedVisibility(step.ordinal in 1..2, enter = fadeIn(), exit = fadeOut()) {
+                androidx.compose.animation.AnimatedVisibility(step.ordinal in 1..3, enter = fadeIn(), exit = fadeOut()) {
                     IconButton(onClick = { go(SetupStep.entries[step.ordinal - 1]) }) { Icon(AppIcons.ArrowBack, contentDescription = "Back") }
                 }
             }
@@ -115,7 +115,8 @@ fun SetupScreen(
             ) {
                 when (current) {
                     SetupStep.Name -> NameStep(state, actions, onNext = { go(SetupStep.Photo) }, onRestore = onRestore)
-                    SetupStep.Photo -> PhotoStep(state, me, actions, platform, onNext = { go(SetupStep.Circle) })
+                    SetupStep.Photo -> PhotoStep(state, me, actions, platform, onNext = { go(SetupStep.Pin) })
+                    SetupStep.Pin -> PinStep(state, actions, onNext = { go(SetupStep.Circle) })
                     SetupStep.Circle -> CircleStep(
                         actions = actions,
                         onCreated = { id -> onCircleCreated(id); go(SetupStep.Location) },
@@ -166,6 +167,24 @@ private fun ColumnScope.PhotoStep(state: AppState, me: String, actions: Actions,
     AvatarColorGrid(state.myName, me, state.myColor ?: AvatarColors.defaultIndex(me), photoSet = state.myPhoto != null, horizontalPadding = 0.dp) { actions.setAvatar(it, null) }
     Spacer(Modifier.height(24.dp))
     PrimaryButton(if (state.myPhoto == null && state.myColor == null) "Skip" else "Continue", onNext)
+}
+
+@Composable
+private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () -> Unit) {
+    var chosen by remember { mutableStateOf<String?>(null) }
+    BigIcon(AppIcons.Lock)
+    StepTitle(
+        "Add a PIN?",
+        "Optional. Quietmap asks for it before backups, invites, approving or removing people, and security changes. Never to open the app or see where people are.",
+    )
+    if (state.pin != null) {
+        Text("PIN set", style = MaterialTheme.typography.titleMedium)
+        PrimaryButton("Continue", onNext)
+        return
+    }
+    NewPinFields { chosen = it }
+    PrimaryButton("Set PIN", { chosen?.let { actions.setPin(it, onNext) } }, enabled = chosen != null)
+    TextButton(onClick = onNext) { Text("Not now") }
 }
 
 @Composable

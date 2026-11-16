@@ -37,6 +37,7 @@ class EngineTest {
         a.setMyName("Mom")
         a.setShowPhotos(false)
         val circle = a.createCircle("Family")
+        a.setPin("2468")
         val backup = a.exportBackup("correct horse battery")
         assertTrue(backup.startsWith(Backups.HEADER))
 
@@ -54,6 +55,7 @@ class EngineTest {
     @Test
     fun backupRejectsWrongPassphraseAndShortOnes() = runTest {
         val a = engine()
+        a.setPin("2468")
         val backup = a.exportBackup("correct horse battery")
         val b = engine()
         val before = b.myPubkey

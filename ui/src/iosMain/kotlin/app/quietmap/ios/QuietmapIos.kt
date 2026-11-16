@@ -30,6 +30,7 @@ import platform.Foundation.NSString
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplication
+import platform.UIKit.UIDevice
 import platform.UIKit.UIApplicationProtectedDataDidBecomeAvailable
 import platform.UIKit.UIViewController
 import platform.darwin.NSObjectProtocol
@@ -51,6 +52,7 @@ object QuietmapIos {
             now = ::epochSeconds,
             // A Kotlin String passed through C varargs isn't bridged to NSString and crashes; cast it.
             log = { NSLog("Quietmap: %@", it as NSString) },
+            deviceName = UIDevice.currentDevice.model,
         ).also { it.start() }
     }
 

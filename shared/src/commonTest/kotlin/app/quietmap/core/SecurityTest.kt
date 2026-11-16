@@ -1,5 +1,6 @@
 package app.quietmap.core
 
+import app.quietmap.core.model.SecurityEventType
 import app.quietmap.core.nostr.RelayUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +45,7 @@ class SecurityTest {
 
     private val network = FakeRelayNetwork { clock }
 
-    private fun engine(store: StateStore) = Engine(store, scope, { clock }, transport = { network.client(it) })
+    private fun engine(store: StateStore) = Engine(store, scope, { clock }, transport = { network.client(it) }, deviceName = "Test phone")
 
     // QM-11 ------------------------------------------------------------------------------------
 
@@ -111,7 +112,7 @@ class SecurityTest {
 
     @Test
     fun restoringABackupWhileRecoveringSetsTheOldFileAside() = runTest {
-        val backup = engine(FlakyStore()).let { it.createCircle("Family"); it.exportBackup("correct horse battery") to it.myPubkey }
+        val backup = engine(FlakyStore()).let { it.createCircle("Family"); it.setPin("2468"); it.exportBackup("correct horse battery") to it.myPubkey }
         val store = FlakyStore()
         store.data = "{damaged"
         val e = engine(store)
@@ -162,5 +163,91 @@ class SecurityTest {
         val e = engine(FlakyStore())
         e.setRelays(listOf("wss://a.example", "ws://b.example", "wss://a.example/", " wss://c.example "))
         assertEquals(listOf("wss://a.example", "wss://c.example"), e.state.value.relays)
+    }
+
+    // QM-01 / QM-17: the PIN --------------------------------------------------------------------
+
+    @Test
+    fun backupsNeedAPinSetAndEntered() = runTest {
+        val e = engine(FlakyStore())
+        e.createCircle("Family")
+        assertFailsWith<IllegalStateException> { e.exportBackup("correct horse battery") }
+        e.setPin("2468")
+        e.exportBackup("correct horse battery")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException>("an export without the PIN is refused") { e.exportBackup("correct horse battery") }
+        assertEquals(PinResult.Wrong(4), e.unlock("1111"))
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        e.exportBackup("correct horse battery")
+        assertEquals(2, e.state.value.securityLog.count { it.type == SecurityEventType.BACKUP_EXPORTED }, "every export is recorded")
+        assertEquals("Test phone", e.state.value.securityLog.last().device)
+    }
+
+    @Test
+    fun sensitiveActionsNeedThePinButViewingDoesNot() = runTest {
+        val e = engine(FlakyStore())
+        val c = e.createCircle("Family")
+        e.setPin("2468")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException> { e.createInvite(c.id) }
+        assertFailsWith<IllegalStateException> { e.setRelays(listOf("wss://evil.example")) }
+        assertFailsWith<IllegalStateException> { e.setManager(c.id, "f".repeat(64), true) }
+        assertFailsWith<IllegalStateException> { e.deleteCircle(c.id) }
+        assertFailsWith<IllegalStateException> { e.resetIdentity() }
+        assertFailsWith<IllegalStateException> { e.removePin() }
+        assertFailsWith<IllegalStateException> { e.setPin("1111") }
+        assertFailsWith<IllegalStateException> { e.setHideInRecents(false) }
+        // Opening the app, seeing locations and sharing never ask for it.
+        assertEquals(1, e.state.value.circles.size)
+        e.setSharing(true)
+        e.publishLocation(app.quietmap.core.model.MemberLocation(1.0, 2.0, 5f, time = clock))
+        assertEquals(1.0, e.state.value.locations[c.id]!![e.myPubkey]!!.lat)
+        e.setHideInRecents(true)
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        e.createInvite(c.id)
+    }
+
+    @Test
+    fun wrongPinsLockForLongerEachTime() = runTest {
+        val e = engine(FlakyStore())
+        e.setPin("2468")
+        repeat(4) { assertTrue(e.unlock("0000") is PinResult.Wrong) }
+        val locked = e.unlock("0000")
+        assertTrue(locked is PinResult.Locked && locked.until == clock + 30)
+        assertTrue(e.unlock("2468") is PinResult.Locked, "even the right PIN waits out the lock")
+        clock += 31
+        assertTrue(e.unlock("0000") is PinResult.Locked)
+        assertEquals(clock + 60, (e.unlock("2468") as PinResult.Locked).until)
+        clock += 61
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        assertEquals(0, e.state.value.pin!!.failedAttempts)
+        assertTrue(e.state.value.securityLog.any { it.type == SecurityEventType.PIN_LOCKED })
+    }
+
+    @Test
+    fun pinIsStoredOnlyAsASaltedHash() = runTest {
+        val store = FlakyStore()
+        val e = engine(store)
+        e.setPin("246813")
+        assertFalse(store.data!!.contains("246813"))
+        assertFailsWith<IllegalArgumentException> { engine(FlakyStore()).setPin("12") }
+        assertFailsWith<IllegalArgumentException> { engine(FlakyStore()).setPin("12ab") }
+    }
+
+    // QM-06: reminders --------------------------------------------------------------------------
+
+    @Test
+    fun sharingIsReconfirmedMonthly() = runTest {
+        val e = engine(FlakyStore())
+        e.createCircle("Family")
+        e.housekeeping()
+        assertFalse(e.consentDue())
+        clock += Engine.CONSENT_EVERY_SECONDS
+        assertTrue(e.consentDue())
+        e.confirmConsent()
+        assertFalse(e.consentDue())
+        clock += Engine.CONSENT_EVERY_SECONDS
+        e.setSharing(false)
+        assertFalse(e.consentDue(), "no reminder while not sharing")
     }
 }

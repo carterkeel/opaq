@@ -105,7 +105,10 @@ fun HomeScreen(
     onJoin: () -> Unit,
     onSettings: () -> Unit,
     onRequestLocation: () -> Unit,
+    sharingBlocked: String? = null,
+    onFixSharing: () -> Unit = {},
 ) {
+    val gate = LocalPinGate.current
     val circle = state.circles.firstOrNull { it.id == selectedCircleId }
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
@@ -286,6 +289,8 @@ fun HomeScreen(
                         circle = circle,
                         now = now,
                         shareStatus = actions.shareStatus(circle),
+                        sharingBlocked = sharingBlocked,
+                        onFixSharing = onFixSharing,
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
@@ -335,7 +340,7 @@ fun HomeScreen(
             text = "They used your invite. If you approve, they'll see everyone in this circle and everyone will see them.",
             confirm = "Approve",
             dismiss = "Deny",
-            onConfirm = { actions.approve(req.id); reviewing = null },
+            onConfirm = { reviewing = null; gate.require { actions.approve(req.id) } },
             onDismiss = { actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
@@ -391,6 +396,8 @@ private fun PeopleList(
     circle: Circle,
     now: Long,
     shareStatus: ShareStatus,
+    sharingBlocked: String?,
+    onFixSharing: () -> Unit,
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
@@ -403,6 +410,7 @@ private fun PeopleList(
         item(key = "banners") {
             Column {
                 Banner(visible = state.sharing && !hasLocationPermission, text = "Allow location access so your circle can see you.", action = "Allow", onAction = onRequestLocation)
+                Banner(visible = state.sharing && sharingBlocked != null, text = sharingBlocked ?: "", action = "Turn on", onAction = onFixSharing)
                 val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
                 Banner(
                     visible = state.sharing && shareStatus == ShareStatus.KEY_REPLACED,
