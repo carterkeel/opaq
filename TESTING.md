@@ -23,11 +23,11 @@ The debug build installs as **app.quietmap.debug** and the staging build as **ap
 
 Location sharing needs at least two devices. Two real phones are best; one phone plus an emulator also works.
 
-1. **Phone A:** enter a name, tap **Create a circle**, allow location (choose *While using the app*), and allow notifications. You should see a "Sharing your location" notification.
+1. **Phone A:** enter a name (the photo and PIN steps are optional), tap **Create a circle**, allow location (choose *While using the app*), and allow notifications. You should see a "Sharing your location" notification.
 2. **Phone A:** tap **Invite**, then **Create invite**. A QR code appears, along with **Share link**.
-3. **Phone B:** in person, tap **I have an invite → Scan QR code** and point it at phone A. Remotely, tap the shared link, or paste it into **Paste an invite link**. Check the inviter's device code matches phone A's screen, enter a name, and tap **Join and share my location**.
+3. **Phone B:** in person, tap **Join a circle → Scan QR code** and point it at phone A. Remotely, tap the shared link, or paste it into **Or paste an invite link** and tap **Open invite**; then type the device code that phone A's owner reads out to you. Enter a name and tap **Ask to join**.
 4. **Phone A:** a banner says B wants to join. Tap **Review** and compare the device code with phone B, then **Approve**.
-5. Within a minute or two, both phones should show each other on the map and in the list.
+5. **Phone B:** once approved, the circle shows who's in it and asks you to tap **Start sharing**. Within a minute or two, both phones should show each other on the map and in the list.
 
 Things to check after that:
 
@@ -59,7 +59,7 @@ This shows relay connections, rejections, and notices. It never logs locations o
 ## 6. Battery and background reliability
 
 - Test on at least one **Samsung or Xiaomi** phone, not just a Pixel. Those brands stop background apps most aggressively.
-- In Quietmap's **Settings**, use **Battery optimization → Fix** and **Allow all the time → Open**, then leave the phone in a pocket for a few hours and check whether updates kept arriving.
+- In Quietmap's **Settings**, use **Battery saver for Quietmap → Turn off** and **Background location → Turn on**, then leave the phone in a pocket for a few hours and check whether updates kept arriving.
 - Android's **Settings → Battery → Battery usage** shows how much Quietmap used.
 
 ## 7. Automated tests

@@ -576,9 +576,7 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
         TopBar("Quietmap") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(24.dp))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(AppIcons.Circles, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-            }
+            BigIcon(AppIcons.Circles)
             if (state.pendingJoins.isNotEmpty()) {
                 state.pendingJoins.forEach { p ->
                     Text("Waiting for ${p.inviterName.ifBlank { "the inviter" }} to let you into ${p.circleName}", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)

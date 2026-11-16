@@ -342,9 +342,7 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                 Column(Gutter, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (current == null) {
                         Spacer(Modifier.height(8.dp))
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                            Box(contentAlignment = Alignment.Center) { Icon(AppIcons.QrCode, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-                        }
+                        BigIcon(AppIcons.QrCode)
                         Text(
                             "Create a QR code and link for someone to join ${circle.name}. They work once, and you approve whoever uses them. Scanning in person is safest: someone who joins from a link will need to hear your device code from you.",
                             style = MaterialTheme.typography.bodyLarge,
@@ -397,9 +395,7 @@ fun JoinOptionsScreen(onBack: () -> Unit, onScan: () -> Unit, onJoinLink: (Strin
     ScreenScaffold("Join a circle", onBack) {
         Column(Gutter, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(8.dp))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(AppIcons.ScanQr, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-            }
+            BigIcon(AppIcons.ScanQr)
             Text(
                 "Ask someone in the circle to open it in Quietmap and tap Invite. Then scan their QR code, or paste the link they send you.",
                 style = MaterialTheme.typography.bodyLarge,

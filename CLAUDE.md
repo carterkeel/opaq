@@ -42,7 +42,11 @@ ui/          Compose Multiplatform screens shared by Android and iOS.
   App.kt          QuietmapScreens(): navigation. Home is always composed; other screens
                   slide over it (AnimatedContent), so the map never reloads.
   HomeScreen.kt   Map + draggable people sheet (BottomSheetScaffold), circle picker, welcome.
+  SetupScreen.kt  First-run walkthrough.
   DetailScreens.kt Profile, EditProfile (photo/colour avatar), Add (QR invite), Join, Settings.
+  SecurityScreens.kt Recovery (unreadable state), PIN prompt and fields, security log, circle info,
+                  sharing reminder.
+  HistoryScreen.kt Location history map and segments, history-length picker.
   Avatars.kt      Avatar colours, photo decoding cache, verified badge.
   Components.kt   Signal-style rows, buttons, top bar, custom icons (AppIcons).
   Theme.kt        Colours, type scale (system font), shapes.
@@ -56,8 +60,11 @@ androidApp/  Android host app.
   LocationService.kt Foreground service: GPS/network location, significant-motion sensor,
                      publish loop driven by MotionPolicy.
   SecureStore.kt     Keystore-encrypted state file.
+  FileHistory.kt     Location history files in noBackupFilesDir (contents encrypted by LocationHistory).
   PhotoProcessor.kt  Crops/compresses profile photos to a small JPEG.
   BootReceiver.kt    Resumes sharing after reboot or update.
+
+site/        Static GitHub Pages site (pages.yml): join.html hands https invite links to the app.
 ```
 
 The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store, CoreLocation service, photo picker, `PlatformBridge`). The Xcode app shell is in progress (#13, PR #19).
@@ -74,7 +81,8 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - Only one person rotates keys, which avoids conflicting epochs. Moving to MLS later would remove that limit.
 
 **Invites.**
-- `Engine.createInvite` makes a single-use secret that expires in 24 h.
+- `Engine.createInvite` makes a single-use secret that expires in 1 h by default (24 h optional). Links are signed by the inviter (v2, `InviteLinks.signed`); v1 links still decode.
+- Joining needs the QR code scanned in the app, the inviter's device code typed in, or an inviter already verified (enforced by the engine). A new circle stays unconfirmed, sharing nothing, until the joiner taps "Start sharing".
 - The link is `quietmap://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/quietmap/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app. The payload is after `#`, so web hosts never see it.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
@@ -90,9 +98,15 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Profiles** (kind 30078). `ProfileBody` holds the name, avatar colour index and an optional photo (base64 JPEG, at most `CircleCrypto.MAX_PHOTO_CHARS`). It uses one tag and one publisher key per circle epoch, and is republished when the profile changes, when circle membership changes, and daily.
 
-**Backups.** `Backups` (in `protocol/Backup.kt`) exports identity, profile, settings and circles as a text file: PBKDF2-HMAC-SHA256 (600k iterations, 16-byte salt) turns the passphrase into a key for NIP-44. Restoring replaces the identity and starts with sharing paused. Others' locations and photos aren't included; they come back from relays.
+**Backups.** `Backups` (in `protocol/Backup.kt`) exports identity, profile, settings and circles as a text file (`quietmap-backup-v2`): Argon2id (64 MiB, 3 passes, one lane, 16-byte salt) turns the passphrase into a key for NIP-44. v1 files (PBKDF2-HMAC-SHA256, 600k iterations) still restore. Restoring replaces the identity and starts with sharing paused. Others' locations and photos aren't included; they come back from relays.
 
 **Removing someone.** The admin makes a new key (epoch + 1) and sends it only to remaining members. The old key stays accepted for 10 minutes (`OVERLAP_SECONDS`), and the removed person gets a `RemovedBody`.
+
+**Circle protocol v2.** New circles use it, and an admin's app upgrades v1 circles by rotating. The sections above describe v1; in short, v2 differs like this (details and tests in `SECURITY_IMPLEMENTATION_LOG.md`):
+- The location key ratchets forward every UTC day (`CircleCrypto.keyForDay`), and the admin rotates to fresh random keys on removals and weekly.
+- A per-epoch **control key** covers profiles, heartbeats and rotating member inbox tags (`CircleCrypto.inbox`), so relays don't see permanent public keys once someone has joined.
+- Publisher keys come from each member's own identity secret (`CircleCrypto.memberPublisher`), and every update carries a sequence number, so members can't overwrite or replay each other's updates.
+- Rosters (`roster2`) must be acknowledged (`RosterAckBody`) and are resent until they are. A rotation publishes a closed notice for the old epoch, and the admin publishes a heartbeat every 6 h; members stop publishing on a closed or replaced key, or when the newest heartbeat is over 3 days old (`Engine.shareStatus`).
 
 **Motion** (`MotionPolicy`).
 - Speed comes only from fixes accurate to 30 m: the median of reported GPS speeds over 30 s, otherwise distance over time. Coarse network fixes count as movement only for a clear jump.
@@ -107,7 +121,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
-**First run.** `SetupScreen` walks through name, photo (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
+**First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
 
 ## Building and testing
 
@@ -139,7 +153,7 @@ Two-phone manual testing is described in `TESTING.md`.
 - **The `staging` build uses R8.** Anything reached through JNI or reflection (secp256k1, MapLibre, kotlinx.serialization serializers, the zxing scanner) needs a rule in `androidApp/proguard-rules.pro`.
 - **Compose is much slower in debug builds.** Judge smoothness on the staging APK.
 - **maplibre-compose needs a renderer runtime on Android.** It only ships the JNI bridge; `libmaplibre-native-c.so` comes from `org.maplibre.nativeffi:maplibre-native-ffi-runtime-opengl` (in `ui` androidMain). Its version must match the `maplibre-native-ffi` version maplibre-compose pulls in. Without it the app crashes as soon as the map opens.
-- **CI runs a UI smoke test on an emulator** (`androidApp/src/androidTest`, `ci/emulator-test.sh`): go through setup, create a circle, let the map and sharing service run, toggle sharing, open the invite screen and settings. Crash stack traces from logcat land in the `ci-logs` summary. Extend this test when you add a screen.
+- **CI runs a UI smoke test on an emulator** (`androidApp/src/androidTest`, `ci/emulator-test.sh`): go through setup (with a PIN), create a circle, let the map and sharing service run, toggle sharing, open the invite screen, settings, your profile and location history, then repeat the main screens in dark mode. Crash stack traces from logcat and a screenshot of each screen land in the `ci-logs` branch. Extend this test when you add a screen.
 
 ## Conventions
 
