@@ -277,3 +277,24 @@ The rest of QM-02 is under Phase 12 below.
 **Tests.** `ProtocolTest.approximateLocationsSnapToAFixedGridAndCantBeAveragedBack`, `CircleSecurityTest.eachCircleGetsOnlyThePrecisionChosenForIt`.
 
 **Remaining limitations.** Crossing a cell boundary reveals that you're near it; a bigger cell trades usefulness for privacy. Your own phone still shows your exact position to you.
+
+## QM-02: metadata visible to relays (Phase 12)
+
+**Vulnerability.** Relays can't read anything, but they see IP addresses, which tags each connection follows, timing, and permanent public keys on join and roster traffic.
+
+**Changes.**
+
+- **Inboxes instead of public keys** (see "Circle protocol v2" above). Once a circle is on v2, relays no longer see who messages whom.
+- **Tor (Android).** Settings, Privacy, "Connect through Tor" routes every relay connection through Orbot's SOCKS proxy (`127.0.0.1:9050`, Ktor `ProxyBuilder.socks`). It fails closed: if Orbot isn't running nothing connects, and there is no direct fallback. Turning it off needs the PIN when one is set. iOS doesn't offer it yet (`PlatformBridge.supportsTor`).
+- **Blurred timestamps.** A location event's outer `created_at` is moved back by a random 0–15 seconds, but never earlier than the previous update, so relays still keep the newest one. The exact time is inside the encryption.
+- **What's visible, written down.** `PRIVACY.md` lists exactly what relays, the map tile host, the phone's network location provider and invite carriers can see, and what Tor does and doesn't hide.
+
+**Tests.** `CircleSecurityTest.torRoutesRelaysThroughOrbotAndTurningItOffNeedsThePin`, `relaysSeeBlurredTimestampsThatNeverGoBackwards`, `anInviteWorksOnceAndJoinTrafficNeverNamesPublicKeys`, `relaysDontSeePermanentKeysOnceJoined`.
+
+**Investigated, not implemented.**
+
+- **Separate connections per role** (reading vs publishing). Without Tor they share an IP address, so a relay links them anyway; with Tor, Orbot's per-destination circuits already separate relays from each other. Not worth the extra sockets and battery yet.
+- **Decoy subscriptions.** They would cost bandwidth and battery on every phone for a gain that's hard to measure. Revisit with measurements.
+- **Map tiles over Tor.** Tiles are fetched by MapLibre's own HTTP client, which isn't routed through Orbot yet. Tile requests reveal the areas viewed, not who is where.
+
+**Remaining limitations.** One connection subscribes to all of a phone's circle tags, so a relay can still group the tags followed by the same connection, and see the two update rates (moving or still).

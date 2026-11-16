@@ -4,6 +4,7 @@ import app.quietmap.core.nostr.Event
 import app.quietmap.core.nostr.Filter
 import app.quietmap.core.nostr.RelayStatus
 import app.quietmap.core.nostr.RelayTransport
+import app.quietmap.core.nostr.SocksProxy
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -94,13 +95,25 @@ class FakeRelayNetwork(private val clock: () -> Long) {
             if (online) subs.forEach { (id, filters) -> if (old[id] != filters) replay(id, filters) }
         }
 
+        /** Everything this client has published, in order. */
+        val published = mutableListOf<Event>()
+
         override suspend fun publish(event: Event, queueIfOffline: Boolean) {
+            published += event
             if (online) accept(event) else if (queueIfOffline) outbox += event
         }
 
         override fun isSynced(subscriptionId: String): Boolean = online && subscriptionId in synced
 
         override fun shutdown() = Unit
+
+        /** The SOCKS proxy the engine asked for (Tor), or null for direct connections. */
+        var proxy: SocksProxy? = null
+            private set
+
+        override suspend fun setSocksProxy(proxy: SocksProxy?) {
+            this.proxy = proxy
+        }
 
         /** No signal: nothing in or out until [reconnect]. Queued publishes wait, like the real pool. */
         fun offline() {

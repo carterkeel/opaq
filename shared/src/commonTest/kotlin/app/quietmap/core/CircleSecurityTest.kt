@@ -537,6 +537,43 @@ class CircleSecurityTest {
         assertFailsWith<IllegalStateException> { b.engine.setCircleTrail(id, true) }
     }
 
+    @Test
+    fun torRoutesRelaysThroughOrbotAndTurningItOffNeedsThePin() = runTest {
+        val a = Phone("Ann")
+        a.engine.housekeeping()
+        assertNull(a.client.proxy)
+        a.engine.setUseTor(true)
+        assertEquals(app.quietmap.core.nostr.SocksProxy("127.0.0.1", Engine.TOR_SOCKS_PORT), a.client.proxy)
+        a.engine.setPin("1357")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException> { a.engine.setUseTor(false) }
+        assertNotNull(a.client.proxy, "a failed attempt must leave Tor on")
+        assertEquals(PinResult.Ok, a.engine.unlock("1357"))
+        a.engine.setUseTor(false)
+        assertNull(a.client.proxy)
+    }
+
+    @Test
+    fun relaysSeeBlurredTimestampsThatNeverGoBackwards() = runTest {
+        val a = Phone("Ann"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        var last = 0L
+        val offsets = mutableSetOf<Long>()
+        repeat(40) {
+            clock += 61
+            b.engine.publishLocation(loc(1.0 + it / 1000.0))
+            net.flush()
+            val e = b.client.published.last()
+            assertEquals(Kinds.CIRCLE_UPDATE, e.kind)
+            assertTrue(e.createdAt in (clock - 15)..clock, "timestamp ${clock - e.createdAt}s off")
+            assertTrue(e.createdAt > last, "timestamps went backwards")
+            last = e.createdAt
+            offsets += clock - e.createdAt
+            assertEquals(clock, a.locationOf(id, b.me)!!.time, "the exact time travels inside the encryption")
+        }
+        assertTrue(offsets.size > 3, "timestamps aren't blurred: $offsets")
+    }
+
     /** Fails if any event opens with [c]'s keys for any day from its key day up to 400 days on. */
     private fun assertNothingOpensWith(c: Circle, events: List<Event>) {
         val keys = buildList {
