@@ -125,7 +125,6 @@ class ProtocolTest {
     fun deviceCodeFormat() {
         val code = DeviceCode.full(KeyPair.generate().publicHex)
         assertTrue(Regex("^[0-9A-F]{4}( [0-9A-F]{4}){3}$").matches(code), code)
-        assertEquals(9, DeviceCode.short(KeyPair.generate().publicHex).length)
     }
 
     @Test

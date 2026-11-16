@@ -134,7 +134,7 @@ jobs:
               echo "===== logcat: UI test notes (screen contents when a step failed) ====="
               grep -E "QuietmapTest|E/TestRunner|didn't appear" logcat.txt | tail -90 || true
               echo
-              echo "===== logcat: the app's own log (relay status, PIN timing, messages shown) ====="
+              echo "===== logcat: the app's own log (relay status, PIN timing) ====="
               grep -E "[DIWE]/Quietmap *\(" logcat.txt | tail -60 || true
               echo
               echo "===== logcat: Quietmap and errors ====="

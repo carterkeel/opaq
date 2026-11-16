@@ -159,11 +159,7 @@ class Engine(
     private var authorizedUntil = 0L
 
     init {
-        val found = try {
-            store.read()
-        } catch (t: Throwable) {
-            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
-        }
+        val found = readStore()
         val loaded: AppState? = when (found) {
             StoredState.Missing -> null
             is StoredState.Found -> decode(found.data) ?: run {
@@ -187,6 +183,12 @@ class Engine(
         state = _state.asStateFlow()
         seen.addAll(initial.seenEventIds)
         if (found == StoredState.Missing) store.save(json.encodeToString(AppState.serializer(), initial))
+    }
+
+    private fun readStore(): StoredState = try {
+        store.read()
+    } catch (t: Throwable) {
+        StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
     }
 
     private fun checkReady() = check(_recovery.value == null) { "Quietmap can't read its saved data yet" }
@@ -236,11 +238,7 @@ class Engine(
     /** Reads saved state again, e.g. once the phone is unlocked. Returns true if it worked. */
     suspend fun retryLoad(): Boolean {
         if (_recovery.value == null) return true
-        val found = try {
-            store.read()
-        } catch (t: Throwable) {
-            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
-        }
+        val found = readStore()
         val loaded = (found as? StoredState.Found)?.let { decode(it.data) } ?: run {
             if (found is StoredState.Unreadable) _recovery.value = Recovery(found.reason, found.retryable)
             return false
@@ -412,11 +410,8 @@ class Engine(
         val had = state.value.pin != null
         if (had) requireAuthorized()
         val salt = PlatformCrypto.randomBytes(16)
-        val started = elapsed()
         val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
-        log("pin: hashed in ${elapsed() - started} s")
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
-        log("pin: saved")
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
     }
 
@@ -541,10 +536,6 @@ class Engine(
     }
 
     /**
-     * Starts sharing with a circle we were just let into. Until then nothing (location or profile)
-     * goes to it, so the user sees who is in it before anyone sees them.
-     */
-    /**
      * How precisely this phone shares with a circle. Making it more precise needs the PIN (if set),
      * so someone holding the phone can't quietly turn approximate sharing back into exact.
      */
@@ -560,6 +551,10 @@ class Engine(
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(shareTrail = on) else it }) }
     }
 
+    /**
+     * Starts sharing with a circle we were just let into. Until then nothing (location or profile)
+     * goes to it, so the user sees who is in it before anyone sees them.
+     */
     suspend fun confirmCircle(circleId: String) {
         // Starting to share with a new circle is as sensitive as making sharing more precise.
         requireAuthorized()
@@ -919,8 +914,7 @@ class Engine(
     /** Member: if this phone can't confirm its key, ask the admin for the roster again. */
     private suspend fun memberDuties() {
         state.value.circles.filter { it.version >= 2 && it.adminPubkey != myPubkey }.forEach { c ->
-            val status = if (c.stale) ShareStatus.KEY_REPLACED else if (now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS) ShareStatus.ADMIN_AWAY else ShareStatus.OK
-            if (status == ShareStatus.KEY_REPLACED || status == ShareStatus.ADMIN_AWAY) requestRoster(c)
+            if (c.stale || now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS) requestRoster(c)
         }
     }
 
@@ -1119,14 +1113,18 @@ class Engine(
         runCatching { h.prune(t, s.historyDays, keep) }
     }
 
-    private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event {
+    /** Drops the oldest batched points until the padded envelope fits the fixed size. */
+    private inline fun fitted(location: MemberLocation, seal: (MemberLocation) -> Event): Event {
         var loc = location
         while (true) {
-            val event = CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
-            // Drop the oldest batched points until the padded envelope fits the fixed size.
+            val event = seal(loc)
             if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
             loc = loc.copy(points = loc.points.drop(1))
         }
+    }
+
+    private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event = fitted(location) { loc ->
+        CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
     }
 
     /** Last outer timestamp used per circle, so blurred timestamps still only move forward. */
@@ -1140,12 +1138,9 @@ class Engine(
         lastCreatedAt[c.id] = created
         val key = dayKey(c, CircleCrypto.day(created)) ?: return null
         val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(created))
-        var loc = location
-        while (true) {
+        return fitted(location) { loc ->
             val body = LocationBody(myPubkey, t, c.id, c.epoch, loc, pub = publisher.publicHex, seq = seq)
-            val event = CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, created)
-            if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
-            loc = loc.copy(points = loc.points.drop(1))
+            CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, created)
         }
     }
 
@@ -1364,7 +1359,7 @@ class Engine(
             previousEpoch = if (rotated) existing!!.epoch else base.previousEpoch,
             previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
             stale = if (newEpoch) false else base.stale,
-            adminRosterTs = if (fromAdmin && (existing == null || from == existing.adminPubkey)) maxOf(if (newEpoch) 0 else base.adminRosterTs, ts) else base.adminRosterTs,
+            adminRosterTs = if (fromAdmin) maxOf(if (newEpoch) 0 else base.adminRosterTs, ts) else base.adminRosterTs,
             history = (base.history + events).takeLast(HISTORY_SIZE),
             // Joining: nothing is shared until the user has seen who's in the circle.
             confirmed = if (existing == null) false else base.confirmed,

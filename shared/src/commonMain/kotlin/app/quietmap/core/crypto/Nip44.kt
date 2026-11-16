@@ -69,5 +69,4 @@ object Nip44 {
         val k = Hkdf.expand(conversationKey, nonce, 76)
         return MessageKeys(k.copyOfRange(0, 32), k.copyOfRange(32, 44), k.copyOfRange(44, 76))
     }
-
 }

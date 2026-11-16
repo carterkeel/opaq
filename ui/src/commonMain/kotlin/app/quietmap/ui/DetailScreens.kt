@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.quietmap.core.model.AppState
 import app.quietmap.core.nostr.RelayStatus
+import app.quietmap.core.nostr.RelayUrls
 import app.quietmap.core.protocol.Backups
 import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.InviteLinks
@@ -439,7 +439,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
                 val inviter = invite.n.ifBlank { "the person who invited you" }
                 val alreadyVerified = state.contacts[invite.k]?.verified == true
                 val verified = scanned || alreadyVerified || actions.deviceCodeMatches(invite.k, code)
-                val newRelays = invite.r.mapNotNull { app.quietmap.core.nostr.RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
+                val newRelays = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
                 ProfileHeader(
                     AvatarInfo(invite.k, invite.n.ifBlank { "?" }, null, null, false),
                     "Join ${invite.cn}?",
@@ -645,7 +645,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
+                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = RelayUrls.isAllowed(newRelay)) {
                         Icon(AppIcons.Add, contentDescription = "Add relay")
                     }
                 }
@@ -813,16 +813,16 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
             PrimaryButton(if (working) "Restoring…" else "Restore", {
                 val text = file ?: return@PrimaryButton
                 gate.require {
-                working = true
-                actions.importBackup(text, pass) { err ->
-                    working = false
-                    if (err == null) {
-                        platform.showMessage("Restored. Sharing is paused until you turn it on.")
-                        onRestored()
-                    } else {
-                        error = err
+                    working = true
+                    actions.importBackup(text, pass) { err ->
+                        working = false
+                        if (err == null) {
+                            platform.showMessage("Restored. Sharing is paused until you turn it on.")
+                            onRestored()
+                        } else {
+                            error = err
+                        }
                     }
-                }
                 }
             }, enabled = file != null && pass.isNotEmpty() && !working)
             Caption("Sharing starts paused after a restore, so you can check everything first.")

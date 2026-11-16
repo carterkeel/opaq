@@ -147,19 +147,18 @@ object HistorySegments {
         // A short stop inside a drive (a red light), or a short move inside a stay (GPS drift), is
         // folded into what surrounds it, so it doesn't split the stretch in three.
         // Shortest first (then fewest points), so a red light goes before the drive around it.
-        val merged = runs
         while (true) {
-            val candidates = (1 until merged.size - 1).filter { k ->
-                merged[k + 1].first().t - merged[k].first().t < MIN_SECONDS && group(merged[k - 1].first().a) == group(merged[k + 1].first().a)
+            val candidates = (1 until runs.size - 1).filter { k ->
+                runs[k + 1].first().t - runs[k].first().t < MIN_SECONDS && group(runs[k - 1].first().a) == group(runs[k + 1].first().a)
             }
-            val k = candidates.minWithOrNull(compareBy({ merged[it + 1].first().t - merged[it].first().t }, { merged[it].size })) ?: break
-            merged[k - 1] += merged[k] + merged[k + 1]
-            merged.removeAt(k + 1)
-            merged.removeAt(k)
+            val k = candidates.minWithOrNull(compareBy({ runs[it + 1].first().t - runs[it].first().t }, { runs[it].size })) ?: break
+            runs[k - 1] += runs[k] + runs[k + 1]
+            runs.removeAt(k + 1)
+            runs.removeAt(k)
         }
-        return merged.mapIndexed { i, run ->
+        return runs.mapIndexed { i, run ->
             // A segment ends where the next begins, so the list has no gaps.
-            val end = merged.getOrNull(i + 1)?.first()?.t ?: run.last().t
+            val end = runs.getOrNull(i + 1)?.first()?.t ?: run.last().t
             val activity = run.groupingBy { it.a }.eachCount().maxByOrNull { it.value }!!.key
             var meters = 0.0
             for (j in 1 until run.size) meters += MotionPolicy.distanceMeters(run[j - 1].lat, run[j - 1].lon, run[j].lat, run[j].lon)

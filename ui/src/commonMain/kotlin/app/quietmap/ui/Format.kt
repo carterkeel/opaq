@@ -4,6 +4,8 @@ import app.quietmap.core.Engine
 import app.quietmap.core.MotionPolicy
 import app.quietmap.core.model.Activity
 import app.quietmap.core.model.MemberLocation
+import app.quietmap.core.model.Precision
+import kotlin.math.round
 
 object Format {
     private val usesMiles = regionUsesMiles()
@@ -24,7 +26,7 @@ object Format {
     fun distance(meters: Double): String {
         val v = if (usesMiles) meters / 1609.344 else meters / 1000
         val unit = if (usesMiles) "mi" else "km"
-        val text = if (v < 10) "${kotlin.math.round(v * 10) / 10}" else "${kotlin.math.round(v).toLong()}"
+        val text = if (v < 10) "${round(v * 10) / 10}" else "${round(v).toLong()}"
         return "$text $unit"
     }
 
@@ -83,8 +85,8 @@ object Format {
         }
         if (showBattery) loc.battery?.let { parts += "$it%" }
         when (loc.precision) {
-            app.quietmap.core.model.Precision.NEIGHBORHOOD -> parts += "area only"
-            app.quietmap.core.model.Precision.CITY -> parts += "city only"
+            Precision.NEIGHBORHOOD -> parts += "area only"
+            Precision.CITY -> parts += "city only"
             else -> Unit
         }
         parts += ago(age)

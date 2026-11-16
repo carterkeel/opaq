@@ -32,7 +32,9 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/model/Models.kt      AppState (everything persisted) and data classes.
   core/protocol/Protocol.kt Message bodies, sealed DMs, circle crypto (tags, publisher keys),
                             profiles, device codes, invite links.
-  core/nostr/               NIP-01 events, relay protocol, RelayPool (Ktor websockets).
+  core/protocol/Backup.kt   Passphrase-encrypted backup files.
+  core/nostr/               NIP-01 events, relay protocol, RelayTransport (interface; tests use an
+                            in-memory network), RelayPool (Ktor websockets, optional Tor SOCKS).
   core/crypto/              PlatformCrypto (expect/actual), Keys (secp256k1), Nip44, encoding.
   commonTest/               Crypto, protocol and motion tests (run on the JVM in CI).
 

@@ -1,6 +1,11 @@
 package app.quietmap.ui
 
 import app.quietmap.core.Engine
+import app.quietmap.core.HistoryPoint
+import app.quietmap.core.PinResult
+import app.quietmap.core.ShareStatus
+import app.quietmap.core.model.Circle
+import app.quietmap.core.model.Precision
 import app.quietmap.core.protocol.InviteData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,7 +21,7 @@ class Actions(
     val me: String get() = engine.myPubkey
 
     /** Whether this phone is currently sending its location to [circle], and if not, why. */
-    fun shareStatus(circle: app.quietmap.core.model.Circle): app.quietmap.core.ShareStatus = engine.shareStatus(circle)
+    fun shareStatus(circle: Circle): ShareStatus = engine.shareStatus(circle)
 
     private fun launchAction(after: (() -> Unit)? = null, block: suspend () -> Unit) {
         scope.launch {
@@ -30,7 +35,7 @@ class Actions(
     }
 
     /** Reads location history for [pubkey] between [from] and [to] (seconds) and hands it back on the main thread. */
-    fun history(pubkey: String, from: Long, to: Long, onResult: (List<app.quietmap.core.HistoryPoint>) -> Unit) {
+    fun history(pubkey: String, from: Long, to: Long, onResult: (List<HistoryPoint>) -> Unit) {
         scope.launch {
             val points = runCatching { engine.history(pubkey, from, to) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) { onResult(points) }
@@ -68,7 +73,7 @@ class Actions(
         engine.setSetupDone()
     }
 
-    fun setCirclePrecision(circleId: String, precision: app.quietmap.core.model.Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
+    fun setCirclePrecision(circleId: String, precision: Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
     fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }
 
     fun confirmCircle(circleId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.confirmCircle(circleId) }
@@ -96,10 +101,9 @@ class Actions(
     // PIN and security
 
     fun isAuthorized(): Boolean = engine.isAuthorized()
-    val hasPin: Boolean get() = engine.hasPin
 
     /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
-    fun unlock(pin: String, onResult: (app.quietmap.core.PinResult) -> Unit) {
+    fun unlock(pin: String, onResult: (PinResult) -> Unit) {
         scope.launch {
             val r = engine.unlock(pin)
             withContext(Dispatchers.Main) { onResult(r) }
