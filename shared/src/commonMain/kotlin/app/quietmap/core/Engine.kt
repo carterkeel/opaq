@@ -1,6 +1,7 @@
 package app.quietmap.core
 
 import app.quietmap.core.crypto.KeyPair
+import app.quietmap.core.crypto.Keys
 import app.quietmap.core.crypto.PlatformCrypto
 import app.quietmap.core.crypto.constantTimeEquals
 import app.quietmap.core.crypto.hexToBytes
@@ -102,6 +103,11 @@ class Engine(
     transport: ((onEvent: suspend (relay: String, event: Event) -> Unit) -> RelayTransport)? = null,
     /** Shown in the security log, e.g. "Pixel 8". */
     private val deviceName: String = "this phone",
+    /**
+     * Seconds on a clock that changing the date and time can't move (time since boot), for PIN
+     * lockouts and the PIN window. Tests use [now].
+     */
+    private val elapsed: () -> Long = now,
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
@@ -215,6 +221,7 @@ class Engine(
         advanceRatchets()
         adminDuties()
         retryRosters()
+        endHandovers()
         memberDuties()
         refreshSubscriptions()
         publishProfileIfDue()
@@ -342,7 +349,7 @@ class Engine(
     val hasPin: Boolean get() = state.value.pin != null
 
     /** True when no PIN is set, or the PIN was entered in the last couple of minutes. */
-    fun isAuthorized(): Boolean = state.value.pin == null || now() < authorizedUntil
+    fun isAuthorized(): Boolean = state.value.pin == null || elapsed() < authorizedUntil
 
     private fun requireAuthorized() = check(isAuthorized()) { "Enter your PIN first" }
 
@@ -350,21 +357,45 @@ class Engine(
     suspend fun unlock(pin: String): PinResult {
         val lock = state.value.pin ?: return PinResult.Ok
         val t = now()
-        if (lock.lockedUntil > t) return PinResult.Locked(lock.lockedUntil)
+        lockedUntil(lock)?.let { return PinResult.Locked(it) }
         if (constantTimeEquals(pinHash(pin, lock.saltHex.hexToBytes(), lock.iterations), lock.hashHex.hexToBytes())) {
-            authorizedUntil = t + AUTH_WINDOW_SECONDS
-            if (lock.failedAttempts != 0 || lock.lockedUntil != 0L) update { it.copy(pin = lock.copy(failedAttempts = 0, lockedUntil = 0)) }
+            authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+            if (lock.failedAttempts != 0 || lock.lockUntilElapsed != 0L || lock.lockedUntil != 0L) {
+                update { it.copy(pin = lock.copy(failedAttempts = 0, lockedUntil = 0, lockStartElapsed = 0, lockUntilElapsed = 0)) }
+            }
             return PinResult.Ok
         }
         val failed = lock.failedAttempts + 1
-        val lockedUntil = if (failed >= PIN_FREE_ATTEMPTS) t + (30L shl (failed - PIN_FREE_ATTEMPTS).coerceAtMost(7)) else 0L
+        val wait = if (failed >= PIN_FREE_ATTEMPTS) 30L shl (failed - PIN_FREE_ATTEMPTS).coerceAtMost(7) else 0L
+        val e = elapsed()
         update { s ->
             s.copy(
-                pin = lock.copy(failedAttempts = failed, lockedUntil = lockedUntil),
-                securityLog = if (lockedUntil > 0) s.logged(SecurityEventType.PIN_LOCKED) else s.securityLog,
+                pin = lock.copy(
+                    failedAttempts = failed,
+                    lockedUntil = if (wait > 0) t + wait else 0,
+                    lockStartElapsed = if (wait > 0) e else 0,
+                    lockUntilElapsed = if (wait > 0) e + wait else 0,
+                ),
+                securityLog = if (wait > 0) s.logged(SecurityEventType.PIN_LOCKED) else s.securityLog,
             )
         }
-        return if (lockedUntil > 0) PinResult.Locked(lockedUntil) else PinResult.Wrong(PIN_FREE_ATTEMPTS - failed)
+        return if (wait > 0) PinResult.Locked(t + wait) else PinResult.Wrong(PIN_FREE_ATTEMPTS - failed)
+    }
+
+    /**
+     * When the current lockout ends (wall clock, for display), or null if not locked. Timed on
+     * [elapsed], so moving the date forward doesn't end it; after a reboot the wait starts again.
+     */
+    private suspend fun lockedUntil(lock: PinLock): Long? {
+        val t = now()
+        if (lock.lockUntilElapsed == 0L) return lock.lockedUntil.takeIf { it > t } // saved by an older version
+        val e = elapsed()
+        if (e < lock.lockStartElapsed) {
+            val wait = lock.lockUntilElapsed - lock.lockStartElapsed
+            update { s -> s.copy(pin = s.pin?.copy(lockStartElapsed = e, lockUntilElapsed = e + wait, lockedUntil = t + wait)) }
+            return t + wait
+        }
+        return if (e < lock.lockUntilElapsed) t + (lock.lockUntilElapsed - e) else null
     }
 
     /** Sets or changes the PIN (4 to 8 digits). Changing an existing PIN needs it entered first. */
@@ -375,7 +406,7 @@ class Engine(
         val salt = PlatformCrypto.randomBytes(16)
         val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
-        authorizedUntil = now() + AUTH_WINDOW_SECONDS
+        authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
     }
 
     suspend fun removePin() {
@@ -441,7 +472,7 @@ class Engine(
     }
 
     /** The admin and managers can invite and approve people. */
-    fun canInvite(circle: Circle): Boolean = circle.adminPubkey == myPubkey || myPubkey in circle.managers
+    fun canInvite(circle: Circle): Boolean = !circle.stale && (circle.adminPubkey == myPubkey || myPubkey in circle.managers)
 
     /**
      * Creates a single-use invite link, signed so none of it can be changed on the way, valid for
@@ -483,8 +514,9 @@ class Engine(
         require(scannedInPerson || known || deviceCodeMatches(invite.k, typedCode)) {
             "That code doesn't match. Ask the person who invited you to read out their device code."
         }
-        setVerified(invite.k, true)
         val extra = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.value.relays }.take(4)
+        if (keepRelays && extra.isNotEmpty()) requireAuthorized() // changing relays needs the PIN
+        setVerified(invite.k, true)
         if (keepRelays && extra.isNotEmpty()) applyRelays(state.value.relays + extra)
         val inbox = if (invite.v >= 2) InviteLinks.inbox(invite.s) else null
         update {
@@ -518,6 +550,8 @@ class Engine(
     }
 
     suspend fun confirmCircle(circleId: String) {
+        // Starting to share with a new circle is as sensitive as making sharing more precise.
+        requireAuthorized()
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(confirmed = true) else it }, consentAt = now()) }
         state.value.circles.firstOrNull { it.id == circleId }?.let { publishProfile(it) }
     }
@@ -594,7 +628,7 @@ class Engine(
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can delete it" }
         circle.members.filter { it.pubkey != myPubkey }.forEach { m ->
-            sendDirect(circle, m.pubkey, RemovedBody(myPubkey, now(), circleId, deleted = true))
+            sendDirect(circle, m.pubkey, RemovedBody(myPubkey, now(), circleId, deleted = true, to = m.pubkey, epoch = circle.epoch + 1))
         }
         forgetCircle(circleId)
     }
@@ -659,7 +693,7 @@ class Engine(
      * Members still on the old key are told it's closed; everyone remaining gets the new roster,
      * which is resent until they confirm it.
      */
-    private suspend fun rotate(c: Circle, members: List<Member>, newAdmin: String = c.adminPubkey, signer: KeyPair = identity, removed: String? = null): Circle {
+    private suspend fun rotate(c: Circle, members: List<Member>, newAdmin: String = c.adminPubkey, signer: KeyPair = identity, removed: String? = null, epochStep: Int = 1): Circle {
         val t = now()
         val d = CircleCrypto.day(t)
         val oldCtl = c.ctlKeyHex
@@ -668,7 +702,7 @@ class Engine(
             keyHex = CircleCrypto.newKey(),
             keyDay = d,
             ctlKeyHex = CircleCrypto.newKey(),
-            epoch = c.epoch + 1,
+            epoch = c.epoch + epochStep,
             adminPubkey = newAdmin,
             members = members,
             managers = c.managers.filter { m -> m != newAdmin && members.any { it.pubkey == m } },
@@ -697,7 +731,7 @@ class Engine(
         // v1 members only listen on their public key; v2 members get it on their old inbox too.
         val identityInboxes = if (c.version < 2) keep.associateWith { listOf(it) } else emptyMap()
         sendRoster(rotated, members.map { it.pubkey }, extraInboxes = identityInboxes, signer = signer)
-        if (removed != null) sendDirect(c, removed, RemovedBody(signer.publicHex, t, c.id), signer = signer)
+        if (removed != null) sendDirect(c, removed, RemovedBody(signer.publicHex, t, c.id, to = removed, epoch = rotated.epoch), signer = signer)
         refreshSubscriptions()
         if (newAdmin == myPubkey) publishHeartbeat(rotated)
         if (rotated.members.any { it.pubkey == myPubkey }) publishProfile(rotated)
@@ -730,7 +764,8 @@ class Engine(
     private fun rosterOf(c: Circle): RosterCircle =
         if (c.version < 2) RosterCircle(c.id, c.name, c.keyHex, c.epoch, c.adminPubkey, c.members, c.managers)
         else {
-            val d = today()
+            // If the clock went back past the key's first day, send that day's key rather than crash.
+            val d = maxOf(today(), c.keyDay)
             RosterCircle(c.id, c.name, dayKey(c, d)!!.toHex(), c.epoch, c.adminPubkey, c.members, c.managers, v = 2, day = d, ctl = c.ctlKeyHex)
         }
 
@@ -747,6 +782,12 @@ class Engine(
         // Keep reaching a joiner on their invite inbox when resending.
         fun extraFor(m: String) = (extraInboxes[m].orEmpty() + current?.pendingAcks?.firstOrNull { it.pubkey == m }?.extraInboxes.orEmpty()).distinct()
         targets.forEach { m -> sendDirect(c, m, body, extraFor(m), signer = signer) }
+        // During a hand-over after an identity reset, members who missed it still only trust the
+        // old identity: send them a copy it signed too.
+        handoverSigner(current ?: c)?.takeIf { it.publicHex != signer.publicHex && c.version >= 2 }?.let { old ->
+            val copy = Roster2Body(old.publicHex, t, rc)
+            targets.filter { it != old.publicHex }.forEach { m -> sendDirect(c, m, copy, extraFor(m), signer = old) }
+        }
         if (c.version < 2 || targets.isEmpty() || signer.publicHex != myPubkey) return
         update { s ->
             s.copy(circles = s.circles.map { cur ->
@@ -758,6 +799,21 @@ class Engine(
             })
         }
     }
+
+    /** Forgets the old identity's secret once everyone has the new key, or after two weeks. */
+    private suspend fun endHandovers() {
+        val t = now()
+        if (state.value.circles.none { it.handoverSecretHex != null && (t >= it.handoverUntil || it.pendingAcks.none { p -> p.epoch == it.epoch }) }) return
+        update { s ->
+            s.copy(circles = s.circles.map { c ->
+                if (c.handoverSecretHex != null && (t >= c.handoverUntil || c.pendingAcks.none { it.epoch == c.epoch })) c.copy(handoverSecretHex = null, handoverUntil = 0) else c
+            })
+        }
+    }
+
+    /** The previous identity, while a hand-over after an identity reset is still in progress. */
+    private fun handoverSigner(c: Circle): KeyPair? =
+        c.handoverSecretHex?.takeIf { now() < c.handoverUntil }?.let { KeyPair(it.hexToBytes()) }
 
     /** Resends rosters that haven't been acknowledged, backing off, for up to two weeks. */
     private suspend fun retryRosters() {
@@ -808,7 +864,7 @@ class Engine(
     /** Admin: upgrade v1 circles, rotate weekly, publish heartbeats and closed notices. */
     private suspend fun adminDuties() {
         val t = now()
-        state.value.circles.filter { it.adminPubkey == myPubkey }.forEach { c ->
+        state.value.circles.filter { it.adminPubkey == myPubkey && !it.stale }.forEach { c ->
             val current = state.value.circles.firstOrNull { it.id == c.id } ?: return@forEach
             when {
                 current.version < 2 -> rotate(current, current.members)
@@ -822,7 +878,11 @@ class Engine(
         state.value.circles.filter { it.adminPubkey == myPubkey }.forEach { c ->
             val due = c.oldControls.filter { it.until > t && it.closedPublishedDay != d }
             if (due.isEmpty()) return@forEach
-            due.forEach { old -> publishControl(c.id, old.ctlKeyHex.hexToBytes(), old.epoch, closed = true) }
+            val handover = handoverSigner(c)
+            due.forEach { old ->
+                publishControl(c.id, old.ctlKeyHex.hexToBytes(), old.epoch, closed = true)
+                handover?.let { publishControl(c.id, old.ctlKeyHex.hexToBytes(), old.epoch, closed = true, signer = it) }
+            }
             update { s ->
                 s.copy(circles = s.circles.map { cur ->
                     if (cur.id != c.id) cur else cur.copy(oldControls = cur.oldControls.map { o -> if (due.any { it.epoch == o.epoch }) o.copy(closedPublishedDay = d) else o })
@@ -838,8 +898,8 @@ class Engine(
      */
     fun shareStatus(c: Circle): ShareStatus = when {
         !c.confirmed -> ShareStatus.NOT_CONFIRMED
-        c.version < 2 || c.adminPubkey == myPubkey -> ShareStatus.OK
         c.stale -> ShareStatus.KEY_REPLACED
+        c.version < 2 || c.adminPubkey == myPubkey -> ShareStatus.OK
         now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS -> ShareStatus.ADMIN_AWAY
         !pool.isSynced(SUB_CONTROL) -> ShareStatus.CHECKING
         else -> ShareStatus.OK
@@ -878,7 +938,11 @@ class Engine(
         state.value.circles.forEach { c ->
             if (c.adminPubkey == old.publicHex) {
                 val members = c.members.map { if (it.pubkey == old.publicHex) Member(fresh.publicHex, it.name) else it }
-                rotate(c, members, newAdmin = fresh.publicHex, signer = old)
+                // Jump far ahead, so a copy of the old identity rotating weekly can't land on the
+                // same epoch first. Keep the old secret only to sign the hand-over for stragglers.
+                rotate(c, members, newAdmin = fresh.publicHex, signer = old, epochStep = RESET_EPOCH_JUMP)
+                val until = now() + RETRY_WINDOW_SECONDS
+                update { s -> s.copy(circles = s.circles.map { if (it.id == c.id) it.copy(handoverSecretHex = old.secret.toHex(), handoverUntil = until) else it }) }
             } else {
                 sendDirect(c, c.adminPubkey, LeftBody(old.publicHex, now(), c.id), signer = old)
                 forgetCircle(c.id)
@@ -1089,8 +1153,17 @@ class Engine(
     private suspend fun handleControl(target: TagTarget, event: Event) {
         val body = CircleCrypto.open(target.key, target.epoch, event) as? EpochBody ?: return
         val c = state.value.circles.firstOrNull { it.id == target.circleId } ?: return
-        if (body.from != c.adminPubkey || body.circle != c.id || c.adminPubkey == myPubkey) return
+        if (body.from != c.adminPubkey || body.circle != c.id) return
         if (target.epoch != c.epoch || body.epoch != c.epoch) return
+        if (c.adminPubkey == myPubkey) {
+            // Our own key closed our current epoch, which this phone never does: another phone with
+            // this identity (say, an old backup) reset it. Stand down instead of competing with it.
+            if (body.closed && !c.stale) {
+                update { s -> s.copy(circles = s.circles.map { if (it.id == c.id && it.epoch == body.epoch) it.copy(stale = true) else it }) }
+                _notices.tryEmit(Notice("${c.name} moved to another phone", "This phone's copy of your identity was replaced, so it stopped running ${c.name}."))
+            }
+            return
+        }
         if (body.closed) {
             update { s -> s.copy(circles = s.circles.map { if (it.id == c.id && it.epoch == body.epoch) it.copy(stale = true) else it }) }
             state.value.circles.firstOrNull { it.id == c.id }?.let { requestRoster(it) }
@@ -1156,10 +1229,19 @@ class Engine(
         }
     }
 
+    /** Rejects rosters with fields that would break key derivation later (and crash every pass). */
+    private fun validRoster(rc: RosterCircle): Boolean {
+        fun hex32(v: String?) = v != null && v.length == 64 && v.all { it in "0123456789abcdef" }
+        if (!hex32(rc.key) || rc.epoch < 0 || !Keys.isValidPublicKey(rc.admin)) return false
+        if (rc.members.isEmpty() || rc.members.size > MAX_MEMBERS || rc.members.any { !Keys.isValidPublicKey(it.pubkey) }) return false
+        if (rc.v >= 2 && (!hex32(rc.ctl) || rc.day !in (today() - 30)..(today() + 1))) return false
+        return true
+    }
+
     private suspend fun onRoster(from: String, ts: Long, rc: RosterCircle, v2Body: Boolean) {
         // A v2 roster must arrive as a v2 message (and v1 as v1), so neither can be misread as the other.
         if ((rc.v >= 2) != v2Body) return
-        if (rc.v >= 2 && rc.ctl == null) return
+        if (!validRoster(rc)) return
         val s = state.value
         val existing = s.circles.firstOrNull { it.id == rc.id }
         val pending = s.pendingJoins.firstOrNull { it.circleId == rc.id }
@@ -1167,7 +1249,10 @@ class Engine(
             (if (rc.v >= 2) rc.ctl == existing.ctlKeyHex else rc.key == existing.keyHex)
         val trusted = when {
             // The admin can do anything: add people, rotate keys, change managers, hand over the role.
-            existing != null && from == existing.adminPubkey -> rc.epoch >= existing.epoch
+            // Within an epoch, only a roster at least as new as the last one: an old roster (say, the
+            // one that made someone a manager) can't be passed on again to undo a later change.
+            existing != null && from == existing.adminPubkey ->
+                rc.epoch > existing.epoch || (rc.epoch == existing.epoch && ts >= existing.adminRosterTs)
             // Managers can only add people under the current key.
             existing != null && from in existing.managers -> sameEpochKey && rc.admin == existing.adminPubkey
             existing != null -> false
@@ -1214,6 +1299,7 @@ class Engine(
             previousEpoch = if (rotated) existing!!.epoch else base.previousEpoch,
             previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
             stale = if (newEpoch) false else base.stale,
+            adminRosterTs = if (fromAdmin && (existing == null || from == existing.adminPubkey)) maxOf(if (newEpoch) 0 else base.adminRosterTs, ts) else base.adminRosterTs,
             history = (base.history + events).takeLast(HISTORY_SIZE),
             // Joining: nothing is shared until the user has seen who's in the circle.
             confirmed = if (existing == null) false else base.confirmed,
@@ -1257,19 +1343,22 @@ class Engine(
     /** A member can't confirm its key: resend the roster if they're still in, otherwise tell them they're out. */
     private suspend fun onRosterRequest(body: RosterRequestBody, ref: InboxRef) {
         val c = state.value.circles.firstOrNull { it.id == body.circle } ?: return
-        if (c.adminPubkey != myPubkey || c.version < 2) return
+        if (c.adminPubkey != myPubkey || c.version < 2 || c.stale) return
         if (c.members.any { it.pubkey == body.from }) {
             val recent = c.pendingAcks.firstOrNull { it.pubkey == body.from && it.epoch == c.epoch }
             if (recent != null && now() - recent.lastSentAt < 600) return
             sendRoster(c, listOf(body.from))
         } else if (ref.circleId == c.id) {
-            sendDirect(c, body.from, RemovedBody(myPubkey, now(), c.id))
+            sendDirect(c, body.from, RemovedBody(myPubkey, now(), c.id, to = body.from, epoch = c.epoch + 1))
         }
     }
 
     private suspend fun onRemoved(body: RemovedBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (body.from != circle.adminPubkey) return
+        // v2 notices name their recipient and end an epoch newer than ours: one sent to someone
+        // else, or an old one from before we were let back in, is ignored.
+        if (circle.version >= 2 && (body.to != myPubkey || (body.epoch ?: Int.MIN_VALUE) <= circle.epoch)) return
         forgetCircle(circle.id)
     }
 
@@ -1277,6 +1366,9 @@ class Engine(
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
+        // An old "left" from before they were let back in is a replay.
+        val joinedAt = circle.history.lastOrNull { it.change == MembershipChange.JOINED && it.pubkey == body.from }?.at
+        if (joinedAt != null && body.ts < joinedAt - MAX_CLOCK_SKEW_SECONDS) return
         removeMemberInternal(circle.id, body.from)
     }
 
@@ -1309,11 +1401,12 @@ class Engine(
             } else {
                 val ctl = c.ctlKeyHex!!.hexToBytes()
                 index[CircleCrypto.profileTag(ctl, c.epoch)] = TagTarget(c.id, ctl, c.epoch, TagKind.PROFILE, true)
-                // Heartbeats and closed notices for the past week.
+                // Heartbeats for the past week, and closed notices. The admin listens for closed
+                // notices too, to notice another phone with its identity taking over.
                 if (c.adminPubkey != myPubkey) {
                     (0..7).forEach { back -> index[CircleCrypto.controlTag(ctl, c.epoch, d - back)] = TagTarget(c.id, ctl, c.epoch, TagKind.CONTROL, true) }
-                    index[CircleCrypto.closedTag(ctl, c.epoch)] = TagTarget(c.id, ctl, c.epoch, TagKind.CONTROL, true)
                 }
+                index[CircleCrypto.closedTag(ctl, c.epoch)] = TagTarget(c.id, ctl, c.epoch, TagKind.CONTROL, true)
                 // Our inboxes for the past week (messages expire after 7 days), under this and recent control keys.
                 (listOf(c.ctlKeyHex) + c.oldControls.filter { it.until > t }.map { it.ctlKeyHex }).forEach { k ->
                     val kb = k.hexToBytes()
@@ -1392,6 +1485,12 @@ class Engine(
 
         /** Unacknowledged rosters are resent for this long. */
         const val RETRY_WINDOW_SECONDS = 14 * 24 * 3600L
+
+        /** How far an identity reset moves the epoch on, so a leftover copy can't get there first. */
+        const val RESET_EPOCH_JUMP = 1_000
+
+        /** Rosters with more people than this are rejected as malformed. */
+        const val MAX_MEMBERS = 200
 
         const val ROSTER_REQUEST_EVERY_SECONDS = 30 * 60L
 

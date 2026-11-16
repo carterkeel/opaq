@@ -132,7 +132,11 @@ Compatibility: v2 rosters use a new message type (`roster2`), so an older app ig
 
 **Tests.** `CircleSecurityTest.yesterdaysKeyIsGoneAndTodaysCantReachBack`, `weeklyRotationReplacesTheKeyWithFreshRandomness`, `backupsCarryOnlyCurrentKeys`. `ProtocolTest.ratchetIsDeterministicOneWayAndCircleSpecific`.
 
-**Remaining limitations.** Someone who takes a phone's keys can read up to about two days back (yesterday's key) and forward until the next fresh rotation (at most a week). A stolen identity (QM-01) still receives new keys; see Phase 1. MLS was evaluated and not adopted for now: it needs a delivery service model that Nostr relays don't provide without much more machinery, and the changes above meet the plan's acceptance criteria.
+**Remaining limitations.**
+
+- **What holds.** Someone who takes only a phone's circle keys can read about two days back (yesterday's key) and forward until the next fresh rotation (at most a week).
+- **What doesn't (found by the independent review, below).** Rosters, which carry each epoch's keys, are encrypted to the member's long-term identity key, and that key lives on the same phone and in the same backup. So someone who gets a phone's saved state or a backup, *and* has a relay archive that kept old rosters (rosters ask relays to delete them after 7 days, but a relay can ignore that), can open every archived roster and read the archived updates of those epochs. Forward secrecy here therefore depends on relays honouring expiry.
+- **The fix**, not done yet: deliver rosters to one-time keys that each member sends with its acknowledgement and deletes once used, keeping the identity key for joins only. A stolen identity (QM-01) still receives new keys; see Phase 1. MLS was evaluated and not adopted for now: it needs a delivery service model that Nostr relays don't provide without much more machinery, and the changes above meet the plan's acceptance criteria.
 
 ### QM-05: members overwriting or replaying each other's updates
 
@@ -312,3 +316,35 @@ The rest of QM-02 is under Phase 12 below.
 
 - **Release signing.** Test builds share a CI-only key kept in the Actions cache. A real release key, kept offline by the owner, should sign Play and GitHub releases. That needs the owner.
 - **Reproducible builds and Gradle dependency verification** (`verification-metadata.xml`). Both need a machine with Maven access to generate and check hashes; this session can't reach Maven.
+
+## Independent review
+
+A separate reviewer that hadn't seen the work read the whole diff (`078b96c..security-hardening`) for attacks on circle protocol v2, PIN gating, backups, and overclaims in this log and `PRIVACY.md`. It confirmed these as sound:
+
+- member-owned publisher keys and `seq` replay protection;
+- heartbeat and closed-notice handling across epochs;
+- outsiders and managers can't change the key or the admin;
+- permanent public keys stay off relays on v2;
+- the PIN covers every action listed under QM-01.
+
+Its findings and what was done:
+
+| Finding | Severity | Fix | Test |
+| --- | --- | --- | --- |
+| A member could forward an admin-signed `RemovedBody` (one sent to a throwaway key, or an old one) to another member to make them leave | High | `RemovedBody` names its recipient (`to`) and the epoch it ends (`epoch`). v2 circles ignore notices for someone else or for an epoch that isn't newer | `removalNoticesOnlyWorkForTheirRecipientAndANewerEpoch` |
+| Forward secrecy overclaimed: rosters are encrypted to the identity key, which sits beside the circle keys | High | Claim corrected under QM-04. One-time roster keys recorded as the fix | (documentation) |
+| After an identity reset, members who missed it never heard again, and a leftover copy of the old identity kept running the circle | Medium | The reset jumps the epoch by 1,000. The old secret is kept only to sign roster resends and closed notices for stragglers, for 14 days or until everyone confirms. A copy that sees its own epoch closed by its own key stands down and tells its user | `membersWhoMissAResetStillFollowItAndACopyCantPullThemBack`, `anAdminResetMovesTheirCirclesToTheNewIdentity` |
+| An old admin roster from the same epoch could be replayed to undo a later change, such as revoking a manager | Medium | Admin rosters must be at least as new as the last one accepted for the epoch (`Circle.adminRosterTs`) | `anOldRosterCantBePassedOnToUndoALaterChange` |
+| Whoever holds an invite link can join under the expected person's name; checking the joiner's code was optional | Medium | Approving needs "Their code matches" turned on, unless the joiner is already verified. Approving then marks them verified | (UI; covered by the approval flow) |
+| Moving the phone's clock forward ended PIN lockouts | Medium | Lockouts and the PIN window are timed on time-since-boot (`elapsedRealtime`, `systemUptime`). A reboot restarts the wait rather than ending it | `changingTheDateDoesntEndAPinLockout` |
+| Joining and "Start sharing" needed no PIN; keeping an invite's relays changed relays without it | Low | Both need the PIN when one is set | `startingToShareWithANewCircleNeedsThePin` |
+| v2 invites could be downgraded to unsigned v1 | Low | Unsigned v1 links are refused | `ProtocolTest.inviteLinksRoundTrip` |
+| Malformed roster fields (`day = 0`, bad `ctl`) could crash every housekeeping pass; `rosterOf` crashed if the admin's clock went back | Low | Rosters are validated (hex keys, valid public keys, `day` within 30 days, at most 200 members). `rosterOf` sends the key for the later of today and the key's first day | `malformedRostersAreIgnored` |
+| Old `LeftBody` messages could be replayed to remove someone who rejoined | Low | Ignored if older than that person's latest join in the circle history | `anOldLeftMessageCantRemoveSomeoneWhoCameBack` |
+| Backup memory limit (1 GiB) could exhaust Android; salts over 16 bytes gave different keys on iOS | Low | Limit lowered to 256 MiB; salt must be exactly 16 bytes | `backupFilesCantDemandAbsurdWork` |
+
+**Still open.**
+
+- **A scanned QR counts as in-person verification.** A screenshot of a QR code swapped in a chat app would pass.
+- **A copy run on purpose by someone who stole the old identity** can still win over members it reaches before the hand-over does, since the old key was the authority until then.
+- **One-time roster keys** (see QM-04) are not done.

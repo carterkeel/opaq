@@ -106,7 +106,10 @@ class ProtocolTest {
     @Test
     fun inviteLinksRoundTrip() {
         val jordan = KeyPair.generate()
-        val data = InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol"), c = "cid", cn = "Family", s = "a".repeat(32), e = now + 3600)
+        val unsigned = InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol"), c = "cid", cn = "Family", s = "a".repeat(32), e = now + 3600)
+        assertNull(InviteLinks.decode(InviteLinks.encode(unsigned)), "unsigned v1 links are refused")
+        assertNull(InviteLinks.decode(InviteLinks.encode(InviteLinks.signed(jordan, unsigned).copy(v = 1, x = null))), "no downgrading a v2 link")
+        val data = InviteLinks.signed(jordan, unsigned)
         val link = InviteLinks.encode(data)
         assertTrue(link.startsWith("quietmap://join#"))
         assertEquals(data, InviteLinks.decode(link))

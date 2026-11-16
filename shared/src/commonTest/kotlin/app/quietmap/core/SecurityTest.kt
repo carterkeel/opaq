@@ -210,6 +210,28 @@ class SecurityTest {
     }
 
     @Test
+    fun changingTheDateDoesntEndAPinLockout() = runTest {
+        var uptime = 5_000L
+        val e = Engine(FlakyStore(), scope, { clock }, transport = { network.client(it) }, elapsed = { uptime })
+        e.setPin("2468")
+        repeat(5) { e.unlock("0000") }
+        clock += 86_400 // the date moved forward a day
+        assertTrue(e.unlock("2468") is PinResult.Locked)
+        uptime += 31
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        clock += 86_400
+        assertTrue(e.isAuthorized(), "the PIN window runs on the same clock")
+        uptime += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFalse(e.isAuthorized())
+        // After a reboot the uptime starts again: the wait restarts rather than ending.
+        repeat(5) { e.unlock("0000") }
+        uptime = 10
+        assertTrue(e.unlock("2468") is PinResult.Locked)
+        uptime += 31
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+    }
+
+    @Test
     fun wrongPinsLockForLongerEachTime() = runTest {
         val e = engine(FlakyStore())
         e.setPin("2468")
@@ -276,5 +298,9 @@ class SecurityTest {
         assertFailsWith<IllegalArgumentException> { Backups.decrypt(crafted, "whatever123") }
         val sha = "quietmap-backup-v2\n{\"kdf\":\"sha1\",\"m\":65536,\"t\":3,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAA\"}\nAA\n"
         assertFailsWith<IllegalArgumentException> { Backups.decrypt(sha, "whatever123") }
+        val big = "quietmap-backup-v2\n{\"kdf\":\"argon2id\",\"m\":524288,\"t\":3,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAA\"}\nAA\n"
+        assertFailsWith<IllegalArgumentException>("512 MiB is more than a phone should be asked for") { Backups.decrypt(big, "whatever123") }
+        val longSalt = "quietmap-backup-v2\n{\"kdf\":\"argon2id\",\"m\":65536,\"t\":3,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\"}\nAA\n"
+        assertFailsWith<IllegalArgumentException>("salts are exactly 16 bytes on both platforms") { Backups.decrypt(longSalt, "whatever123") }
     }
 }

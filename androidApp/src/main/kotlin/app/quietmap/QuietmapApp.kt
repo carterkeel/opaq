@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -36,6 +37,7 @@ class QuietmapApp : Application() {
             now = { System.currentTimeMillis() / 1000 },
             log = { Log.d("Quietmap", it) },
             deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
+            elapsed = { SystemClock.elapsedRealtime() / 1000 },
         ).also { it.start() }
     }
 

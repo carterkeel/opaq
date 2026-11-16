@@ -86,6 +86,14 @@ data class Circle(
     val previousValidUntil: Long? = null,
     /** Circle protocol version: 1 (one static key per epoch) or 2 (see CircleCrypto). */
     val version: Int = 1,
+    /** Timestamp of the newest admin roster accepted for this epoch; older ones are replays. */
+    val adminRosterTs: Long = 0,
+    /**
+     * After an identity reset, the old identity's secret, kept only to sign the hand-over (roster
+     * resends and closed notices) for members who missed it, until they confirm or [handoverUntil].
+     */
+    val handoverSecretHex: String? = null,
+    val handoverUntil: Long = 0,
     /** v2: UTC day that [keyHex] belongs to. Keys for earlier days are deleted. */
     val keyDay: Long = 0,
     val previousKeyDay: Long? = null,
@@ -140,7 +148,14 @@ data class PinLock(
     val saltHex: String,
     val iterations: Int,
     val failedAttempts: Int = 0,
+    /** Wall-clock end of the lockout, for display only. */
     val lockedUntil: Long = 0,
+    /**
+     * The lockout as measured by the phone's monotonic clock (seconds since boot), which changing
+     * the date and time can't move. A reboot restarts the wait.
+     */
+    val lockStartElapsed: Long = 0,
+    val lockUntilElapsed: Long = 0,
 )
 
 @Serializable
