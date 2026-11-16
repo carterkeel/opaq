@@ -122,9 +122,13 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
     val action = gate.pending ?: return
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    // One check at a time: taps and the keyboard's Done are ignored until the answer is back.
+    var checking by remember { mutableStateOf(false) }
     val submit: () -> Unit = submit@{
-        if (pin.length < 4) return@submit
+        if (pin.length < 4 || checking) return@submit
+        checking = true
         actions.unlock(pin) { result ->
+            checking = false
             pin = ""
             when (result) {
                 PinResult.Ok -> {
@@ -142,6 +146,7 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
         confirm = "Continue",
         onConfirm = submit,
         onDismiss = { gate.pending = null },
+        confirmEnabled = !checking,
     ) {
         PinField(pin, { pin = it; error = null }, "PIN", onDone = submit)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
@@ -164,15 +169,23 @@ fun NewPinFields(onDone: (() -> Unit)? = null, onValid: (String?) -> Unit) {
 @Composable
 fun SetPinSheet(actions: Actions, title: String, onDismiss: () -> Unit) {
     var chosen by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    // One save at a time: further taps and the keyboard's Done are ignored until it's done.
+    val save: () -> Unit = save@{
+        val pin = chosen ?: return@save
+        if (saving) return@save
+        saving = true
+        actions.setPin(pin, onFailed = { saving = false }, onDone = { saving = false; onDismiss() })
+    }
     ConfirmSheet(
         title = title,
         text = "Quietmap asks for it before backups, invites, approving or removing people, relay changes and security settings. Never to open the app or see where people are.",
         confirm = "Save PIN",
-        onConfirm = { chosen?.let { actions.setPin(it) { onDismiss() } } },
+        onConfirm = save,
         onDismiss = onDismiss,
-        confirmEnabled = chosen != null,
+        confirmEnabled = chosen != null && !saving,
     ) {
-        NewPinFields(onDone = { chosen?.let { actions.setPin(it) { onDismiss() } } }) { chosen = it }
+        NewPinFields(onDone = save) { chosen = it }
     }
 }
 
@@ -285,7 +298,9 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
 /** "You're still sharing your location": who sees it, how precisely, keep or stop. Swiping it away decides nothing. */
 @Composable
 fun ConsentSheet(state: AppState, me: String, actions: Actions, onDismiss: () -> Unit) {
-    val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.filter { it != me }.toSet().size
+    // Only circles you've started sharing with: a circle joined but not yet confirmed sees nothing.
+    val sharingWith = state.circles.filter { it.confirmed }
+    val people = sharingWith.flatMap { c -> c.members.map { it.pubkey } }.filter { it != me }.toSet().size
     ConfirmSheet(
         title = "You're sharing your location",
         text = "With $people ${if (people == 1) "person" else "people"}. Check this is still what you want.",
@@ -294,7 +309,7 @@ fun ConsentSheet(state: AppState, me: String, actions: Actions, onDismiss: () ->
         dismiss = "Decide later",
         onDismiss = onDismiss,
     ) {
-        state.circles.forEach { c ->
+        sharingWith.forEach { c ->
             val others = c.members.count { it.pubkey != me }
             Text(
                 "${c.name}: $others ${if (others == 1) "person" else "people"} · ${precisionLabel(c.precision)}",
