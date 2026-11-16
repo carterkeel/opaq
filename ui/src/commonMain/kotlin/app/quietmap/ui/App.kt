@@ -7,7 +7,9 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -161,10 +163,13 @@ fun QuietmapScreens(
                         targetState = stack.toList(),
                         transitionSpec = { slideTransition(rtl) },
                         contentKey = { it.last() },
+                        // Every route, Home included, fills the screen. Otherwise the container
+                        // would grow out of nothing and screens would seem to open from the middle.
+                        modifier = Modifier.fillMaxSize(),
                         label = "screens",
                     ) { routes ->
                         when (val route = routes.last()) {
-                            Route.Home -> Box(Modifier) // the always-composed home shows through
+                            Route.Home -> Box(Modifier.fillMaxSize()) // empty: the always-composed home shows through
                             else -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                                     when (route) {
@@ -203,21 +208,45 @@ fun QuietmapScreens(
 /** Moving between screens (and setup steps), like Signal: short, eased, no bounce. */
 internal val screenSlideSpec: FiniteAnimationSpec<IntOffset> = tween(durationMillis = 220, easing = FastOutSlowInEasing)
 
+/** The edge a screen comes in from when it opens, and goes back to when it closes. */
+private enum class Edge { End, Bottom }
+
 /**
- * Like Signal. Push: the new screen slides in from the end across the full width while the old one
- * slides out toward the start at the same speed, with no fade. Pop is the exact reverse.
+ * Screens open from the side their button is on. Settings (top corner button) and screens opened
+ * from another screen come in from the end edge, like Signal. Screens opened from the people sheet
+ * at the bottom of the map (a profile, inviting, joining) come up from the bottom.
+ */
+private fun Route.edge(): Edge = when (this) {
+    is Route.Profile, is Route.Add, Route.JoinOptions, is Route.Join -> Edge.Bottom
+    else -> Edge.End
+}
+
+/**
+ * Push: the new screen slides in from its [Edge] with no fade; pop is the exact reverse. From the
+ * end edge the old screen slides out the other way at the same speed. From the bottom the new
+ * screen rises over the old one, which stays put.
  */
 private fun AnimatedContentTransitionScope<List<Route>>.slideTransition(rtl: Boolean): ContentTransform {
     val forward = targetState.size >= initialState.size
-    // Offsets use each screen's own width, not the container's: the Home route is an empty box.
     val end = if (rtl) -1 else 1
-    return if (forward) {
-        slideInHorizontally(screenSlideSpec) { it * end }
-            .togetherWith(slideOutHorizontally(screenSlideSpec) { -it * end })
-            .apply { targetContentZIndex = 1f }
-    } else {
-        slideInHorizontally(screenSlideSpec) { -it * end }
-            .togetherWith(slideOutHorizontally(screenSlideSpec) { it * end })
-            .apply { targetContentZIndex = -1f }
+    // The screen on top (the one opening or closing) decides the direction.
+    val edge = (if (forward) targetState else initialState).last().edge()
+    return when {
+        edge == Edge.Bottom && forward ->
+            slideInVertically(screenSlideSpec) { it }
+                .togetherWith(slideOutVertically(screenSlideSpec) { 0 })
+                .apply { targetContentZIndex = 1f }
+        edge == Edge.Bottom ->
+            slideInVertically(screenSlideSpec) { 0 }
+                .togetherWith(slideOutVertically(screenSlideSpec) { it })
+                .apply { targetContentZIndex = -1f }
+        forward ->
+            slideInHorizontally(screenSlideSpec) { it * end }
+                .togetherWith(slideOutHorizontally(screenSlideSpec) { -it * end })
+                .apply { targetContentZIndex = 1f }
+        else ->
+            slideInHorizontally(screenSlideSpec) { -it * end }
+                .togetherWith(slideOutHorizontally(screenSlideSpec) { it * end })
+                .apply { targetContentZIndex = -1f }
     }
 }

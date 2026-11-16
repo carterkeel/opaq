@@ -15,6 +15,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -65,6 +66,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -224,6 +226,15 @@ fun HomeScreen(
                     darkMap = state.darkMap,
                 )
             }
+
+            // A soft fade behind the status bar keeps the clock, signal and battery readable over the map.
+            val scrim = MaterialTheme.colorScheme.background
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(with(density) { insetTop.toDp() } + 28.dp)
+                    .background(Brush.verticalGradient(listOf(scrim.copy(alpha = 0.72f), scrim.copy(alpha = 0.35f), scrim.copy(alpha = 0f)))),
+            )
 
             // Floating controls over the map.
             Row(

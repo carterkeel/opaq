@@ -162,4 +162,4 @@ Two-phone manual testing is described in `TESTING.md`.
 - New persisted fields go in `AppState` **with defaults**, so older saved state still loads.
 - New protocol messages: add a `Body` subclass with a `@SerialName`, keep old ones decodable, and add a round-trip test in `ProtocolTest`.
 - User-facing text: plain and short, and say what happens ("Stop sharing with everyone", not "Disable").
-- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Screens slide in and out across the full width like Signal's (a short tween, no fade, nothing bouncy).
+- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Screens slide in from the side their button is on (Settings and sub-screens from the end edge, screens opened from the people sheet from the bottom; `Route.edge()` in App.kt) with a short tween, no fade, nothing bouncy. A soft fade at the top of the map keeps the status bar readable.
