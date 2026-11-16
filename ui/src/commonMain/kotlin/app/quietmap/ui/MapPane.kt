@@ -1,6 +1,5 @@
 package app.quietmap.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -78,11 +77,10 @@ private const val STREET_ZOOM = 15.5
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
 
-/** OpenFreeMap's dark style, used when the phone is in dark mode so the map doesn't glare. */
+/** OpenFreeMap's dark style, for people who turn on Settings → Display → Dark map. */
 private const val DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
 
-@Composable
-private fun mapStyle(): BaseStyle = BaseStyle.Uri(if (isSystemInDarkTheme()) DARK_STYLE_URL else STYLE_URL)
+private fun mapStyle(dark: Boolean): BaseStyle = BaseStyle.Uri(if (dark) DARK_STYLE_URL else STYLE_URL)
 
 /** Text the map must show for OpenFreeMap / OpenMapTiles / OpenStreetMap data. */
 const val MAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors"
@@ -104,10 +102,10 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
  */
 @Composable
-fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier) {
+fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier, darkMap: Boolean = false) {
     val shown = rememberMovingMarkers(markers)
     val geoJson = remember(shown) { markersToGeoJson(shown) }
-    val mapState = rememberMapState(baseStyle = mapStyle()) {
+    val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
             cluster = true
             clusterRadius = 36
@@ -265,10 +263,10 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
  * dot where they stayed put. Frames the whole day, or [focus] (one tapped stretch) when set.
  */
 @Composable
-fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier) {
+fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false) {
     val lines = remember(segments) { historyLines(segments) }
     val stops = remember(segments) { historyStops(segments) }
-    val mapState = rememberMapState(baseStyle = mapStyle()) {
+    val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val lineSource = rememberGeoJsonSource(GeoJsonData.JsonString(lines))
         val stopSource = rememberGeoJsonSource(GeoJsonData.JsonString(stops))
         LineLayer(

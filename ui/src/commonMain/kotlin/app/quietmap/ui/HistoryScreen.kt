@@ -21,6 +21,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,7 +105,7 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
             Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(300.dp)
                 .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            if (shown.isNotEmpty()) HistoryMap(shown, segments, focus, Modifier.fillMaxWidth().height(300.dp))
+            if (shown.isNotEmpty()) key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxWidth().height(300.dp), darkMap = state.darkMap) }
             else Text(
                 if (points == null) "" else "No history for this day",
                 style = MaterialTheme.typography.bodyMedium,

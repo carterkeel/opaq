@@ -29,6 +29,8 @@ data class AppState(
     val profiles: Map<String, MemberProfile> = emptyMap(),
     /** Show other people's profile photos; off shows everyone's initial avatar instead. */
     val showPhotos: Boolean = true,
+    /** Draw the map with the dark style. Off (the light map) unless turned on in Settings. */
+    val darkMap: Boolean = false,
     /** The circle shown when the app opens. */
     val lastCircleId: String? = null,
     /** First-run setup finished (or skipped). */

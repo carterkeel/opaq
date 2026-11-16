@@ -45,6 +45,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -195,13 +196,17 @@ fun HomeScreen(
                 }
             }
 
-            MapPane(
-                markers = markers,
-                focusKey = circle.id,
-                focus = focus,
-                bottomInset = with(density) { (fullH - defaultY).toDp() },
-                modifier = Modifier.fillMaxSize(),
-            )
+            // Switching the map style recreates the map, so it's keyed on the setting.
+            key(state.darkMap) {
+                MapPane(
+                    markers = markers,
+                    focusKey = circle.id,
+                    focus = focus,
+                    bottomInset = with(density) { (fullH - defaultY).toDp() },
+                    modifier = Modifier.fillMaxSize(),
+                    darkMap = state.darkMap,
+                )
+            }
 
             // Floating controls over the map.
             Row(

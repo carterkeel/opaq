@@ -310,6 +310,11 @@ object AppIcons {
         moveTo(9f, 9.5f); lineTo(9f, 10f); moveTo(15f, 9.5f); lineTo(15f, 10f)
     }
 
+    /** A crescent moon. */
+    val Moon: ImageVector = stroke("Moon") {
+        moveTo(20f, 14.5f); arcTo(8.5f, 8.5f, 0f, true, true, 9.5f, 4f); arcTo(7f, 7f, 0f, false, false, 20f, 14.5f); close()
+    }
+
     val Info: ImageVector = stroke("Info") {
         moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
         moveTo(12f, 11f); lineTo(12f, 16.5f)

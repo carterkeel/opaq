@@ -550,6 +550,7 @@ fun SettingsScreen(
 
         SectionHeader("Display")
         SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
+        SwitchRow("Dark map", "Darker map colours, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
 
         SectionHeader("Circles")
         state.circles.forEach { c ->

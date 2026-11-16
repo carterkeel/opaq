@@ -301,6 +301,8 @@ class Engine(
 
     suspend fun setShowPhotos(on: Boolean) = update { it.copy(showPhotos = on) }
 
+    suspend fun setDarkMap(on: Boolean) = update { it.copy(darkMap = on) }
+
     suspend fun setLastCircle(circleId: String) = update { if (it.lastCircleId == circleId) it else it.copy(lastCircleId = circleId) }
 
     suspend fun setSetupDone() = update { it.copy(setupDone = true) }
