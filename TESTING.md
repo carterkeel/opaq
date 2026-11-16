@@ -33,7 +33,7 @@ Things to check after that:
 
 | Test | Expected |
 |---|---|
-| Walk or drive with phone B | Phone A shows "Walking" or "Driving · NN mph", updating about every minute |
+| Walk or drive with phone B | Phone A shows "Walking" or "Driving · NN mph", updating about every 30 seconds, with the dot gliding between updates |
 | Leave phone B still for 10 minutes | Updates slow to about every 5 minutes; status shows "Still" |
 | Turn phone B off for an hour | Phone A shows "Offline · last seen 1 h ago" after 45 minutes |
 | Phone A removes B (profile → Remove) | B's circle disappears; A no longer receives B's updates |

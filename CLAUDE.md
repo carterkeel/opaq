@@ -13,7 +13,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~60 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
+  - Updates go out at only two steady rates (~30 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Quietmap", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -95,6 +95,8 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - The Android significant-motion sensor sets a "motion hint" that switches to GPS straight away.
 - `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 20 s after the last publish.
 - On the receiving side, `Format.status` shows a stale moving update as "Was driving".
+
+**Between updates.** Dots glide to each new update, and someone travelling is carried forward along their heading (`Prediction`, used by `MapPane`), only for exact, accurate, moving updates and never more than `Prediction.HORIZON_SECONDS` ahead.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 

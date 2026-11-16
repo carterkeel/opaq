@@ -10,7 +10,7 @@ Phones exchange encrypted messages through public [Nostr](https://nostr.com) rel
 | --- | --- |
 | Your IP address, and when you're online | Unless you use Tor (below). Every phone keeps a connection open to each of its relays. |
 | Which circle tags your phone follows | Tags change every hour (locations) or every day (heartbeats and inboxes), and come from keys the relay doesn't have. But one connection asks for all of a phone's circles at once, so a relay can tell that the same phone follows those tags, and that other connections follow the same ones: roughly who shares a circle with whom, and how many people are in it. |
-| When you publish, and how often | Updates go out about every minute while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
+| When you publish, and how often | Updates go out about every 30 seconds while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
 | The size of each event | Location updates are padded to one fixed size, so their size reveals nothing. |
 | When a circle changes | Key rotations, joins and removals send a burst of messages. |
 

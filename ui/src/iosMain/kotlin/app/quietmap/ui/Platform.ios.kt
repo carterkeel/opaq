@@ -12,6 +12,8 @@ import platform.Foundation.timeIntervalSince1970
 
 actual fun epochSeconds(): Long = NSDate().timeIntervalSince1970.toLong()
 
+actual fun epochMillis(): Long = (NSDate().timeIntervalSince1970 * 1000).toLong()
+
 actual fun regionUsesMiles(): Boolean = NSLocale.currentLocale.countryCode in MILES_REGIONS
 
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =

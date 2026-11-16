@@ -15,7 +15,7 @@ Status: early development. Android first; iOS will reuse the shared Kotlin Multi
 |---|---|
 | Location updates | Encrypted once per circle (NIP-44 v2 with a circle key), padded to a fixed size, and published as a replaceable Nostr event. Relays keep only the newest one. |
 | Unlinkability | The signing key and the event tag both change every hour and are derived from the circle key, so relays can't tie a member's updates together across hours. Each update is also signed inside the encryption by the sender's real key, so circle members know who sent it. |
-| Send rhythm | Two fixed rates with jitter: about every minute while moving, about every five minutes while still. Relays can tell at most whether someone is moving. Walking, driving and speed are inside the encryption. |
+| Send rhythm | Two fixed rates with jitter: about every 30 seconds while moving, about every five minutes while still. Relays can tell at most whether someone is moving. Walking, driving and speed are inside the encryption. |
 | Invites and approvals | Sealed one-to-one messages (kind 1059) signed by a throwaway key and encrypted to the recipient. |
 | Removing someone | The admin rotates the circle key and sends it only to remaining members. |
 | Storage | App state, including your private key, is encrypted with an Android Keystore key and excluded from backups. |

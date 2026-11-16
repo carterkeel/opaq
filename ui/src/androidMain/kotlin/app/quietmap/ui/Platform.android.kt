@@ -9,6 +9,8 @@ import java.util.Locale
 
 actual fun epochSeconds(): Long = System.currentTimeMillis() / 1000
 
+actual fun epochMillis(): Long = System.currentTimeMillis()
+
 actual fun regionUsesMiles(): Boolean = Locale.getDefault().country in MILES_REGIONS
 
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =

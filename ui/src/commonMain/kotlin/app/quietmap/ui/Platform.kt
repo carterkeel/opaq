@@ -64,6 +64,9 @@ val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No Platfor
 /** Seconds since the Unix epoch. */
 expect fun epochSeconds(): Long
 
+/** Milliseconds since the Unix epoch, for smooth animation. */
+expect fun epochMillis(): Long
+
 /** Whether to show speeds in mph rather than km/h, from the phone's region. */
 expect fun regionUsesMiles(): Boolean
 

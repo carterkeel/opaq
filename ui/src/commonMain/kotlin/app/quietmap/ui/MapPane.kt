@@ -7,6 +7,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameMillis
+import app.quietmap.core.MotionPolicy
+import app.quietmap.core.Prediction
+import app.quietmap.core.model.MemberLocation
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -37,8 +42,19 @@ import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.Position
 
-/** One person on the map. [color] is a hex color such as "#1251D3"; offline people are drawn grey. */
-data class MapMarker(val id: String, val lat: Double, val lon: Double, val initial: String, val color: String, val kind: Kind) {
+/**
+ * One person on the map. [color] is a hex color such as "#1251D3"; offline people are drawn grey.
+ * [location] is their latest update, used to move the dot ahead between updates while they travel.
+ */
+data class MapMarker(
+    val id: String,
+    val lat: Double,
+    val lon: Double,
+    val initial: String,
+    val color: String,
+    val kind: Kind,
+    val location: MemberLocation? = null,
+) {
     enum class Kind { ME, ONLINE, OFFLINE }
 }
 
@@ -74,7 +90,8 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  */
 @Composable
 fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier) {
-    val geoJson = remember(markers) { markersToGeoJson(markers) }
+    val shown = rememberMovingMarkers(markers)
+    val geoJson = remember(shown) { markersToGeoJson(shown) }
     val mapState = rememberMapState(baseStyle = BaseStyle.Uri(STYLE_URL)) {
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
             cluster = true
@@ -148,6 +165,64 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
         interactions = Interactions,
         overlay = {},
     )
+}
+
+/** How long a dot takes to glide to a new update. */
+private const val GLIDE_MS = 1_000.0
+
+/** A jump bigger than this (km) is shown at once rather than as a long slide across the map. */
+private const val MAX_GLIDE_KM = 20.0
+
+/** Map refreshes per second while dots are moving. */
+private const val FRAMES_PER_SECOND = 30
+
+/**
+ * The markers as they should be drawn right now (#55, #57): a new update glides from where the dot
+ * was instead of jumping, and someone travelling keeps moving ahead between updates
+ * ([Prediction]). Runs at [FRAMES_PER_SECOND] only while something moves, and checks once a second
+ * otherwise, so an estimate that has run out settles back on the real position.
+ */
+@Composable
+private fun rememberMovingMarkers(markers: List<MapMarker>): List<MapMarker> {
+    var shown by remember { mutableStateOf(markers) }
+    val drawn = remember { HashMap<String, Pair<Double, Double>>() }
+    LaunchedEffect(markers) {
+        // Each dot glides from where it's drawn now; a new marker or a huge jump starts in place.
+        class Glide(var from: Pair<Double, Double>?, var startMs: Long, var predicted: Boolean? = null)
+        val glides = markers.associate { m ->
+            val prev = drawn[m.id]
+            val far = prev == null || MotionPolicy.distanceMeters(prev.first, prev.second, m.lat, m.lon) > MAX_GLIDE_KM * 1000
+            m.id to Glide(if (far) null else prev, epochMillis())
+        }
+        var lastFrame = 0L
+        while (true) {
+            val nowMs = epochMillis()
+            var moving = false
+            val next = markers.map { m ->
+                val g = glides.getValue(m.id)
+                val est = m.location?.takeIf { m.kind != MapMarker.Kind.OFFLINE }?.let { Prediction.estimate(it, nowMs / 1000.0) }
+                val predicted = est?.predicted == true
+                // An estimate that ran out goes back to the real position: glide there too.
+                if (g.predicted == true && !predicted) { g.from = drawn[m.id]; g.startMs = nowMs }
+                g.predicted = predicted
+                if (est?.advancing == true) moving = true
+                val target = est?.let { it.lat to it.lon } ?: (m.lat to m.lon)
+                val t = ((nowMs - g.startMs) / GLIDE_MS).coerceIn(0.0, 1.0)
+                if (t < 1.0) moving = true
+                val eased = 1 - (1 - t) * (1 - t) * (1 - t) // ease out, no overshoot
+                val origin = g.from ?: target
+                val pos = (origin.first + (target.first - origin.first) * eased) to (origin.second + (target.second - origin.second) * eased)
+                drawn[m.id] = pos
+                if (pos.first == m.lat && pos.second == m.lon) m else m.copy(lat = pos.first, lon = pos.second)
+            }
+            if (next != shown && (nowMs - lastFrame >= 1000 / FRAMES_PER_SECOND || !moving)) {
+                shown = next
+                lastFrame = nowMs
+            }
+            if (moving) withFrameMillis { } else delay(1_000)
+        }
+    }
+    return shown
 }
 
 private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject {
