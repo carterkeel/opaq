@@ -150,7 +150,8 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textField = format(span(feature["initial"].asString())),
             textFont = const(listOf("Noto Sans Bold")),
             textSize = const(13.sp),
-            textColor = const(Color.White),
+            // From the feature, like the dot colour: const(Color.White) rendered magenta here (#63).
+            textColor = feature["textColor"].convertToColor(),
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),
         )
@@ -250,6 +251,7 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
                 }
                 putJsonObject("properties") {
                     put("initial", mk.initial)
+                    put("textColor", "#FFFFFF")
                     put("color", if (mk.kind == MapMarker.Kind.OFFLINE) "#9E9E9E" else mk.color)
                 }
             }
