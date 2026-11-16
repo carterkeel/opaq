@@ -116,22 +116,28 @@ fun QuietmapScreens(
     CompositionLocalProvider(LocalPlatform provides platform, LocalPinGate provides pinGate) {
         QuietmapTheme {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                // Backgrounds, the map and the people sheet reach the screen edges; each screen keeps
+                // its own content clear of the status bar, notch, home indicator and keyboard.
+                Box(Modifier.fillMaxSize()) {
                     val unreadable = recovery
                     if (unreadable != null) {
-                        RecoveryScreen(unreadable, actions, onRestore = { push(Route.Restore) })
+                        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                            RecoveryScreen(unreadable, actions, onRestore = { push(Route.Restore) })
+                        }
                     } else if (showSetup) {
-                        SetupScreen(
-                            state = state,
-                            me = me,
-                            actions = actions,
-                            hasLocationPermission = hasLocationPermission,
-                            onRequestLocation = onRequestLocation,
-                            onJoinLink = openLink,
-                            onScan = scan,
-                            onRestore = { push(Route.Restore) },
-                            onCircleCreated = selectCircle,
-                        )
+                        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                            SetupScreen(
+                                state = state,
+                                me = me,
+                                actions = actions,
+                                hasLocationPermission = hasLocationPermission,
+                                onRequestLocation = onRequestLocation,
+                                onJoinLink = openLink,
+                                onScan = scan,
+                                onRestore = { push(Route.Restore) },
+                                onCircleCreated = selectCircle,
+                            )
+                        }
                     } else {
                         HomeScreen(
                             state = state,
@@ -159,26 +165,28 @@ fun QuietmapScreens(
                         when (val route = routes.last()) {
                             Route.Home -> Box(Modifier) // the always-composed home shows through
                             else -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                                when (route) {
-                                    is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop, onHistory = { push(Route.History(route.circleId, route.pubkey)) })
-                                    is Route.History -> HistoryScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
-                                    is Route.Add -> AddScreen(state, me, route.circleId, actions, ::pop)
-                                    is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home)
-                                    Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)
-                                    Route.Settings -> SettingsScreen(
-                                        state, me, relayStatus, sharingSettings, actions, ::pop,
-                                        onEditProfile = { push(Route.EditProfile) },
-                                        onBackup = { push(Route.Backup) },
-                                        onRestore = { push(Route.Restore) },
-                                        onSecurityLog = { push(Route.SecurityLog) },
-                                        onCircle = { push(Route.CircleInfo(it)) },
-                                    )
-                                    Route.EditProfile -> EditProfileScreen(state, me, actions, ::pop)
-                                    Route.Backup -> BackupScreen(state, actions, ::pop)
-                                    Route.SecurityLog -> SecurityLogScreen(state, ::pop)
-                                    is Route.CircleInfo -> CircleInfoScreen(state, me, route.circleId, actions, ::pop)
-                                    Route.Restore -> RestoreScreen(actions, ::pop) { selectedCircle = null; home() }
-                                    Route.Home -> Unit
+                                Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                                    when (route) {
+                                        is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop, onHistory = { push(Route.History(route.circleId, route.pubkey)) })
+                                        is Route.History -> HistoryScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
+                                        is Route.Add -> AddScreen(state, me, route.circleId, actions, ::pop)
+                                        is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home)
+                                        Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)
+                                        Route.Settings -> SettingsScreen(
+                                            state, me, relayStatus, sharingSettings, actions, ::pop,
+                                            onEditProfile = { push(Route.EditProfile) },
+                                            onBackup = { push(Route.Backup) },
+                                            onRestore = { push(Route.Restore) },
+                                            onSecurityLog = { push(Route.SecurityLog) },
+                                            onCircle = { push(Route.CircleInfo(it)) },
+                                        )
+                                        Route.EditProfile -> EditProfileScreen(state, me, actions, ::pop)
+                                        Route.Backup -> BackupScreen(state, actions, ::pop)
+                                        Route.SecurityLog -> SecurityLogScreen(state, ::pop)
+                                        is Route.CircleInfo -> CircleInfoScreen(state, me, route.circleId, actions, ::pop)
+                                        Route.Restore -> RestoreScreen(actions, ::pop) { selectedCircle = null; home() }
+                                        Route.Home -> Unit
+                                    }
                                 }
                             }
                         }
