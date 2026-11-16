@@ -107,6 +107,21 @@ class RelayPool(
     override fun isSynced(subscriptionId: String): Boolean = live.value.any { it.isConnected && subscriptionId in it.synced.value }
 
     override fun shutdown() {
+        // Can't suspend here, so take the lock if it's free; otherwise close under it as soon as it is,
+        // so this never changes [connections] while setRelays, setSocksProxy or publish use it.
+        if (mutex.tryLock()) {
+            try {
+                closeAll()
+            } finally {
+                mutex.unlock()
+            }
+        } else {
+            scope.launch { mutex.withLock { closeAll() } }
+        }
+    }
+
+    /** Call only while holding [mutex]. */
+    private fun closeAll() {
         connections.values.forEach { it.job?.cancel() }
         connections.clear()
         live.value = emptyList()

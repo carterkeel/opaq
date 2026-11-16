@@ -6,7 +6,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 
 /**
  * The few things the shared screens need from the phone they run on. Android implements this in
- * `androidApp`; iOS implements it in the iOS app.
+ * `androidApp`, iOS in `IosPlatform` (ui/src/iosMain).
  */
 interface PlatformBridge {
     /** A short, non-blocking message (a toast on Android). */

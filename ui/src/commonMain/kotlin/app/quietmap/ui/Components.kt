@@ -16,19 +16,27 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +45,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -176,6 +185,14 @@ fun InfoCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() 
     }
 }
 
+/** A large icon in a tinted circle, at the top of a screen or step. */
+@Composable
+fun BigIcon(icon: ImageVector) {
+    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
+        Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
+    }
+}
+
 @Composable
 fun Mono(text: String, size: Int = 13, color: Color = MaterialTheme.colorScheme.onSurfaceVariant, weight: FontWeight = FontWeight.Normal) {
     Text(text, fontFamily = FontFamily.Monospace, fontSize = size.sp, color = color, fontWeight = weight)
@@ -186,22 +203,12 @@ fun Caption(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
-/** A rounded pill used for small status labels. */
-@Composable
-fun StatusPill(text: String, container: Color, content: Color, onClick: (() -> Unit)? = null) {
-    Surface(color = container, shape = RoundedCornerShape(50), onClick = onClick ?: {}, enabled = onClick != null) {
-        Box(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-            Text(text, color = content, style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
 // -------------------------------------------------------------------------------------------------
 // Icons not in the core material set (drawn as 24dp strokes)
 // -------------------------------------------------------------------------------------------------
 
 object AppIcons {
-    private fun stroke(name: String, block: androidx.compose.ui.graphics.vector.PathBuilder.() -> Unit): ImageVector =
+    private fun stroke(name: String, block: PathBuilder.() -> Unit): ImageVector =
         ImageVector.Builder(name, 24.dp, 24.dp, 24f, 24f).apply {
             path(stroke = SolidColor(Color.Black), strokeLineWidth = 2f, strokeLineCap = StrokeCap.Round, strokeLineJoin = StrokeJoin.Round, pathBuilder = block)
         }.build()
@@ -377,8 +384,12 @@ object AppIcons {
 // Prompts that slide up from the bottom instead of popping in from the centre
 // -------------------------------------------------------------------------------------------------
 
-/** A yes/no question as a bottom sheet. [destructive] colours the confirm button red. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+/**
+ * A yes/no question as a bottom sheet. [destructive] colours the confirm button red.
+ * [onDismiss] runs when the sheet is swiped away, closed with back or tapped outside; the
+ * [dismiss] button runs [onSecondary] if given (a real answer, like "Deny"), else [onDismiss].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmSheet(
     title: String,
@@ -390,11 +401,12 @@ fun ConfirmSheet(
     dismiss: String = "Cancel",
     header: (@Composable () -> Unit)? = null,
     confirmEnabled: Boolean = true,
+    onSecondary: (() -> Unit)? = null,
     body: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
-    androidx.compose.material3.ModalBottomSheet(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = androidx.compose.material3.rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (header != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { header() }
@@ -403,7 +415,7 @@ fun ConfirmSheet(
             body?.invoke(this)
             Spacer(Modifier.heightIn(min = 4.dp))
             if (destructive) DangerButton(confirm, onConfirm) else PrimaryButton(confirm, onConfirm, enabled = confirmEnabled)
-            androidx.compose.material3.TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(dismiss) }
+            TextButton(onClick = onSecondary ?: onDismiss, modifier = Modifier.fillMaxWidth()) { Text(dismiss) }
         }
     }
 }
@@ -411,7 +423,7 @@ fun ConfirmSheet(
 /** Asks for one line of text in a bottom sheet. */
 @Composable
 fun TextSheet(title: String, label: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(initial) }
+    var text by remember { mutableStateOf(initial) }
     ConfirmSheet(
         title = title,
         text = null,
@@ -419,7 +431,7 @@ fun TextSheet(title: String, label: String, initial: String, confirm: String, on
         onConfirm = { if (text.isNotBlank()) onConfirm(text.trim()) },
         onDismiss = onDismiss,
     ) {
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = text,
             onValueChange = { text = it.take(40) },
             label = { Text(label) },

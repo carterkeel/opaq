@@ -353,8 +353,11 @@ fun HomeScreen(
             confirm = "Create",
             onDismiss = { showCreate = false },
             onConfirm = { name ->
-                showCreate = false
-                actions.createCircle(name) { onSelectCircle(it) }
+                // A second tap before the sheet has gone would make a second circle.
+                if (showCreate) {
+                    showCreate = false
+                    actions.createCircle(name) { onSelectCircle(it) }
+                }
             },
         )
     }
@@ -370,7 +373,9 @@ fun HomeScreen(
             confirmEnabled = matches,
             dismiss = "Deny",
             onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); actions.approve(req.id) } },
-            onDismiss = { actions.deny(req.id); reviewing = null },
+            // Swiping the sheet away, back or tapping outside only closes it; the request stays pending.
+            onDismiss = { reviewing = null },
+            onSecondary = { actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
             InfoCard {
@@ -576,9 +581,7 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
         TopBar("Quietmap") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(24.dp))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(AppIcons.Circles, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-            }
+            BigIcon(AppIcons.Circles)
             if (state.pendingJoins.isNotEmpty()) {
                 state.pendingJoins.forEach { p ->
                     Text("Waiting for ${p.inviterName.ifBlank { "the inviter" }} to let you into ${p.circleName}", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)

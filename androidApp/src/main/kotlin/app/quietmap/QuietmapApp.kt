@@ -16,6 +16,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import app.quietmap.core.Engine
 import app.quietmap.core.Notice
+import app.quietmap.core.model.AppState
 import app.quietmap.core.nostr.RelayUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,9 +118,20 @@ class QuietmapApp : Application() {
 
     /** Monthly: "You're still sharing your location". Opening the app shows who sees it. */
     fun notifySharingReminder() {
-        val s = engine.state.value
-        val people = s.circles.flatMap { c -> c.members.map { it.pubkey } }.toSet().size - 1
+        val people = sharingWithCount(engine.state.value)
         notify(Notice("You're still sharing your location", "With $people ${if (people == 1) "person" else "people"}. Tap to check who."))
+    }
+
+    /**
+     * How many other people see this phone's location: members of circles the user has confirmed
+     * ("Start sharing"). Unconfirmed circles get nothing, so their members aren't counted.
+     */
+    fun sharingWithCount(s: AppState): Int {
+        val me = engine.myPubkey
+        return s.circles.filter { it.confirmed }
+            .flatMap { c -> c.members.map { it.pubkey } }
+            .toSet()
+            .count { it != me }
     }
 
     private fun notify(n: Notice) {

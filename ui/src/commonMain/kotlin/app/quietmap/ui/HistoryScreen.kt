@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -63,13 +64,19 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val nextDay = localDayStart(day + 25 * 3600)
     val oldest = localDayStart(epochSeconds() - (state.historyDays - 1).coerceAtLeast(0) * 86_400L)
     var points by remember { mutableStateOf<List<HistoryPoint>?>(null) }
-    var selected by remember(day) { mutableStateOf<Int?>(null) }
     // Reload when the day changes, history settings change, or a new update arrives today.
     val latest = state.locations[circleId]?.get(pubkey)?.time
     LaunchedEffect(day, state.historyDays, if (day == today) latest else null) {
-        actions.history(pubkey, day, nextDay) { points = it }
+        val requested = day
+        actions.history(pubkey, requested, nextDay) { loaded ->
+            // Loads run on the app scope and can finish out of order: drop one for a day no longer shown.
+            if (requested == day) points = loaded
+        }
     }
     val segments = remember(points) { HistorySegments.build(points.orEmpty()) }
+    // The selected stretch, by index. Cleared on another day, and when a reload changes how many
+    // stretches there are (they can split or merge, so the index may mean a different one).
+    var selected by remember(day, segments.size) { mutableStateOf<Int?>(null) }
 
     ScreenScaffold(if (pubkey == me) "Your history" else "$name's history", onBack) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -153,7 +160,7 @@ private fun SegmentRow(seg: HistorySegment, selected: Boolean, onClick: () -> Un
 }
 
 /** Settings: how long this phone keeps location history. Keeping more needs the PIN. */
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryDaysSheet(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {

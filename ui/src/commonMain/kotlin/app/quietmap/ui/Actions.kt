@@ -1,6 +1,11 @@
 package app.quietmap.ui
 
 import app.quietmap.core.Engine
+import app.quietmap.core.HistoryPoint
+import app.quietmap.core.PinResult
+import app.quietmap.core.ShareStatus
+import app.quietmap.core.model.Circle
+import app.quietmap.core.model.Precision
 import app.quietmap.core.protocol.InviteData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,21 +21,25 @@ class Actions(
     val me: String get() = engine.myPubkey
 
     /** Whether this phone is currently sending its location to [circle], and if not, why. */
-    fun shareStatus(circle: app.quietmap.core.model.Circle): app.quietmap.core.ShareStatus = engine.shareStatus(circle)
+    fun shareStatus(circle: Circle): ShareStatus = engine.shareStatus(circle)
 
-    private fun launchAction(after: (() -> Unit)? = null, block: suspend () -> Unit) {
+    /** Runs [block]; then [after] on success, or shows the error and runs [failed], on the main thread. */
+    private fun launchAction(after: (() -> Unit)? = null, failed: (() -> Unit)? = null, block: suspend () -> Unit) {
         scope.launch {
             try {
                 block()
                 if (after != null) withContext(Dispatchers.Main) { after() }
             } catch (t: Throwable) {
-                withContext(Dispatchers.Main) { platform.showMessage(t.message ?: "Something went wrong") }
+                withContext(Dispatchers.Main) {
+                    platform.showMessage(t.message ?: "Something went wrong")
+                    failed?.invoke()
+                }
             }
         }
     }
 
     /** Reads location history for [pubkey] between [from] and [to] (seconds) and hands it back on the main thread. */
-    fun history(pubkey: String, from: Long, to: Long, onResult: (List<app.quietmap.core.HistoryPoint>) -> Unit) {
+    fun history(pubkey: String, from: Long, to: Long, onResult: (List<HistoryPoint>) -> Unit) {
         scope.launch {
             val points = runCatching { engine.history(pubkey, from, to) }.getOrDefault(emptyList())
             withContext(Dispatchers.Main) { onResult(points) }
@@ -51,9 +60,10 @@ class Actions(
     fun setLabel(pubkey: String, label: String?) = launchAction { engine.setLabel(pubkey, label) }
     fun setVerified(pubkey: String, verified: Boolean) = launchAction { engine.setVerified(pubkey, verified) }
 
-    fun createCircle(name: String, onCreated: (String) -> Unit) {
+    /** [onFailed] runs (after the error is shown) if the circle couldn't be made. */
+    fun createCircle(name: String, onFailed: () -> Unit = {}, onCreated: (String) -> Unit) {
         var id = ""
-        launchAction(after = { onCreated(id); platform.ensureSharingService() }) { id = engine.createCircle(name).id }
+        launchAction(after = { onCreated(id); platform.ensureSharingService() }, failed = onFailed) { id = engine.createCircle(name).id }
     }
 
     fun createInvite(circleId: String, hours: Int = 1, onLink: (String) -> Unit) {
@@ -68,7 +78,7 @@ class Actions(
         engine.setSetupDone()
     }
 
-    fun setCirclePrecision(circleId: String, precision: app.quietmap.core.model.Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
+    fun setCirclePrecision(circleId: String, precision: Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
     fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }
 
     fun confirmCircle(circleId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.confirmCircle(circleId) }
@@ -96,17 +106,15 @@ class Actions(
     // PIN and security
 
     fun isAuthorized(): Boolean = engine.isAuthorized()
-    val hasPin: Boolean get() = engine.hasPin
 
     /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
-    fun unlock(pin: String, onResult: (app.quietmap.core.PinResult) -> Unit) {
-        scope.launch {
-            val r = engine.unlock(pin)
-            withContext(Dispatchers.Main) { onResult(r) }
-        }
+    /** [onFailed] runs (after the error is shown) if the check itself couldn't run. */
+    fun unlock(pin: String, onFailed: () -> Unit = {}, onResult: (PinResult) -> Unit) {
+        var result: PinResult? = null
+        launchAction(after = { result?.let(onResult) }, failed = onFailed) { result = engine.unlock(pin) }
     }
 
-    fun setPin(pin: String, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.setPin(pin) }
+    fun setPin(pin: String, onFailed: () -> Unit = {}, onDone: () -> Unit = {}) = launchAction(after = onDone, failed = onFailed) { engine.setPin(pin) }
     fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
     fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
     fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }

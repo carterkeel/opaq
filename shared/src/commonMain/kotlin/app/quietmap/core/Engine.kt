@@ -117,6 +117,9 @@ class Engine(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
+    /** Serializes PIN checks. Separate from [mutex], which is never held during the slow PIN hash. */
+    private val pinMutex = Mutex()
+
     private val _state: MutableStateFlow<AppState>
     val state: StateFlow<AppState>
     /** This device's identity key. Changes only when a backup is imported. */
@@ -159,11 +162,7 @@ class Engine(
     private var authorizedUntil = 0L
 
     init {
-        val found = try {
-            store.read()
-        } catch (t: Throwable) {
-            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
-        }
+        val found = readStore()
         val loaded: AppState? = when (found) {
             StoredState.Missing -> null
             is StoredState.Found -> decode(found.data) ?: run {
@@ -187,6 +186,12 @@ class Engine(
         state = _state.asStateFlow()
         seen.addAll(initial.seenEventIds)
         if (found == StoredState.Missing) store.save(json.encodeToString(AppState.serializer(), initial))
+    }
+
+    private fun readStore(): StoredState = try {
+        store.read()
+    } catch (t: Throwable) {
+        StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
     }
 
     private fun checkReady() = check(_recovery.value == null) { "Quietmap can't read its saved data yet" }
@@ -236,11 +241,7 @@ class Engine(
     /** Reads saved state again, e.g. once the phone is unlocked. Returns true if it worked. */
     suspend fun retryLoad(): Boolean {
         if (_recovery.value == null) return true
-        val found = try {
-            store.read()
-        } catch (t: Throwable) {
-            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
-        }
+        val found = readStore()
         val loaded = (found as? StoredState.Found)?.let { decode(it.data) } ?: run {
             if (found is StoredState.Unreadable) _recovery.value = Recovery(found.reason, found.retryable)
             return false
@@ -362,7 +363,12 @@ class Engine(
     private fun requireAuthorized() = check(isAuthorized()) { "Enter your PIN first" }
 
     /** Checks the PIN. Five wrong tries lock it for 30 seconds, doubling with each further miss. */
-    suspend fun unlock(pin: String): PinResult {
+    suspend fun unlock(pin: String): PinResult = pinMutex.withLock {
+        // One check at a time, so every wrong try is counted and a lockout one sets stops the next.
+        unlockLocked(pin)
+    }
+
+    private suspend fun unlockLocked(pin: String): PinResult {
         val lock = state.value.pin ?: return PinResult.Ok
         val t = now()
         lockedUntil(lock)?.let { return PinResult.Locked(it) }
@@ -412,11 +418,8 @@ class Engine(
         val had = state.value.pin != null
         if (had) requireAuthorized()
         val salt = PlatformCrypto.randomBytes(16)
-        val started = elapsed()
         val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
-        log("pin: hashed in ${elapsed() - started} s")
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
-        log("pin: saved")
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
     }
 
@@ -541,10 +544,6 @@ class Engine(
     }
 
     /**
-     * Starts sharing with a circle we were just let into. Until then nothing (location or profile)
-     * goes to it, so the user sees who is in it before anyone sees them.
-     */
-    /**
      * How precisely this phone shares with a circle. Making it more precise needs the PIN (if set),
      * so someone holding the phone can't quietly turn approximate sharing back into exact.
      */
@@ -560,6 +559,10 @@ class Engine(
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(shareTrail = on) else it }) }
     }
 
+    /**
+     * Starts sharing with a circle we were just let into. Until then nothing (location or profile)
+     * goes to it, so the user sees who is in it before anyone sees them.
+     */
     suspend fun confirmCircle(circleId: String) {
         // Starting to share with a new circle is as sensitive as making sharing more precise.
         requireAuthorized()
@@ -919,8 +922,7 @@ class Engine(
     /** Member: if this phone can't confirm its key, ask the admin for the roster again. */
     private suspend fun memberDuties() {
         state.value.circles.filter { it.version >= 2 && it.adminPubkey != myPubkey }.forEach { c ->
-            val status = if (c.stale) ShareStatus.KEY_REPLACED else if (now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS) ShareStatus.ADMIN_AWAY else ShareStatus.OK
-            if (status == ShareStatus.KEY_REPLACED || status == ShareStatus.ADMIN_AWAY) requestRoster(c)
+            if (c.stale || now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS) requestRoster(c)
         }
     }
 
@@ -1119,14 +1121,18 @@ class Engine(
         runCatching { h.prune(t, s.historyDays, keep) }
     }
 
-    private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event {
+    /** Drops the oldest batched points until the padded envelope fits the fixed size. */
+    private inline fun fitted(location: MemberLocation, seal: (MemberLocation) -> Event): Event {
         var loc = location
         while (true) {
-            val event = CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
-            // Drop the oldest batched points until the padded envelope fits the fixed size.
+            val event = seal(loc)
             if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
             loc = loc.copy(points = loc.points.drop(1))
         }
+    }
+
+    private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event = fitted(location) { loc ->
+        CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
     }
 
     /** Last outer timestamp used per circle, so blurred timestamps still only move forward. */
@@ -1135,17 +1141,19 @@ class Engine(
     private fun sealV2(c: Circle, location: MemberLocation, t: Long, seq: Long): Event? {
         // Relays see a timestamp blurred by up to 15 seconds rather than the exact moment of the fix;
         // it never goes backwards, so relays keep the newest update. The exact time is inside.
+        // Each one is strictly newer than the last for this circle (a tie could make a relay keep the
+        // older event), never in the future, and never before the start of the key's first day (there's
+        // no key for earlier days). If that leaves no second up to now, this update is skipped.
         val jitter = (PlatformCrypto.randomBytes(1)[0].toInt() and 0xff) % 16
-        val created = maxOf(t - jitter, (lastCreatedAt[c.id] ?: 0L) + 1).coerceAtMost(t)
-        lastCreatedAt[c.id] = created
+        val floor = maxOf((lastCreatedAt[c.id] ?: 0L) + 1, c.keyDay * SECONDS_PER_DAY)
+        if (floor > t) return null
+        val created = maxOf(t - jitter, floor)
         val key = dayKey(c, CircleCrypto.day(created)) ?: return null
+        lastCreatedAt[c.id] = created
         val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(created))
-        var loc = location
-        while (true) {
+        return fitted(location) { loc ->
             val body = LocationBody(myPubkey, t, c.id, c.epoch, loc, pub = publisher.publicHex, seq = seq)
-            val event = CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, created)
-            if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
-            loc = loc.copy(points = loc.points.drop(1))
+            CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, created)
         }
     }
 
@@ -1155,8 +1163,12 @@ class Engine(
 
     private suspend fun onEvent(relay: String, event: Event) {
         if (_recovery.value != null) return
+        if (mutex.withLock { event.id in seen }) return
+        // Remember an id only once the event checks out (id matches the content, signature is valid):
+        // otherwise one relay sending a corrupted copy under a real id would block the real one.
+        if (!event.isValid()) return
         val fresh = mutex.withLock { seen.add(event.id) }
-        if (!fresh || !event.isValid()) return
+        if (!fresh) return
         when (event.kind) {
             Kinds.SEALED_DIRECT -> handleDirect(event)
             Kinds.CIRCLE_UPDATE -> handleCircleUpdate(event)
@@ -1364,7 +1376,7 @@ class Engine(
             previousEpoch = if (rotated) existing!!.epoch else base.previousEpoch,
             previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
             stale = if (newEpoch) false else base.stale,
-            adminRosterTs = if (fromAdmin && (existing == null || from == existing.adminPubkey)) maxOf(if (newEpoch) 0 else base.adminRosterTs, ts) else base.adminRosterTs,
+            adminRosterTs = if (fromAdmin) maxOf(if (newEpoch) 0 else base.adminRosterTs, ts) else base.adminRosterTs,
             history = (base.history + events).takeLast(HISTORY_SIZE),
             // Joining: nothing is shared until the user has seen who's in the circle.
             confirmed = if (existing == null) false else base.confirmed,
@@ -1431,6 +1443,9 @@ class Engine(
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
+        // A "left" signed by our own key (another copy of this identity, or a replay) can't remove
+        // the admin: the admin hands over the role or deletes the circle instead.
+        if (body.from == myPubkey) return
         // An old "left" from before they were let back in is a replay.
         val joinedAt = circle.history.lastOrNull { it.change == MembershipChange.JOINED && it.pubkey == body.from }?.at
         if (joinedAt != null && body.ts < joinedAt - MAX_CLOCK_SKEW_SECONDS) return
@@ -1585,6 +1600,7 @@ class Engine(
         /** Orbot's default SOCKS port. */
         const val TOR_SOCKS_PORT = 9050
 
+        private const val SECONDS_PER_DAY = 86_400L
         private const val SUB_DIRECT = "qm-dm"
         private const val SUB_CIRCLES = "qm-circles"
         private const val SUB_CONTROL = "qm-ctl"

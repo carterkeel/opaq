@@ -219,10 +219,10 @@ object CircleCrypto {
     private fun conversationKey(circleKey: ByteArray, epoch: Int): ByteArray =
         Nip44.conversationKeyFromSecret(circleKey, "quietmap-circle|$epoch")
 
-    fun seal(identity: KeyPair, circleKey: ByteArray, epoch: Int, body: Body, now: Long, padTo: Int? = Envelopes.LOCATION_SIZE): Event {
+    fun seal(identity: KeyPair, circleKey: ByteArray, epoch: Int, body: Body, now: Long): Event {
         val s = slot(now)
         val tags = listOf(listOf("d", tag(circleKey, epoch, s)), listOf("expiration", (now + EXPIRY_SECONDS).toString()))
-        val content = Nip44.encrypt(Envelopes.seal(identity, body, padTo), conversationKey(circleKey, epoch))
+        val content = Nip44.encrypt(Envelopes.seal(identity, body, Envelopes.LOCATION_SIZE), conversationKey(circleKey, epoch))
         return Event.create(publisher(circleKey, identity.publicHex, s), Kinds.CIRCLE_UPDATE, tags, content, now)
     }
 
@@ -340,8 +340,6 @@ object DeviceCode {
     /** "7F3A 91C2 D04E 6B1A": a short fingerprint of a public key, for comparing in person. */
     fun full(pubkeyHex: String): String =
         PlatformCrypto.sha256(pubkeyHex.hexToBytes()).copyOfRange(0, 8).toHex().uppercase().chunked(4).joinToString(" ")
-
-    fun short(pubkeyHex: String): String = full(pubkeyHex).split(" ").take(2).joinToString("·")
 }
 
 @Serializable

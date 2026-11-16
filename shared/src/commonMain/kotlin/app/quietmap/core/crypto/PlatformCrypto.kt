@@ -2,7 +2,7 @@ package app.quietmap.core.crypto
 
 /**
  * Low-level primitives that come from audited platform libraries.
- * Android: javax.crypto + BouncyCastle. iOS (later): CryptoKit + libsodium.
+ * Android: javax.crypto + BouncyCastle. iOS: CommonCrypto + libsodium.
  * Nothing here is implemented by hand.
  */
 expect object PlatformCrypto {

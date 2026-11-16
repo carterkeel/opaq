@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.quietmap.core.model.AppState
 import app.quietmap.core.nostr.RelayStatus
+import app.quietmap.core.nostr.RelayUrls
 import app.quietmap.core.protocol.Backups
 import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.InviteLinks
@@ -342,9 +342,7 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                 Column(Gutter, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (current == null) {
                         Spacer(Modifier.height(8.dp))
-                        Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                            Box(contentAlignment = Alignment.Center) { Icon(AppIcons.QrCode, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-                        }
+                        BigIcon(AppIcons.QrCode)
                         Text(
                             "Create a QR code and link for someone to join ${circle.name}. They work once, and you approve whoever uses them. Scanning in person is safest: someone who joins from a link will need to hear your device code from you.",
                             style = MaterialTheme.typography.bodyLarge,
@@ -397,9 +395,7 @@ fun JoinOptionsScreen(onBack: () -> Unit, onScan: () -> Unit, onJoinLink: (Strin
     ScreenScaffold("Join a circle", onBack) {
         Column(Gutter, horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(8.dp))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-                Box(contentAlignment = Alignment.Center) { Icon(AppIcons.ScanQr, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-            }
+            BigIcon(AppIcons.ScanQr)
             Text(
                 "Ask someone in the circle to open it in Quietmap and tap Invite. Then scan their QR code, or paste the link they send you.",
                 style = MaterialTheme.typography.bodyLarge,
@@ -439,7 +435,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
                 val inviter = invite.n.ifBlank { "the person who invited you" }
                 val alreadyVerified = state.contacts[invite.k]?.verified == true
                 val verified = scanned || alreadyVerified || actions.deviceCodeMatches(invite.k, code)
-                val newRelays = invite.r.mapNotNull { app.quietmap.core.nostr.RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
+                val newRelays = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
                 ProfileHeader(
                     AvatarInfo(invite.k, invite.n.ifBlank { "?" }, null, null, false),
                     "Join ${invite.cn}?",
@@ -645,7 +641,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
+                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = RelayUrls.isAllowed(newRelay)) {
                         Icon(AppIcons.Add, contentDescription = "Add relay")
                     }
                 }
@@ -813,16 +809,16 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
             PrimaryButton(if (working) "Restoring…" else "Restore", {
                 val text = file ?: return@PrimaryButton
                 gate.require {
-                working = true
-                actions.importBackup(text, pass) { err ->
-                    working = false
-                    if (err == null) {
-                        platform.showMessage("Restored. Sharing is paused until you turn it on.")
-                        onRestored()
-                    } else {
-                        error = err
+                    working = true
+                    actions.importBackup(text, pass) { err ->
+                        working = false
+                        if (err == null) {
+                            platform.showMessage("Restored. Sharing is paused until you turn it on.")
+                            onRestored()
+                        } else {
+                            error = err
+                        }
                     }
-                }
                 }
             }, enabled = file != null && pass.isNotEmpty() && !working)
             Caption("Sharing starts paused after a restore, so you can check everything first.")

@@ -3,11 +3,9 @@ package app.quietmap.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.ContentTransform
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -25,7 +23,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.quietmap.core.Engine
 import app.quietmap.core.protocol.InviteData
@@ -156,9 +156,10 @@ fun QuietmapScreens(
                         )
                     }
 
+                    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
                     AnimatedContent(
                         targetState = stack.toList(),
-                        transitionSpec = { slideTransition() },
+                        transitionSpec = { slideTransition(rtl) },
                         contentKey = { it.last() },
                         label = "screens",
                     ) { routes ->
@@ -199,19 +200,24 @@ fun QuietmapScreens(
     }
 }
 
-private val slideSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold)
-private val fadeSpec = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+/** Moving between screens (and setup steps), like Signal: short, eased, no bounce. */
+internal val screenSlideSpec: FiniteAnimationSpec<IntOffset> = tween(durationMillis = 220, easing = FastOutSlowInEasing)
 
-/** Push: the new screen slides in from the right over the old one. Pop: it slides back out. */
-private fun AnimatedContentTransitionScope<List<Route>>.slideTransition(): ContentTransform {
+/**
+ * Like Signal. Push: the new screen slides in from the end across the full width while the old one
+ * slides out toward the start at the same speed, with no fade. Pop is the exact reverse.
+ */
+private fun AnimatedContentTransitionScope<List<Route>>.slideTransition(rtl: Boolean): ContentTransform {
     val forward = targetState.size >= initialState.size
+    // Offsets use each screen's own width, not the container's: the Home route is an empty box.
+    val end = if (rtl) -1 else 1
     return if (forward) {
-        (slideInHorizontally(slideSpec) { it } + fadeIn(fadeSpec, initialAlpha = 0.7f))
-            .togetherWith(slideOutHorizontally(slideSpec) { -it / 5 } + fadeOut(fadeSpec, targetAlpha = 0.6f))
+        slideInHorizontally(screenSlideSpec) { it * end }
+            .togetherWith(slideOutHorizontally(screenSlideSpec) { -it * end })
             .apply { targetContentZIndex = 1f }
     } else {
-        (slideInHorizontally(slideSpec) { -it / 5 } + fadeIn(fadeSpec, initialAlpha = 0.6f))
-            .togetherWith(slideOutHorizontally(slideSpec) { it } + fadeOut(fadeSpec, targetAlpha = 0.7f))
+        slideInHorizontally(screenSlideSpec) { -it * end }
+            .togetherWith(slideOutHorizontally(screenSlideSpec) { it * end })
             .apply { targetContentZIndex = -1f }
     }
 }

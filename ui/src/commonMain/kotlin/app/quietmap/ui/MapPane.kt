@@ -8,21 +8,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.quietmap.core.HistoryPoint
 import app.quietmap.core.HistorySegment
 import app.quietmap.core.LocationHistory
 import app.quietmap.core.MotionPolicy
 import app.quietmap.core.Prediction
 import app.quietmap.core.model.MemberLocation
-import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.addJsonObject
@@ -150,6 +150,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textField = format(span(feature["initial"].asString())),
             textFont = const(listOf("Noto Sans Bold")),
             textSize = const(13.sp),
+            // From the feature, like the dot colour: const(Color.White) rendered magenta here (#63).
             textColor = feature["textColor"].convertToColor(),
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),

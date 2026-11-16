@@ -63,10 +63,6 @@ class CreateCircleTest {
     }
 
     /**
-     * Types into the visible text fields in order (a PIN, or a PIN and its confirmation). In a bottom
-     * sheet the keyboard stays open, because Back would close the sheet.
-     */
-    /**
      * Types [pin] into the PIN field labelled [label]. Taps the label (which focuses its field) and
      * types through the input method, so it works whether or not the keyboard hides other fields
      * and survives recomposition, which made UiObject2 handles go stale.
@@ -174,19 +170,8 @@ class CreateCircleTest {
         shot("setup-pin")
         typePin("New PIN (4 to 8 digits)")
         typePin("New PIN again")
-        shot("setup-pin-typed")
         hideKeyboard()
-        shot("setup-pin-keyboard-closed")
-        val setPin = waitFor("Set PIN")
-        Log.e(TAG, "Set PIN: enabled=${setPin.isEnabled} clickable=${setPin.isClickable} bounds=${setPin.visibleBounds}")
-        setPin.click()
-        Thread.sleep(400)
-        shot("setup-pin-after-set")
-        if (!device.wait(Until.hasObject(By.text("Create a circle")), 8_000)) {
-            Log.e(TAG, "still on the PIN step 8 s after tapping Set PIN")
-            logScreen()
-            shot("setup-pin-stuck")
-        }
+        waitFor("Set PIN").click()
 
         // Step 4: create a circle.
         waitFor("Create a circle")

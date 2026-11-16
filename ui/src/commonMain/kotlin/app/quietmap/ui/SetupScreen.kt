@@ -3,10 +3,7 @@ package app.quietmap.ui
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -14,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -51,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import app.quietmap.core.model.AppState
 
@@ -98,12 +95,12 @@ fun SetupScreen(
             Spacer(Modifier.size(48.dp))
         }
 
-        val slide = spring(stiffness = Spring.StiffnessMediumLow, visibilityThreshold = IntOffset.VisibilityThreshold)
         AnimatedContent(
             targetState = step,
             transitionSpec = {
+                // Same as moving between screens: both steps slide the full width together, no fade.
                 val dir = if (forward) 1 else -1
-                (slideInHorizontally(slide) { it * dir } + fadeIn()).togetherWith(slideOutHorizontally(slide) { -it * dir / 3 } + fadeOut())
+                slideInHorizontally(screenSlideSpec) { it * dir }.togetherWith(slideOutHorizontally(screenSlideSpec) { -it * dir })
             },
             label = "setup",
             modifier = Modifier.weight(1f),
@@ -172,6 +169,7 @@ private fun ColumnScope.PhotoStep(state: AppState, me: String, actions: Actions,
 @Composable
 private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () -> Unit) {
     var chosen by remember { mutableStateOf<String?>(null) }
+    var saving by remember { mutableStateOf(false) }
     BigIcon(AppIcons.Lock)
     StepTitle(
         "Add a PIN?",
@@ -182,9 +180,15 @@ private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () ->
         PrimaryButton("Continue", onNext)
         return
     }
-    val save = { chosen?.let { actions.setPin(it, onNext) } ?: Unit }
+    // Ignore further taps (and the keyboard's Done) while the PIN is being saved.
+    val save: () -> Unit = save@{
+        val pin = chosen ?: return@save
+        if (saving) return@save
+        saving = true
+        actions.setPin(pin, onFailed = { saving = false }, onDone = { saving = false; onNext() })
+    }
     NewPinFields(onDone = save) { chosen = it }
-    PrimaryButton("Set PIN", save, enabled = chosen != null)
+    PrimaryButton("Set PIN", save, enabled = chosen != null && !saving)
     TextButton(onClick = onNext) { Text("Not now") }
 }
 
@@ -193,6 +197,7 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
     var mode by remember { mutableIntStateOf(0) } // 0 = choose, 1 = create, 2 = join
     var circleName by remember { mutableStateOf("Family") }
     var link by remember { mutableStateOf("") }
+    var creating by remember { mutableStateOf(false) }
     StepTitle("Your circle", "A circle is a group that sees each other on the map, like your family.")
     ChoiceCard("Create a circle", "Start one and invite people", AppIcons.Circles, selected = mode == 1) { mode = 1 }
     AnimatedVisibility(mode == 1, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
@@ -205,7 +210,13 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth(),
             )
-            PrimaryButton("Create", { actions.createCircle(circleName, onCreated) }, enabled = circleName.isNotBlank())
+            // One tap makes one circle: ignore taps until this one has finished or failed.
+            PrimaryButton("Create", {
+                if (!creating) {
+                    creating = true
+                    actions.createCircle(circleName, onFailed = { creating = false }) { id -> creating = false; onCreated(id) }
+                }
+            }, enabled = circleName.isNotBlank() && !creating)
         }
     }
     ChoiceCard("Join a circle", "Use an invite QR code or link", AppIcons.ScanQr, selected = mode == 2) { mode = 2 }
@@ -247,20 +258,13 @@ private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Un
 }
 
 @Composable
-private fun BigIcon(icon: ImageVector) {
-    Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(88.dp)) {
-        Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
-    }
-}
-
-@Composable
 private fun ChoiceCard(title: String, subtitle: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
     val border by animateColorAsState(if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant, label = "choice")
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(2.dp, border),
+        border = BorderStroke(2.dp, border),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
