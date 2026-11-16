@@ -177,9 +177,16 @@ class CreateCircleTest {
         shot("setup-pin-typed")
         hideKeyboard()
         shot("setup-pin-keyboard-closed")
-        waitFor("Set PIN").click()
-        Thread.sleep(1_500)
+        val setPin = waitFor("Set PIN")
+        Log.e(TAG, "Set PIN: enabled=${setPin.isEnabled} clickable=${setPin.isClickable} bounds=${setPin.visibleBounds}")
+        setPin.click()
+        Thread.sleep(400)
         shot("setup-pin-after-set")
+        if (!device.wait(Until.hasObject(By.text("Create a circle")), 8_000)) {
+            Log.e(TAG, "still on the PIN step 8 s after tapping Set PIN")
+            logScreen()
+            shot("setup-pin-stuck")
+        }
 
         // Step 4: create a circle.
         waitFor("Create a circle")
