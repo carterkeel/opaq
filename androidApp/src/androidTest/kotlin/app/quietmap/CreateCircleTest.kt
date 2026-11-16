@@ -66,27 +66,31 @@ class CreateCircleTest {
      * Types into the visible text fields in order (a PIN, or a PIN and its confirmation). In a bottom
      * sheet the keyboard stays open, because Back would close the sheet.
      */
-    private fun typePin(vararg values: String, closeKeyboard: Boolean = true) {
-        device.wait(Until.hasObject(By.clazz("android.widget.EditText")), 10_000)
-        values.forEachIndexed { i, v ->
-            // Find the fields again each time: typing in one recomposes the screen, and a stale
-            // handle can silently drop the text. Check it landed (masked as dots) and retry.
-            repeat(5) { attempt ->
-                val fields = device.findObjects(By.clazz("android.widget.EditText"))
-                check(fields.size >= values.size) { "expected ${values.size} PIN fields, found ${fields.size}" }
-                val typed = runCatching {
-                    fields[i].click()
-                    fields[i].text = v
-                    device.waitForIdle()
-                    device.findObjects(By.clazz("android.widget.EditText")).getOrNull(i)?.text.orEmpty()
-                }.getOrElse { "" } // StaleObjectException: the screen recomposed under us
-                if (typed.length == v.length) return@forEachIndexed
-                Log.e(TAG, "PIN field ${i + 1} didn't take the text (attempt ${attempt + 1})")
-                Thread.sleep(300)
-            }
-            error("PIN field ${i + 1} never took the text")
+    /**
+     * Types [pin] into the PIN field labelled [label]. Taps the label (which focuses its field) and
+     * types through the input method, so it works whether or not the keyboard hides other fields
+     * and survives recomposition, which made UiObject2 handles go stale.
+     */
+    private fun typePin(label: String, pin: String = PIN) {
+        repeat(5) { attempt ->
+            val ok = runCatching {
+                val dots = By.text("•".repeat(pin.length))
+                val before = device.findObjects(dots).size
+                val field = device.wait(Until.findObject(By.text(label)), 5_000) ?: error("no \"$label\" field")
+                field.click()
+                device.waitForIdle()
+                device.executeShellCommand("input text $pin")
+                device.waitForIdle()
+                // The field shows one dot per digit once the text arrived.
+                val deadline = System.currentTimeMillis() + 3_000
+                while (device.findObjects(dots).size <= before && System.currentTimeMillis() < deadline) Thread.sleep(100)
+                device.findObjects(dots).size > before
+            }.getOrDefault(false)
+            if (ok) return
+            Log.e(TAG, "\"$label\" didn't take the PIN (attempt ${attempt + 1})")
+            Thread.sleep(300)
         }
-        if (closeKeyboard) device.pressBack()
+        error("\"$label\" never took the PIN")
     }
 
     private fun dismissSystemDialogs() {
@@ -134,7 +138,9 @@ class CreateCircleTest {
 
         // Step 3: optional PIN (set one, so the PIN prompt gets exercised later).
         waitFor("Add a PIN?")
-        typePin(PIN, PIN)
+        typePin("New PIN (4 to 8 digits)")
+        typePin("New PIN again")
+        device.pressBack() // close the keyboard
         waitFor("Set PIN").click()
 
         // Step 4: create a circle.
@@ -157,7 +163,7 @@ class CreateCircleTest {
         device.findObject(By.text("Invite")).click()
         waitFor("Create invite").click()
         if (device.wait(Until.hasObject(By.text("Enter your PIN")), 5_000)) {
-            typePin(PIN, closeKeyboard = false)
+            typePin("PIN")
             waitFor("Continue").click()
         }
         waitFor("Share link")
