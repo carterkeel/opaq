@@ -23,13 +23,17 @@ class Actions(
     /** Whether this phone is currently sending its location to [circle], and if not, why. */
     fun shareStatus(circle: Circle): ShareStatus = engine.shareStatus(circle)
 
-    private fun launchAction(after: (() -> Unit)? = null, block: suspend () -> Unit) {
+    /** Runs [block]; then [after] on success, or shows the error and runs [failed], on the main thread. */
+    private fun launchAction(after: (() -> Unit)? = null, failed: (() -> Unit)? = null, block: suspend () -> Unit) {
         scope.launch {
             try {
                 block()
                 if (after != null) withContext(Dispatchers.Main) { after() }
             } catch (t: Throwable) {
-                withContext(Dispatchers.Main) { platform.showMessage(t.message ?: "Something went wrong") }
+                withContext(Dispatchers.Main) {
+                    platform.showMessage(t.message ?: "Something went wrong")
+                    failed?.invoke()
+                }
             }
         }
     }
@@ -56,9 +60,10 @@ class Actions(
     fun setLabel(pubkey: String, label: String?) = launchAction { engine.setLabel(pubkey, label) }
     fun setVerified(pubkey: String, verified: Boolean) = launchAction { engine.setVerified(pubkey, verified) }
 
-    fun createCircle(name: String, onCreated: (String) -> Unit) {
+    /** [onFailed] runs (after the error is shown) if the circle couldn't be made. */
+    fun createCircle(name: String, onFailed: () -> Unit = {}, onCreated: (String) -> Unit) {
         var id = ""
-        launchAction(after = { onCreated(id); platform.ensureSharingService() }) { id = engine.createCircle(name).id }
+        launchAction(after = { onCreated(id); platform.ensureSharingService() }, failed = onFailed) { id = engine.createCircle(name).id }
     }
 
     fun createInvite(circleId: String, hours: Int = 1, onLink: (String) -> Unit) {
@@ -110,7 +115,7 @@ class Actions(
         }
     }
 
-    fun setPin(pin: String, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.setPin(pin) }
+    fun setPin(pin: String, onFailed: () -> Unit = {}, onDone: () -> Unit = {}) = launchAction(after = onDone, failed = onFailed) { engine.setPin(pin) }
     fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
     fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
     fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }
