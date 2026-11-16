@@ -103,9 +103,10 @@ class CreateCircleTest {
     private fun shot(name: String) {
         device.waitForIdle()
         Thread.sleep(600) // let animations settle
-        val dir = InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir("screens") ?: return
         shots++
-        runCatching { device.takeScreenshot(java.io.File(dir, "%02d-%s.png".format(shots, name)), 0.5f, 80) }
+        // screencap runs as the shell user, which can always write here and adb can always read.
+        device.executeShellCommand("mkdir -p /sdcard/Download/quietmap-screens")
+        device.executeShellCommand("screencap -p /sdcard/Download/quietmap-screens/%02d-%s.png".format(shots, name))
     }
 
     /** Switches the emulator between light and dark mode; the app follows the system. */

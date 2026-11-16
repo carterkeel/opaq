@@ -17,12 +17,13 @@ for attempt in 1 2; do
   echo "=== UI smoke test, attempt $attempt ===" | tee -a emulator.log
   adb logcat -c || true
   adb shell pm clear app.quietmap.debug >/dev/null 2>&1 || true
+  adb shell rm -rf /sdcard/Download/quietmap-screens >/dev/null 2>&1 || true
   ./gradlew :androidApp:connectedDebugAndroidTest --stacktrace 2>&1 | tee -a emulator.log
   status=$?
   adb logcat -d -v time >> logcat.txt || true
   # Screenshots the test took (light and dark), for checking screens by eye in the CI summary.
   rm -rf screens && mkdir -p screens
-  dir=/sdcard/Android/data/app.quietmap.debug/files/screens
+  dir=/sdcard/Download/quietmap-screens
   for f in $(adb shell ls "$dir" 2>/dev/null | tr -d '\r'); do
     adb exec-out cat "$dir/$f" > "screens/$f" 2>/dev/null || true
   done
