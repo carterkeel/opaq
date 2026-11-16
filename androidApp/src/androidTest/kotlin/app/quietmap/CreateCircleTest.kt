@@ -174,8 +174,12 @@ class CreateCircleTest {
         shot("setup-pin")
         typePin("New PIN (4 to 8 digits)")
         typePin("New PIN again")
+        shot("setup-pin-typed")
         hideKeyboard()
+        shot("setup-pin-keyboard-closed")
         waitFor("Set PIN").click()
+        Thread.sleep(1_500)
+        shot("setup-pin-after-set")
 
         // Step 4: create a circle.
         waitFor("Create a circle")
