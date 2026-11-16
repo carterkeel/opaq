@@ -29,6 +29,7 @@ import platform.Foundation.NSLog
 import platform.Foundation.NSString
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIApplication
 import platform.UIKit.UIDevice
 import platform.UIKit.UIApplicationProtectedDataDidBecomeAvailable
@@ -53,6 +54,8 @@ object QuietmapIos {
             // A Kotlin String passed through C varargs isn't bridged to NSString and crashes; cast it.
             log = { NSLog("Quietmap: %@", it as NSString) },
             deviceName = UIDevice.currentDevice.model,
+            // Time since boot: changing the date can't shorten a PIN lockout.
+            elapsed = { NSProcessInfo.processInfo.systemUptime.toLong() },
         ).also { it.start() }
     }
 

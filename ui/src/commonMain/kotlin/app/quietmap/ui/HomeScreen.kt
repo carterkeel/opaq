@@ -291,7 +291,7 @@ fun HomeScreen(
                         shareStatus = actions.shareStatus(circle),
                         sharingBlocked = sharingBlocked,
                         onFixSharing = onFixSharing,
-                        onStartSharing = { actions.confirmCircle(circle.id) },
+                        onStartSharing = { gate.require { actions.confirmCircle(circle.id) } },
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
@@ -336,20 +336,27 @@ fun HomeScreen(
 
     reviewing?.let { req ->
         val info = AvatarInfo(req.pubkey, req.name.ifBlank { "?" }, null, null, false)
+        val known = state.contacts[req.pubkey]?.verified == true
+        var matches by remember(req.id) { mutableStateOf(known) }
         ConfirmSheet(
             title = "Let ${req.name.ifBlank { "this person" }} join?",
             text = "They used your invite. If you approve, they'll see everyone in this circle and everyone will see them.",
             confirm = "Approve",
+            confirmEnabled = matches,
             dismiss = "Deny",
-            onConfirm = { reviewing = null; gate.require { actions.approve(req.id) } },
+            onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); actions.approve(req.id) } },
             onDismiss = { actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
             InfoCard {
                 Caption("Their device code")
                 Mono(DeviceCode.full(req.pubkey), size = 17, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
-                Caption("If you can, check it matches the code on their screen.")
+                Caption(
+                    if (known) "You've verified this person before."
+                    else "Check it matches the code on their screen, in person or on a call. Anyone who got hold of your link could be asking.",
+                )
             }
+            if (!known) SwitchRow("Their code matches", null, matches) { matches = it }
         }
     }
 }

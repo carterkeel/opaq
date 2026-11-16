@@ -574,6 +574,124 @@ class CircleSecurityTest {
         assertTrue(offsets.size > 3, "timestamps aren't blurred: $offsets")
     }
 
+    /** Sends [body] to [to]'s inbox in [circleId], signed by [from]'s identity, as any phone holding that key could. */
+    private suspend fun deliver(from: Phone, to: Phone, circleId: String, body: app.quietmap.core.protocol.Body) {
+        val signer = KeyPair(from.engine.state.value.identitySecretHex.hexToBytes())
+        val ctl = to.circle(circleId)!!.ctlKeyHex!!.hexToBytes()
+        val inbox = CircleCrypto.inbox(ctl, to.me, CircleCrypto.day(clock))
+        from.client.publish(app.quietmap.core.protocol.DirectMessages.seal(signer, to.me, body, clock, inbox), true)
+        net.flush()
+        to.engine.housekeeping()
+    }
+
+    private fun rosterOf(c: Circle, managers: List<String> = c.managers, day: Long = CircleCrypto.day(clock)) =
+        app.quietmap.core.protocol.RosterCircle(
+            c.id, c.name, CircleCrypto.keyForDay(c.keyHex.hexToBytes(), c.keyDay, c.id, c.epoch, day)!!.toHex(), c.epoch,
+            c.adminPubkey, c.members, managers, v = 2, day = day, ctl = c.ctlKeyHex,
+        )
+
+    @Test
+    fun removalNoticesOnlyWorkForTheirRecipientAndANewerEpoch() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val c = Phone("Cal")
+        val id = circleWith(a, b, c)
+        val epoch = c.circle(id)!!.epoch
+        // Admin-signed notices, passed on to Cal by someone who got hold of them.
+        deliver(a, c, id, app.quietmap.core.protocol.RemovedBody(a.me, clock, id, to = b.me, epoch = epoch + 1))
+        deliver(a, c, id, app.quietmap.core.protocol.RemovedBody(a.me, clock + 1, id))
+        deliver(a, c, id, app.quietmap.core.protocol.RemovedBody(a.me, clock + 2, id, to = c.me, epoch = epoch))
+        assertNotNull(c.circle(id), "a notice for someone else, or an old one, is ignored")
+        deliver(a, c, id, app.quietmap.core.protocol.RemovedBody(a.me, clock + 3, id, to = c.me, epoch = epoch + 1))
+        assertNull(c.circle(id))
+    }
+
+    @Test
+    fun anOldRosterCantBePassedOnToUndoALaterChange() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val c = Phone("Cal")
+        val id = circleWith(a, b, c)
+        a.engine.setManager(id, b.me, true)
+        sync(a, b, c)
+        assertTrue(b.me in c.circle(id)!!.managers)
+        val asManager = a.circle(id)!!
+        val then = clock
+        clock += 60
+        a.engine.setManager(id, b.me, false)
+        sync(a, b, c)
+        assertFalse(b.me in c.circle(id)!!.managers)
+        deliver(a, c, id, app.quietmap.core.protocol.Roster2Body(a.me, then, rosterOf(asManager)))
+        assertFalse(b.me in c.circle(id)!!.managers, "the roster that made Ben a manager can't be replayed")
+    }
+
+    @Test
+    fun malformedRostersAreIgnored() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val before = b.circle(id)!!
+        val rc = rosterOf(a.circle(id)!!)
+        clock += 5
+        deliver(a, b, id, app.quietmap.core.protocol.Roster2Body(a.me, clock, rc.copy(day = 0)))
+        deliver(a, b, id, app.quietmap.core.protocol.Roster2Body(a.me, clock + 1, rc.copy(ctl = "zz")))
+        deliver(a, b, id, app.quietmap.core.protocol.Roster2Body(a.me, clock + 2, rc.copy(members = rc.members + Member("not a key", "X"))))
+        sync(a, b)
+        assertEquals(before.ctlKeyHex, b.circle(id)!!.ctlKeyHex)
+        assertEquals(before.members, b.circle(id)!!.members)
+    }
+
+    @Test
+    fun anOldLeftMessageCantRemoveSomeoneWhoCameBack() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        clock += 60
+        deliver(b, a, id, app.quietmap.core.protocol.LeftBody(b.me, clock - 3 * 3600, id))
+        assertTrue(a.circle(id)!!.members.any { it.pubkey == b.me }, "from before Ben joined: a replay")
+        deliver(b, a, id, app.quietmap.core.protocol.LeftBody(b.me, clock, id))
+        assertFalse(a.circle(id)!!.members.any { it.pubkey == b.me })
+    }
+
+    @Test
+    fun membersWhoMissAResetStillFollowItAndACopyCantPullThemBack() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        a.engine.setPin("1357")
+        val copy = Phone("Copy")
+        copy.engine.importBackup(a.engine.exportBackup("stolen passphrase"), "stolen passphrase")
+        sync(copy)
+        b.client.drop = { true } // Ben's phone misses the reset entirely
+        a.engine.resetIdentity()
+        sync(copy, a, b)
+        b.client.drop = { false }
+        assertNotEquals(a.me, b.circle(id)!!.adminPubkey)
+        assertEquals(ShareStatus.KEY_REPLACED, copy.engine.shareStatus(copy.circle(id)!!), "the old copy sees it was replaced and stands down")
+        // A week on, the copy doesn't rotate; Ana's phone resends the hand-over, signed by the old key.
+        clock += Engine.ROTATE_EVERY_SECONDS + 1
+        repeat(3) { sync(copy, a, b) }
+        assertEquals(a.me, b.circle(id)!!.adminPubkey, "Ben follows Ana to her new identity")
+        assertEquals(a.circle(id)!!.epoch, b.circle(id)!!.epoch)
+        clock += Engine.ROTATE_EVERY_SECONDS + 1
+        repeat(3) { sync(copy, a, b) }
+        assertEquals(a.me, b.circle(id)!!.adminPubkey, "and the copy can't take him back")
+        b.engine.publishLocation(loc(14.0))
+        net.flush()
+        assertEquals(14.0, a.locationOf(id, b.me)!!.lat)
+        assertNull(a.circle(id)!!.handoverSecretHex, "the old secret is dropped once everyone has the new key")
+    }
+
+    @Test
+    fun startingToShareWithANewCircleNeedsThePin() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val c = a.engine.createCircle("Family")
+        sync(a, b)
+        b.engine.setPin("2468")
+        b.engine.acceptInvite(InviteLinks.decode(a.engine.createInvite(c.id))!!, scannedInPerson = true)
+        sync(a, b)
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b)
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException> { b.engine.confirmCircle(c.id) }
+        assertEquals(PinResult.Ok, b.engine.unlock("2468"))
+        b.engine.confirmCircle(c.id)
+        assertTrue(b.circle(c.id)!!.confirmed)
+    }
+
     /** Fails if any event opens with [c]'s keys for any day from its key day up to 400 days on. */
     private fun assertNothingOpensWith(c: Circle, events: List<Event>) {
         val keys = buildList {

@@ -420,6 +420,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
     var name by remember(state.myName) { mutableStateOf(state.myName) }
     var code by remember { mutableStateOf("") }
     var keepRelays by remember { mutableStateOf(false) }
+    val gate = LocalPinGate.current
     ScreenScaffold("Join a circle", onDone) {
         val now = epochSeconds()
         when {
@@ -478,7 +479,8 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
                     )
                     PrimaryButton("Ask to join", {
                         actions.setName(name)
-                        actions.acceptInvite(invite, scanned, code.takeIf { !scanned }, keepRelays, onDone)
+                        val join = { actions.acceptInvite(invite, scanned, code.takeIf { !scanned }, keepRelays, onDone) }
+                        if (keepRelays) gate.require(join) else join()
                     }, enabled = name.isNotBlank() && verified)
                     TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
                 }

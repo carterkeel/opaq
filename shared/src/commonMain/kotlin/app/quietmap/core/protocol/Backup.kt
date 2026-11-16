@@ -71,7 +71,7 @@ object Backups {
         showPhotos = s.showPhotos,
         // Only current keys: replaced keys and control keys of earlier epochs never go into a backup.
         circles = s.circles.map {
-            it.copy(previousKeyHex = null, previousEpoch = null, previousValidUntil = null, previousKeyDay = null, oldControls = emptyList(), pendingAcks = emptyList())
+            it.copy(previousKeyHex = null, previousEpoch = null, previousValidUntil = null, previousKeyDay = null, oldControls = emptyList(), pendingAcks = emptyList(), handoverSecretHex = null, handoverUntil = 0)
         },
         contacts = s.contacts,
         pendingJoins = s.pendingJoins,
@@ -120,9 +120,10 @@ object Backups {
         } else {
             val kdf = try { json.decodeFromString(BackupKdf.serializer(), lines[1]) } catch (_: Throwable) { throw IllegalArgumentException("The backup file is damaged") }
             // Bounds stop a crafted file from asking for absurd memory or time.
-            require(kdf.kdf == "argon2id" && kdf.m in 8_192..1_048_576 && kdf.t in 1..10) { "This backup uses settings Quietmap doesn't support" }
+            require(kdf.kdf == "argon2id" && kdf.m in 8_192..262_144 && kdf.t in 1..10) { "This backup uses settings Quietmap doesn't support" }
             val salt = try { kdf.salt.fromBase64Url() } catch (_: Throwable) { throw IllegalArgumentException("The backup file is damaged") }
-            require(salt.size >= 16) { "The backup file is damaged" }
+            // Exactly 16 bytes: libsodium (iOS) only reads 16, so a longer salt would give a different key.
+            require(salt.size == 16) { "The backup file is damaged" }
             argonKey(passphrase, salt, kdf.m, kdf.t)
         }
         val plain = try { Nip44.decrypt(lines[2], key) } catch (_: Throwable) { throw IllegalArgumentException("Wrong passphrase, or the backup file is damaged") }

@@ -124,6 +124,12 @@ data class RemovedBody(
     val circle: String,
     /** The admin deleted the whole circle, rather than removing just you. */
     val deleted: Boolean = false,
+    /**
+     * v2: who this notice is for, and the epoch it ends (newer than the recipient's), so nobody can
+     * pass a notice meant for someone else, or an old one, on to a member to make them leave.
+     */
+    val to: String? = null,
+    val epoch: Int? = null,
 ) : Body()
 
 /** A member tells the admin they left, so the admin can rotate the key without them. */
@@ -391,7 +397,7 @@ object InviteLinks {
         val payload = link.trim().substringAfter('#', missingDelimiterValue = link.trim())
         val data = json.decodeFromString(InviteData.serializer(), payload.fromBase64Url().decodeToString())
         val valid = Keys.isValidPublicKey(data.k) && data.s.length >= 32 && data.s.all { it in "0123456789abcdef" } && when (data.v) {
-            1 -> true
+            // Unsigned v1 links are refused: anyone could change the relays or names in them.
             2 -> data.x != null && Keys.verify(data.x.hexToBytes(), signedBytes(data), data.k.hexToBytes())
             else -> false
         }
