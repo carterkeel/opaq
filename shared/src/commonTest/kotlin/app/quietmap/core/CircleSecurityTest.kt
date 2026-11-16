@@ -8,11 +8,13 @@ import app.quietmap.core.model.Circle
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
 import app.quietmap.core.model.MembershipChange
+import app.quietmap.core.model.Precision
 import app.quietmap.core.nostr.Event
 import app.quietmap.core.nostr.Filter
 import app.quietmap.core.nostr.Kinds
 import app.quietmap.core.protocol.Backups
 import app.quietmap.core.protocol.CircleCrypto
+import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.LocationBody
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +27,7 @@ import kotlinx.serialization.json.Json
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
@@ -77,10 +80,12 @@ class CircleSecurityTest {
         sync(admin, *joiners)
         joiners.forEach { j ->
             val link = admin.engine.createInvite(c.id)
-            j.engine.acceptInvite(InviteLinks.decode(link)!!)
+            j.engine.acceptInvite(InviteLinks.decode(link)!!, scannedInPerson = true)
             sync(admin, *joiners)
             val req = admin.engine.state.value.joinRequests.single { it.pubkey == j.me }
             admin.engine.approve(req.id)
+            sync(admin, *joiners)
+            j.engine.confirmCircle(c.id)
             sync(admin, *joiners)
         }
         return c.id
@@ -404,7 +409,7 @@ class CircleSecurityTest {
         val job = scope.launch { b.engine.notices.collect { heard += it } }
         kotlinx.coroutines.yield()
         val link = a.engine.createInvite(id)
-        c.engine.acceptInvite(InviteLinks.decode(link)!!)
+        c.engine.acceptInvite(InviteLinks.decode(link)!!, scannedInPerson = true)
         sync(a, b, c)
         a.engine.approve(a.engine.state.value.joinRequests.single().id)
         sync(a, b, c)
@@ -417,6 +422,119 @@ class CircleSecurityTest {
         val history = b.circle(id)!!.history.map { it.change to it.name }
         assertTrue(MembershipChange.JOINED to "Cal" in history && MembershipChange.LEFT to "Cal" in history)
         assertEquals(a.me, b.circle(id)!!.history.last { it.name == "Cal" && it.change == MembershipChange.JOINED }.by)
+    }
+
+    // QM-08 ------------------------------------------------------------------------------------
+
+    @Test
+    fun aTamperedInviteIsRejected() = runTest {
+        val a = Phone("Ana")
+        val c = a.engine.createCircle("Family")
+        val link = a.engine.createInvite(c.id)
+        val invite = InviteLinks.decode(link)!!
+        assertEquals(2, invite.v)
+        val evil = KeyPair.generate()
+        // Swap the inviter's key, or the relays, and keep the signature: the link no longer decodes.
+        assertNull(InviteLinks.decode(InviteLinks.encode(invite.copy(k = evil.publicHex))))
+        assertNull(InviteLinks.decode(InviteLinks.encode(invite.copy(r = listOf("wss://evil.example")))))
+        assertNull(InviteLinks.decode(InviteLinks.encode(invite.copy(e = invite.e + 86_400))))
+        // Re-signed by the attacker, it decodes, but names the attacker's key: the device code the
+        // real inviter reads out won't match it, so joining through it is refused.
+        val resigned = InviteLinks.decode(InviteLinks.encode(InviteLinks.signed(evil, invite)))!!
+        val b = Phone("Ben")
+        assertFailsWith<IllegalArgumentException> { b.engine.acceptInvite(resigned, typedCode = DeviceCode.full(a.me)) }
+        assertFailsWith<IllegalArgumentException> { b.engine.acceptInvite(invite) }
+        assertTrue(b.engine.state.value.pendingJoins.isEmpty())
+        // The right code (as read out by Ana) works.
+        b.engine.acceptInvite(invite, typedCode = DeviceCode.full(a.me).lowercase().replace(" ", ""))
+        assertEquals(1, b.engine.state.value.pendingJoins.size)
+        assertTrue(b.engine.state.value.contacts[a.me]!!.verified)
+    }
+
+    @Test
+    fun joiningDoesntShareUntilTheUserSeesTheCircleAndConfirms() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val c = a.engine.createCircle("Family")
+        sync(a, b)
+        b.engine.acceptInvite(InviteLinks.decode(a.engine.createInvite(c.id))!!, scannedInPerson = true)
+        sync(a, b)
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b)
+        val joined = b.circle(c.id)!!
+        assertFalse(joined.confirmed)
+        assertEquals(ShareStatus.NOT_CONFIRMED, b.engine.shareStatus(joined))
+        val n = net.published.size
+        b.engine.publishLocation(loc(1.0))
+        net.flush()
+        assertEquals(n, net.published.size, "no location and no profile before confirming")
+        assertNull(a.locationOf(c.id, b.me))
+        b.engine.confirmCircle(c.id)
+        sync(a, b)
+        b.engine.publishLocation(loc(2.0))
+        net.flush()
+        assertEquals(2.0, a.locationOf(c.id, b.me)!!.lat)
+    }
+
+    @Test
+    fun anInviteWorksOnceAndJoinTrafficNeverNamesPublicKeys() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id))!!
+        val before = net.published.size
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, x)
+        x.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, x)
+        assertEquals(listOf(b.me), a.engine.state.value.joinRequests.map { it.pubkey }, "the second request is ignored")
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b, x)
+        assertNotNull(b.circle(c.id))
+        assertNull(x.circle(c.id))
+        val joinTraffic = net.published.drop(before).filter { it.kind == Kinds.SEALED_DIRECT }
+        assertTrue(joinTraffic.isNotEmpty())
+        assertTrue(joinTraffic.none { it.tag("p") in setOf(a.me, b.me, x.me) }, "invite inboxes, not public keys")
+        listOf(a, b).forEach { p -> assertFalse(p.client.subs.values.flatten().any { p.me in it.tagP }) }
+    }
+
+    @Test
+    fun inviteRelaysAreUsedOnlyWhileJoining() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        a.engine.setRelays(listOf("wss://ana.example"))
+        val c = a.engine.createCircle("Family")
+        b.engine.setRelays(listOf("wss://ben.example"))
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id))!!
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        assertEquals(setOf("wss://ben.example", "wss://ana.example"), b.client.status.value.keys)
+        assertEquals(listOf("wss://ben.example"), b.engine.state.value.relays, "not saved")
+        sync(a, b)
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b)
+        assertNotNull(b.circle(c.id))
+        assertEquals(setOf("wss://ben.example"), b.client.status.value.keys, "dropped once joined")
+    }
+
+    // QM-12 ------------------------------------------------------------------------------------
+
+    @Test
+    fun eachCircleGetsOnlyThePrecisionChosenForIt() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        b.engine.setCirclePrecision(id, Precision.NEIGHBORHOOD)
+        val exact = MemberLocation(lat = 41.881901, lon = -87.627801, accuracy = 4f, speed = 12f, heading = 90f, battery = 80, time = clock,
+            points = listOf(app.quietmap.core.model.Point(41.8818, -87.6277, clock - 30)))
+        b.engine.publishLocation(exact)
+        net.flush()
+        val seen = a.locationOf(id, b.me)!!
+        assertEquals(Precision.NEIGHBORHOOD, seen.precision)
+        assertNull(seen.speed); assertNull(seen.heading); assertTrue(seen.points.isEmpty())
+        assertNull(seen.battery, "battery is off by default")
+        assertTrue(kotlin.math.abs(seen.lat - exact.lat) < 0.02 && seen.lat != exact.lat)
+        // More precise again needs the PIN once one is set.
+        b.engine.setPin("1357")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException> { b.engine.setCirclePrecision(id, Precision.EXACT) }
+        b.engine.setCirclePrecision(id, Precision.CITY)
+        assertFailsWith<IllegalStateException> { b.engine.setCircleTrail(id, true) }
     }
 
     /** Fails if any event opens with [c]'s keys for any day from its key day up to 400 days on. */

@@ -6,7 +6,9 @@ import app.quietmap.core.model.Activity
 import app.quietmap.core.model.LocationSample
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
+import app.quietmap.core.model.LocationPrecision
 import app.quietmap.core.model.Point
+import app.quietmap.core.model.Precision
 import app.quietmap.core.nostr.Kinds
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DeviceCode
@@ -228,5 +230,23 @@ class ProtocolTest {
         assertNotEquals(pa.publicHex, CircleCrypto.memberPublisher(b.secret, "c", 1, 100).publicHex)
         assertNotEquals(pa.publicHex, CircleCrypto.memberPublisher(a.secret, "c", 1, 101).publicHex, "changes every hour")
         assertNotEquals(CircleCrypto.closedTag(a.secret, 1), CircleCrypto.controlTag(a.secret, 1, 0))
+    }
+
+    @Test
+    fun approximateLocationsSnapToAFixedGridAndCantBeAveragedBack() {
+        val rnd = kotlin.random.Random(7)
+        val truth = 41.8819 to -87.6278
+        val snapped = (1..200).map {
+            val fix = MemberLocation(truth.first + rnd.nextDouble(-0.0005, 0.0005), truth.second + rnd.nextDouble(-0.0005, 0.0005), 5f, speed = 3f, heading = 10f, time = now)
+            LocationPrecision.apply(fix, Precision.NEIGHBORHOOD)
+        }.map { it.lat to it.lon }.toSet()
+        // Every fix in the cell gives the same answer, so averaging many updates learns nothing more.
+        assertTrue(snapped.size <= 4, "at most the cells the noise straddles: ${snapped.size}")
+        val city = LocationPrecision.apply(sampleLocation(), Precision.CITY)
+        assertTrue(kotlin.math.abs(city.lat - 41.8819) < 0.2 && kotlin.math.abs(city.lon + 87.6278) < 0.3)
+        assertNull(city.speed); assertNull(city.heading); assertTrue(city.points.isEmpty())
+        assertEquals(Precision.CITY, city.precision)
+        assertEquals(sampleLocation(), LocationPrecision.apply(sampleLocation(), Precision.EXACT))
+        assertTrue(LocationPrecision.apply(sampleLocation(), Precision.EXACT, trail = false).points.isEmpty())
     }
 }

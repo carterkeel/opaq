@@ -1,6 +1,7 @@
 package app.quietmap.core
 
 import app.quietmap.core.crypto.KeyPair
+import app.quietmap.core.crypto.PlatformCrypto
 import app.quietmap.core.crypto.Keys
 import app.quietmap.core.crypto.Nip44
 import app.quietmap.core.crypto.hexToBytes
@@ -74,5 +75,14 @@ class CryptoTest {
         val msg = ByteArray(32) { it.toByte() }
         assertTrue(Keys.verify(a.sign(msg), msg, a.publicKey))
         assertFalse(Keys.verify(a.sign(msg), msg, b.publicKey))
+    }
+
+    @Test
+    fun argon2idMatchesTheReferenceImplementation() {
+        // Expected values from the reference implementation (argon2-cffi, Argon2id v1.3).
+        val small = PlatformCrypto.argon2id("636f727265637420686f727365", ByteArray(16) { it.toByte() }, 1024, 2, 32)
+        assertEquals("fabc6d705d8305f2bd84dfd6feb369f1e7b68f7b8b24b8089b4e02eed11b01d6", small.toHex())
+        val full = PlatformCrypto.argon2id("password", "somesaltsomesalt".encodeToByteArray(), 65_536, 3, 32)
+        assertEquals("7664ad4ba1a3c999fcdd0991ffc2270f78302d2383233db5e7befc85d1bb1819", full.toHex())
     }
 }

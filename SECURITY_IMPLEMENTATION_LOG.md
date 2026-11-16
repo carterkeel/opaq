@@ -221,3 +221,59 @@ The rest of QM-02 is under Phase 12 below.
 **Tests.** `CircleSecurityTest.everyoneHearsWhenSomeoneJoinsOrLeaves`.
 
 **Remaining limitations.** Membership history is local, so a phone that joins later sees only what happened since. iOS doesn't post join notifications yet (the history is there); that needs the iOS notification permission flow in the Xcode shell.
+
+## QM-08: invitation and membership verification (Phase 8)
+
+**Vulnerability.** Whoever redeemed a link first took the single-use slot. A link with the inviter's key and relays swapped made the joiner send their request to, and trust a roster from, the attacker. Checking device codes was optional.
+
+**Changes.**
+
+- **Signed links (v2).** The inviter signs every field (key, names, circle, relays, secret, expiry). `InviteLinks.decode` rejects a v2 link whose fields don't match the signature, so a relay list or expiry can't be changed on the way. v1 links from older apps still decode.
+- **Required verification.** Joining needs one of:
+  - the QR code scanned in the app (the inviter was physically there),
+  - the inviter's full 16-character device code, read out by them and typed by the joiner (`Engine.deviceCodeMatches`, constant-time),
+  - an inviter already verified.
+
+  The engine enforces this, not just the screen. A re-signed attacker link decodes, but it carries the attacker's key, so the real inviter's code doesn't match and the join is refused. The invite screen shows the inviter's code with instructions to read it out.
+- **Nothing shared until confirmed.** A circle you've just been let into starts unconfirmed: no location and no profile go to it. The home screen shows who is in it and asks "Start sharing". This applies even after a verified join.
+- **Shorter invites.** Invites last 1 hour by default (24 hours is an option), and stay single-use.
+- **Private inboxes.** v2 join requests and the approval go to an inbox tag derived from the invite secret, never to either person's public key.
+- **Relays from invites (QM-09).** Relays named in an invite are shown on the join screen and used only while that join is in progress. They are dropped when the join completes or expires, unless the user turns on "Keep using these relays". Only `wss://` relays are accepted, at most four.
+
+**Tests.** `CircleSecurityTest`: `aTamperedInviteIsRejected` (swapped key, relays or expiry; a re-signed attacker invite; a missing or wrong code; the right code typed in any case or spacing), `joiningDoesntShareUntilTheUserSeesTheCircleAndConfirms`, `anInviteWorksOnceAndJoinTrafficNeverNamesPublicKeys`, `inviteRelaysAreUsedOnlyWhileJoining`.
+
+**Remaining limitations.**
+
+- The device code is 64 bits (audit QM-13, rated Low, left unchanged).
+- A joiner who types a code read out by an attacker on the phone is still fooled; the instructions say to call the person they know.
+
+## QM-10: backup encryption (Phase 9)
+
+**Vulnerability.** Backups used PBKDF2-SHA256 (600,000 iterations), which GPUs can attack offline at scale.
+
+**Changes.**
+
+- **Argon2id.** New backups (`quietmap-backup-v2`) use Argon2id v1.3 with 64 MiB of memory, 3 passes and one lane. The salt is a fresh random 16 bytes. The parameters are stored in the file's second line.
+- **Libraries.** BouncyCastle (`Argon2BytesGenerator`) on Android, libsodium `crypto_pwhash` on iOS. The passphrase's UTF-8 bytes are hex-encoded before hashing, so both platforms hash identical bytes (the iOS bindings pass the string length as the byte count).
+- **Old backups.** v1 files still restore through an explicit branch on the header.
+- **Crafted files.** A file can't demand absurd work: memory is limited to 8 MiB–1 GiB and passes to 1–10, and other algorithms are refused.
+- **Wrong passwords.** Decryption happens before anything is changed, so a wrong passphrase never overwrites the existing identity (tested under QM-11).
+
+**Tests.** `CryptoTest.argon2idMatchesTheReferenceImplementation` (vectors from argon2-cffi, the reference implementation, including the 64 MiB setting), `SecurityTest.newBackupsUseArgon2idAndOldOnesStillRestore`, `backupFilesCantDemandAbsurdWork`, `EngineTest.backupRejectsWrongPassphraseAndShortOnes`.
+
+**Not done.** Generated 128-bit recovery codes ("consider" in the plan) are a reasonable next step. The PIN uses PBKDF2, which is enough because its hash only exists inside the Keystore-encrypted state.
+
+## QM-12: location privacy controls (Phase 10)
+
+**Changes.**
+
+- **Per-circle precision:** exact, neighbourhood (about 2 km) or city (about 20 km), under Settings, Circles, then a circle.
+- **Grid snapping.** Approximate modes snap to the centre of a fixed grid cell (`LocationPrecision.apply`); longitude steps widen toward the poles to keep cells square. Every update from inside a cell is identical, so averaging many updates reveals nothing more. No random noise is used. Speed, heading and the recent path are dropped in approximate modes, since they narrow the position again.
+- **Recent path** can be turned off per circle.
+- **Battery** sharing is off by default for new installs. Existing installs keep their saved choice.
+- **Telling people.** Receivers see "area only" or "city only" in the person's status. The monthly reminder lists each circle's precision.
+- **PIN.** Making sharing more precise, or turning the path on, needs the PIN when one is set. Making it less precise never does.
+
+**Tests.** `ProtocolTest.approximateLocationsSnapToAFixedGridAndCantBeAveragedBack`, `CircleSecurityTest.eachCircleGetsOnlyThePrecisionChosenForIt`.
+
+**Remaining limitations.** Crossing a cell boundary reveals that you're near it; a bigger cell trades usefulness for privacy. Your own phone still shows your exact position to you.

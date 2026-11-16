@@ -45,15 +45,22 @@ class Actions(
         launchAction(after = { onCreated(id); platform.ensureSharingService() }) { id = engine.createCircle(name).id }
     }
 
-    fun createInvite(circleId: String, onLink: (String) -> Unit) {
+    fun createInvite(circleId: String, hours: Int = 1, onLink: (String) -> Unit) {
         var link = ""
-        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId) }
+        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId, hours) }
     }
 
-    fun acceptInvite(invite: InviteData, onDone: () -> Unit) = launchAction(after = onDone) {
-        engine.acceptInvite(invite)
+    fun deviceCodeMatches(pubkey: String, typed: String): Boolean = engine.deviceCodeMatches(pubkey, typed)
+
+    fun acceptInvite(invite: InviteData, scannedInPerson: Boolean, typedCode: String?, keepRelays: Boolean, onDone: () -> Unit) = launchAction(after = onDone) {
+        engine.acceptInvite(invite, scannedInPerson, typedCode, keepRelays)
         engine.setSetupDone()
     }
+
+    fun setCirclePrecision(circleId: String, precision: app.quietmap.core.model.Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
+    fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }
+
+    fun confirmCircle(circleId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.confirmCircle(circleId) }
     fun approve(requestId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.approve(requestId) }
     fun deny(requestId: String) = launchAction { engine.deny(requestId) }
     fun removeMember(circleId: String, pubkey: String) = launchAction { engine.removeMember(circleId, pubkey) }

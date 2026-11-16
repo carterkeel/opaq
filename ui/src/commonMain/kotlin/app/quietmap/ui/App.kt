@@ -36,7 +36,8 @@ sealed interface Route {
     data object Home : Route
     data class Profile(val circleId: String, val pubkey: String) : Route
     data class Add(val circleId: String) : Route
-    data class Join(val invite: InviteData?) : Route
+    /** [scanned]: the QR code was scanned in the app, in person, which verifies the inviter. */
+    data class Join(val invite: InviteData?, val scanned: Boolean = false) : Route
     data object Settings : Route
     data object EditProfile : Route
     data object JoinOptions : Route
@@ -92,7 +93,7 @@ fun QuietmapScreens(
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
     val openLink: (String) -> Unit = { push(Route.Join(InviteLinks.decode(it))) }
-    val scan: () -> Unit = { platform.scanQrCode { text -> if (text != null) openLink(text) } }
+    val scan: () -> Unit = { platform.scanQrCode { text -> if (text != null) push(Route.Join(InviteLinks.decode(text), scanned = true)) } }
 
     LaunchedEffect(incomingLink) {
         val l = incomingLink ?: return@LaunchedEffect
@@ -160,7 +161,7 @@ fun QuietmapScreens(
                                 when (route) {
                                     is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
                                     is Route.Add -> AddScreen(state, me, route.circleId, actions, ::pop)
-                                    is Route.Join -> JoinScreen(state, route.invite, actions, ::home)
+                                    is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home)
                                     Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)
                                     Route.Settings -> SettingsScreen(
                                         state, me, relayStatus, sharingSettings, actions, ::pop,
@@ -173,7 +174,7 @@ fun QuietmapScreens(
                                     Route.EditProfile -> EditProfileScreen(state, me, actions, ::pop)
                                     Route.Backup -> BackupScreen(state, actions, ::pop)
                                     Route.SecurityLog -> SecurityLogScreen(state, ::pop)
-                                    is Route.CircleInfo -> CircleInfoScreen(state, me, route.circleId, ::pop)
+                                    is Route.CircleInfo -> CircleInfoScreen(state, me, route.circleId, actions, ::pop)
                                     Route.Restore -> RestoreScreen(actions, ::pop) { selectedCircle = null; home() }
                                     Route.Home -> Unit
                                 }

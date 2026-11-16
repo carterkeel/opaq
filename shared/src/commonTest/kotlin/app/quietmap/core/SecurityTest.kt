@@ -1,6 +1,8 @@
 package app.quietmap.core
 
+import app.quietmap.core.crypto.hexToBytes
 import app.quietmap.core.model.SecurityEventType
+import app.quietmap.core.protocol.Backups
 import app.quietmap.core.nostr.RelayUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -249,5 +251,30 @@ class SecurityTest {
         clock += Engine.CONSENT_EVERY_SECONDS
         e.setSharing(false)
         assertFalse(e.consentDue(), "no reminder while not sharing")
+    }
+
+    // QM-10: backups ----------------------------------------------------------------------------
+
+    @Test
+    fun newBackupsUseArgon2idAndOldOnesStillRestore() = runTest {
+        val e = engine(FlakyStore())
+        e.createCircle("Family")
+        e.setPin("2468")
+        val v2 = e.exportBackup("correct horse battery")
+        assertTrue(v2.startsWith("quietmap-backup-v2\n{\"kdf\":\"argon2id\",\"m\":65536,\"t\":3,"), v2.take(80))
+        val data = Backups.decrypt(v2, "correct horse battery")
+        assertEquals(e.myPubkey, app.quietmap.core.crypto.KeyPair(data.identitySecretHex.hexToBytes()).publicHex)
+        // A v1 (PBKDF2) file from an older version still restores.
+        val v1 = Backups.encryptV1ForTests(data, "correct horse battery")
+        assertEquals(data.identitySecretHex, Backups.decrypt(v1, "correct horse battery").identitySecretHex)
+        assertFailsWith<IllegalArgumentException> { Backups.decrypt(v2, "wrong horse battery") }
+    }
+
+    @Test
+    fun backupFilesCantDemandAbsurdWork() {
+        val crafted = "quietmap-backup-v2\n{\"kdf\":\"argon2id\",\"m\":4194304,\"t\":3,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAA\"}\nAA\n"
+        assertFailsWith<IllegalArgumentException> { Backups.decrypt(crafted, "whatever123") }
+        val sha = "quietmap-backup-v2\n{\"kdf\":\"sha1\",\"m\":65536,\"t\":3,\"salt\":\"AAAAAAAAAAAAAAAAAAAAAA\"}\nAA\n"
+        assertFailsWith<IllegalArgumentException> { Backups.decrypt(sha, "whatever123") }
     }
 }

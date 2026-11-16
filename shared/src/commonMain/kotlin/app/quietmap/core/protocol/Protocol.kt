@@ -340,6 +340,7 @@ object DeviceCode {
 
 @Serializable
 data class InviteData(
+    /** 1: unsigned, join request goes to the inviter's public key. 2: signed, rotating invite inbox. */
     val v: Int = 1,
     /** inviter public key */
     val k: String,
@@ -354,6 +355,8 @@ data class InviteData(
     val s: String,
     /** expiry, unix seconds */
     val e: Long,
+    /** v2: the inviter's signature over all the fields above, so none can be changed on the way. */
+    val x: String? = null,
 )
 
 object InviteLinks {
@@ -363,11 +366,36 @@ object InviteLinks {
     fun encode(data: InviteData): String =
         SCHEME_PREFIX + json.encodeToString(InviteData.serializer(), data).encodeToByteArray().toBase64Url()
 
-    /** Accepts the full link or anything containing "#<payload>". Returns null if it isn't a valid invite. */
+    /** What a v2 invite's signature covers: every field, in a fixed order. */
+    private fun signedBytes(d: InviteData): ByteArray =
+        PlatformCrypto.sha256(json.encodeToString(InviteData.serializer(), d.copy(x = null)).let { "quietmap-invite|$it" }.encodeToByteArray())
+
+    /** A v2 invite signed by [inviter], whose public key it carries. */
+    fun signed(inviter: KeyPair, data: InviteData): InviteData {
+        val d = data.copy(v = 2, k = inviter.publicHex, x = null)
+        return d.copy(x = inviter.sign(signedBytes(d)).toHex())
+    }
+
+    /**
+     * Where a v2 join request (and the answer to it) is delivered: derived from the one-time secret,
+     * so relays never see the inviter's or the joiner's public key.
+     */
+    fun inbox(secretHex: String): String =
+        PlatformCrypto.hmacSha256(secretHex.hexToBytes(), "qm-invite-inbox".encodeToByteArray()).toHex()
+
+    /**
+     * Accepts the full link or anything containing "#<payload>". Returns null if it isn't a valid
+     * invite, including a v2 invite whose fields don't match the inviter's signature.
+     */
     fun decode(link: String): InviteData? = try {
         val payload = link.trim().substringAfter('#', missingDelimiterValue = link.trim())
         val data = json.decodeFromString(InviteData.serializer(), payload.fromBase64Url().decodeToString())
-        if (data.v == 1 && Keys.isValidPublicKey(data.k) && data.s.length >= 16) data else null
+        val valid = Keys.isValidPublicKey(data.k) && data.s.length >= 32 && data.s.all { it in "0123456789abcdef" } && when (data.v) {
+            1 -> true
+            2 -> data.x != null && Keys.verify(data.x.hexToBytes(), signedBytes(data), data.k.hexToBytes())
+            else -> false
+        }
+        if (valid) data else null
     } catch (_: Throwable) {
         null
     }

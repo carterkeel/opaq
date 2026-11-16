@@ -205,7 +205,7 @@ fun SecurityLogScreen(state: AppState, onBack: () -> Unit) {
 // -------------------------------------------------------------------------------------------------
 
 @Composable
-fun CircleInfoScreen(state: AppState, me: String, circleId: String, onBack: () -> Unit) {
+fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Actions, onBack: () -> Unit) {
     val circle = state.circles.firstOrNull { it.id == circleId }
     if (circle == null) {
         ScreenScaffold("", onBack) { Text("You're no longer in this circle.", modifier = Modifier.padding(horizontal = 24.dp)) }
@@ -214,7 +214,40 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, onBack: () -
     val now = rememberNow()
     fun nameOf(pubkey: String?, fallback: String = "Someone"): String =
         pubkey?.let { p -> circle.members.firstOrNull { it.pubkey == p }?.let { avatarFor(state, p, me, it.name).name } } ?: fallback
+    val gate = LocalPinGate.current
     ScreenScaffold(circle.name, onBack) {
+        SectionHeader("What ${circle.name} sees")
+        listOf(
+            Precision.EXACT to "Where you are, to within a few metres",
+            Precision.NEIGHBORHOOD to "Roughly which part of town (about 2 km)",
+            Precision.CITY to "Only roughly which city (about 20 km)",
+        ).forEach { (p, detail) ->
+            val selected = circle.precision == p
+            SettingsRow(
+                title = when (p) {
+                    Precision.EXACT -> "Exact location"
+                    Precision.NEIGHBORHOOD -> "Neighbourhood"
+                    Precision.CITY -> "City"
+                },
+                subtitle = detail,
+                icon = if (selected) AppIcons.Check else AppIcons.LocationPin,
+                onClick = {
+                    // Sharing less needs nothing; sharing more precisely needs the PIN.
+                    if (p.ordinal < circle.precision.ordinal) gate.require { actions.setCirclePrecision(circle.id, p) }
+                    else if (!selected) actions.setCirclePrecision(circle.id, p)
+                },
+            )
+        }
+        if (circle.precision == Precision.EXACT) {
+            SwitchRow("Recent path", "Send your last few points with each update", circle.shareTrail, AppIcons.Circles) { on ->
+                if (on) gate.require { actions.setCircleTrail(circle.id, true) } else actions.setCircleTrail(circle.id, false)
+            }
+        }
+        Caption(
+            "Approximate locations snap to a fixed grid, so many updates can't be averaged to find you. Speed and your path aren't sent with them.",
+            Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+        )
+
         SectionHeader("Who can see you")
         circle.members.filter { it.pubkey != me }.forEach { m ->
             SettingsRow(avatarFor(state, m.pubkey, me, m.name).name, if (m.pubkey == circle.adminPubkey) "Admin" else null, AppIcons.Person)

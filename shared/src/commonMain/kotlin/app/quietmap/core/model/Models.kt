@@ -16,8 +16,8 @@ data class AppState(
     val myName: String = "",
     val relays: List<String> = DEFAULT_RELAYS,
     val sharing: Boolean = true,
-    /** Include battery level in location updates. */
-    val shareBattery: Boolean = true,
+    /** Include battery level in location updates. Off by default; saved states keep their choice. */
+    val shareBattery: Boolean = false,
     /** Avatar color index for the default initial avatar; null means derived from the public key. */
     val myColor: Int? = null,
     /** Profile photo as a small JPEG, base64. Shared only with circle members, encrypted. */
@@ -159,6 +159,8 @@ data class PendingAck(
     val firstSentAt: Long,
     val lastSentAt: Long,
     val attempts: Int,
+    /** Inboxes beyond the circle's own, e.g. a joiner's invite inbox. */
+    val extraInboxes: List<String> = emptyList(),
 )
 
 /** Local-only knowledge about another person. */
@@ -175,6 +177,8 @@ data class Invite(
     val circleId: String,
     val expiresAt: Long,
     val used: Boolean = false,
+    /** 2: signed link, join request arrives on the invite's own inbox. */
+    val v: Int = 1,
 )
 
 /** Someone opened our invite link and is waiting for approval. */
@@ -185,6 +189,8 @@ data class JoinRequest(
     val pubkey: String,
     val name: String,
     val receivedAt: Long,
+    /** v2: the invite secret, so the approval can reach the joiner's invite inbox. */
+    val secret: String? = null,
 )
 
 /** We opened someone's invite link and are waiting for them to approve. */
@@ -195,6 +201,10 @@ data class PendingJoin(
     val inviterPubkey: String,
     val inviterName: String,
     val sentAt: Long,
+    /** v2: the invite inbox we listen on until we're let in. Null for a v1 invite (our public key). */
+    val inbox: String? = null,
+    /** Relays the invite asked for, used only until the join completes (unless the user kept them). */
+    val relays: List<String> = emptyList(),
 )
 
 @Serializable
@@ -212,10 +222,48 @@ data class MemberLocation(
     val time: Long,
     val points: List<Point> = emptyList(),
     val status: String? = null,
+    /** Set when the sender shares an approximate location; null means exact. */
+    val precision: Precision? = null,
 )
 
 @Serializable
 enum class Activity { STILL, WALKING, CYCLING, DRIVING, UNKNOWN }
+
+/**
+ * Turns an exact fix into what a circle should see. Approximate modes snap to the centre of a fixed
+ * grid cell (about 2 km for a neighbourhood, 20 km for a city) instead of adding random noise,
+ * which repeated updates would average away: every update from inside one cell is identical. Speed,
+ * heading and the recent path are left out, since they would narrow the position down again.
+ */
+object LocationPrecision {
+    private const val NEIGHBORHOOD_DEGREES = 0.02
+    private const val CITY_DEGREES = 0.2
+    private const val METERS_PER_DEGREE = 111_320.0
+
+    fun apply(loc: MemberLocation, precision: Precision, trail: Boolean = true): MemberLocation {
+        val base = if (trail) loc else loc.copy(points = emptyList())
+        val step = when (precision) {
+            Precision.EXACT -> return base
+            Precision.NEIGHBORHOOD -> NEIGHBORHOOD_DEGREES
+            Precision.CITY -> CITY_DEGREES
+        }
+        val latCell = kotlin.math.floor(loc.lat / step)
+        val lat = ((latCell + 0.5) * step).coerceIn(-89.999, 89.999)
+        // Cells stay roughly square: longitude steps widen towards the poles.
+        val lonStep = step / kotlin.math.cos(lat * kotlin.math.PI / 180).coerceAtLeast(0.05)
+        val lon = ((kotlin.math.floor((loc.lon + 180) / lonStep) + 0.5) * lonStep - 180).coerceIn(-180.0, 180.0)
+        return MemberLocation(
+            lat = lat,
+            lon = lon,
+            accuracy = (step * METERS_PER_DEGREE * 0.71).toFloat(),
+            activity = loc.activity,
+            battery = loc.battery,
+            time = loc.time,
+            status = loc.status,
+            precision = precision,
+        )
+    }
+}
 
 /** A location fix from the platform. */
 data class LocationSample(

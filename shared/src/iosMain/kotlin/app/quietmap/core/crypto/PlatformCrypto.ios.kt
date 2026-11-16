@@ -1,6 +1,8 @@
 package app.quietmap.core.crypto
 
 import com.ionspin.kotlin.crypto.LibsodiumInitializer
+import com.ionspin.kotlin.crypto.pwhash.PasswordHash
+import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2id_ALG_ARGON2ID13
 import com.ionspin.kotlin.crypto.stream.Stream
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -87,6 +89,20 @@ actual object PlatformCrypto {
         }
         check(status == kCCSuccess) { "PBKDF2 failed: $status" }
         return out
+    }
+
+    actual fun argon2id(password: String, salt: ByteArray, memoryKiB: Int, iterations: Int, length: Int): ByteArray {
+        // The bindings pass password.length as the byte count, which is only right for ASCII.
+        require(password.all { it.code < 128 }) { "argon2id input must be ASCII" }
+        ensureSodium()
+        return PasswordHash.pwhash(
+            length,
+            password,
+            salt.asUByteArray(),
+            iterations.toULong(),
+            memoryKiB * 1024,
+            crypto_pwhash_argon2id_ALG_ARGON2ID13,
+        ).asByteArray()
     }
 
     private fun ensureSodium() {

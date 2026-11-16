@@ -411,6 +411,13 @@ private fun PeopleList(
             Column {
                 Banner(visible = state.sharing && !hasLocationPermission, text = "Allow location access so your circle can see you.", action = "Allow", onAction = onRequestLocation)
                 Banner(visible = state.sharing && sharingBlocked != null, text = sharingBlocked ?: "", action = "Turn on", onAction = onFixSharing)
+                val others = circle.members.filter { it.pubkey != me }.joinToString(", ") { avatarFor(state, it.pubkey, me, it.name).name }
+                Banner(
+                    visible = !circle.confirmed,
+                    text = "You're in ${circle.name} with $others. Nobody here sees your location until you start sharing.",
+                    action = "Start sharing",
+                    onAction = { actions.confirmCircle(circle.id) },
+                )
                 val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
                 Banner(
                     visible = state.sharing && shareStatus == ShareStatus.KEY_REPLACED,

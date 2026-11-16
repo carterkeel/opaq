@@ -321,7 +321,9 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
     val platform = LocalPlatform.current
     val circle = state.circles.firstOrNull { it.id == circleId }
     var link by remember { mutableStateOf<String?>(null) }
+    var longer by remember { mutableStateOf(false) }
     val gate = LocalPinGate.current
+    val hours = if (longer) 24 else 1
 
     ScreenScaffold("Invite to ${circle?.name ?: "circle"}", onBack) {
         if (circle != null && (circle.adminPubkey == me || me in circle.managers)) {
@@ -337,12 +339,13 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                             Box(contentAlignment = Alignment.Center) { Icon(AppIcons.QrCode, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(40.dp)) }
                         }
                         Text(
-                            "Create a QR code and link for someone to join ${circle.name}. They work once, expire in 24 hours, and you approve whoever uses them.",
+                            "Create a QR code and link for someone to join ${circle.name}. They work once, and you approve whoever uses them. Scanning in person is safest: someone who joins from a link will need to hear your device code from you.",
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                         )
-                        PrimaryButton("Create invite", { gate.require { actions.createInvite(circle.id) { link = it } } })
+                        SwitchRow("Valid for 24 hours", "Off: the invite expires in 1 hour", longer, AppIcons.Info) { longer = it }
+                        PrimaryButton("Create invite", { gate.require { actions.createInvite(circle.id, hours) { link = it } } })
                     } else {
                         Text("Have them scan this with Quietmap", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         // QR codes need dark modules on a light background, in both themes.
@@ -353,7 +356,12 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                                 modifier = Modifier.padding(20.dp).size(232.dp),
                             )
                         }
-                        Caption("On their phone: Join a circle → Scan QR code. Works once · expires in 24 hours.")
+                        Caption("On their phone: Join a circle → Scan QR code. Works once · expires in ${if (hours == 1) "1 hour" else "24 hours"}.")
+                        InfoCard {
+                            Caption("Your device code")
+                            Mono(DeviceCode.full(me), size = 17, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
+                            Caption("If you send the link instead, read this out to them on a call. Quietmap asks them to type it.")
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             TonalButton("Share link", { platform.shareText("Join my circle \"${circle.name}\" on Quietmap: $current", "Share invite link") }, Modifier.weight(1f), icon = AppIcons.Share)
                             TonalButton("Copy", { platform.copyToClipboard("Quietmap invite", current) }, Modifier.weight(1f))
@@ -408,26 +416,57 @@ fun JoinOptionsScreen(onBack: () -> Unit, onScan: () -> Unit, onJoinLink: (Strin
 }
 
 @Composable
-fun JoinScreen(state: AppState, invite: InviteData?, actions: Actions, onDone: () -> Unit) {
+fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: Actions, onDone: () -> Unit) {
     var name by remember(state.myName) { mutableStateOf(state.myName) }
+    var code by remember { mutableStateOf("") }
+    var keepRelays by remember { mutableStateOf(false) }
     ScreenScaffold("Join a circle", onDone) {
         val now = epochSeconds()
         when {
-            invite == null -> Text("That isn't a Quietmap invite. Ask for a new link or QR code.", modifier = Gutter)
+            invite == null -> Text("That isn't a valid Quietmap invite, or it was changed after it was made. Ask for a new link or QR code.", modifier = Gutter)
             invite.e < now -> Text("This invite has expired. Ask ${invite.n.ifBlank { "them" }} for a new one.", modifier = Gutter)
             invite.k == actions.me -> Text("This is your own invite. Show it to the person you want to add.", modifier = Gutter)
             state.circles.any { it.id == invite.c } -> Text("You're already in ${invite.cn}.", modifier = Gutter)
             else -> {
+                val inviter = invite.n.ifBlank { "the person who invited you" }
+                val alreadyVerified = state.contacts[invite.k]?.verified == true
+                val verified = scanned || alreadyVerified || actions.deviceCodeMatches(invite.k, code)
+                val newRelays = invite.r.mapNotNull { app.quietmap.core.nostr.RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
                 ProfileHeader(
                     AvatarInfo(invite.k, invite.n.ifBlank { "?" }, null, null, false),
                     "Join ${invite.cn}?",
-                    "${invite.n.ifBlank { "Someone" }} invited you. Once they approve, everyone in ${invite.cn} sees your location, and you see theirs.",
+                    "${invite.n.ifBlank { "Someone" }} invited you. Once they approve, you'll see who's in ${invite.cn} and choose when to start sharing.",
                 )
                 Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     InfoCard {
                         Caption("${invite.n.ifBlank { "Inviter" }}'s device code")
                         Mono(DeviceCode.full(invite.k), size = 18, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
-                        Caption("Check it matches the code on their phone if you can.")
+                        when {
+                            scanned -> Caption("Verified: you scanned this from their screen.")
+                            alreadyVerified -> Caption("Verified earlier.")
+                            else -> Caption("A link can be swapped on the way. Call $inviter and ask them to read out the device code on their phone, then type it below.")
+                        }
+                    }
+                    if (!scanned && !alreadyVerified) {
+                        OutlinedTextField(
+                            value = code,
+                            onValueChange = { code = it.take(24) },
+                            label = { Text("Device code they read out") },
+                            singleLine = true,
+                            isError = code.filter { it.isLetterOrDigit() }.length >= 16 && !verified,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        if (code.filter { it.isLetterOrDigit() }.length >= 16 && !verified) {
+                            Text("That doesn't match this invite. Don't join: the link may have been changed.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (newRelays.isNotEmpty()) {
+                        InfoCard {
+                            Caption("This invite also uses these relays while you join:")
+                            newRelays.forEach { Mono(it.removePrefix("wss://"), size = 14, color = MaterialTheme.colorScheme.onSurface) }
+                        }
+                        SwitchRow("Keep using these relays", "Off: they're dropped once you've joined", keepRelays, AppIcons.Relay) { keepRelays = it }
                     }
                     OutlinedTextField(
                         value = name,
@@ -437,7 +476,10 @@ fun JoinScreen(state: AppState, invite: InviteData?, actions: Actions, onDone: (
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    PrimaryButton("Join and share my location", { actions.setName(name); actions.acceptInvite(invite, onDone) }, enabled = name.isNotBlank())
+                    PrimaryButton("Ask to join", {
+                        actions.setName(name)
+                        actions.acceptInvite(invite, scanned, code.takeIf { !scanned }, keepRelays, onDone)
+                    }, enabled = name.isNotBlank() && verified)
                     TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
                 }
             }

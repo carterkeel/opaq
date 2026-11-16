@@ -9,6 +9,8 @@ import app.quietmap.core.model.AppState
 import app.quietmap.core.model.Circle
 import app.quietmap.core.model.Contact
 import app.quietmap.core.model.Invite
+import app.quietmap.core.model.LocationPrecision
+import app.quietmap.core.model.Precision
 import app.quietmap.core.model.JoinRequest
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
@@ -30,6 +32,7 @@ import app.quietmap.core.nostr.RelayTransport
 import app.quietmap.core.nostr.RelayUrls
 import app.quietmap.core.protocol.Body
 import app.quietmap.core.protocol.CircleCrypto
+import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.DirectMessages
 import app.quietmap.core.protocol.EpochBody
 import app.quietmap.core.protocol.InviteData
@@ -116,8 +119,8 @@ class Engine(
     /** What a d-tag we listen on belongs to. [key] is the key that opens events under it. */
     private class TagTarget(val circleId: String, val key: ByteArray, val epoch: Int, val kind: TagKind, val v2: Boolean)
 
-    /** What an inbox (`p` tag) we listen on belongs to: our identity key (v1), or a circle's control key (v2). */
-    private class InboxRef(val circleId: String?, val ctl: ByteArray?)
+    /** What an inbox (`p` tag) we listen on belongs to: our identity key (v1), a circle's control key, or an invite. */
+    private class InboxRef(val circleId: String?, val ctl: ByteArray?, val inviteSecret: String? = null)
 
     private var tagIndex: Map<String, TagTarget> = emptyMap()
     private var inboxIndex: Map<String, InboxRef> = emptyMap()
@@ -197,7 +200,7 @@ class Engine(
     private suspend fun connectIfNeeded() {
         if (connected) return
         connected = true
-        pool.setRelays(state.value.relays)
+        pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         publishProfileIfDue()
     }
@@ -300,8 +303,14 @@ class Engine(
         checkReady()
         val clean = relays.mapNotNull { RelayUrls.clean(it) }.distinct()
         update { it.copy(relays = clean) }
-        pool.setRelays(clean)
+        pool.setRelays(effectiveRelays())
         refreshSubscriptions()
+    }
+
+    /** The user's relays, plus relays an invite asked for while that join is still in progress. */
+    private fun effectiveRelays(): List<String> {
+        val s = state.value
+        return (s.relays + s.pendingJoins.flatMap { it.relays }).mapNotNull { RelayUrls.clean(it) }.distinct()
     }
 
     /** Hides the app in recent apps and screenshots. Turning it off needs the PIN, if one is set. */
@@ -418,35 +427,83 @@ class Engine(
     /** The admin and managers can invite and approve people. */
     fun canInvite(circle: Circle): Boolean = circle.adminPubkey == myPubkey || myPubkey in circle.managers
 
-    /** Creates a single-use invite link valid for 24 hours. Only the admin and managers can invite. */
-    suspend fun createInvite(circleId: String): String {
+    /**
+     * Creates a single-use invite link, signed so none of it can be changed on the way, valid for
+     * [hours] (1 by default). Only the admin and managers can invite.
+     */
+    suspend fun createInvite(circleId: String, hours: Int = 1): String {
         checkReady()
         requireAuthorized()
+        require(hours in 1..24) { "Invites last 1 to 24 hours" }
         val s = state.value
         val circle = s.circles.first { it.id == circleId }
         require(canInvite(circle)) { "Only the circle admin and managers can invite" }
         val secret = PlatformCrypto.randomBytes(16).toHex()
-        val expires = now() + 24 * 3600
-        update { it.copy(invites = it.invites + Invite(secret, circleId, expires)) }
+        val expires = now() + hours * 3600L
+        update { it.copy(invites = it.invites + Invite(secret, circleId, expires, v = 2)) }
         refreshSubscriptions()
-        return InviteLinks.encode(InviteData(k = myPubkey, n = s.myName, r = s.relays, c = circleId, cn = circle.name, s = secret, e = expires))
+        val data = InviteData(k = myPubkey, n = s.myName, r = s.relays, c = circleId, cn = circle.name, s = secret, e = expires)
+        return InviteLinks.encode(InviteLinks.signed(identity, data))
     }
 
-    /** Sends a join request for an invite the user has agreed to. */
-    suspend fun acceptInvite(invite: InviteData) {
+    /** True if [typed] is [pubkey]'s full device code (spaces and case don't matter). */
+    fun deviceCodeMatches(pubkey: String, typed: String?): Boolean {
+        val want = DeviceCode.full(pubkey).filter { it.isLetterOrDigit() }.uppercase()
+        val got = typed?.filter { it.isLetterOrDigit() }?.uppercase() ?: return false
+        return constantTimeEquals(want.encodeToByteArray(), got.encodeToByteArray())
+    }
+
+    /**
+     * Sends a join request for an invite the user has agreed to. The inviter must be verified first:
+     * the QR code was scanned from their screen in person ([scannedInPerson]), or the user typed
+     * their full device code as read out by them ([typedCode]), or they were already verified.
+     * The invite's relays are used only until the join completes, unless [keepRelays].
+     */
+    suspend fun acceptInvite(invite: InviteData, scannedInPerson: Boolean = false, typedCode: String? = null, keepRelays: Boolean = false) {
         checkReady()
         require(invite.e > now()) { "This invite has expired" }
         require(invite.k != myPubkey) { "This is your own invite" }
-        // Make sure we can reach the inviter's relays too (TLS ones only).
-        val merged = (state.value.relays + invite.r.mapNotNull { RelayUrls.clean(it) }).distinct().take(8)
-        if (merged != state.value.relays) applyRelays(merged)
+        val known = state.value.contacts[invite.k]?.verified == true
+        require(scannedInPerson || known || deviceCodeMatches(invite.k, typedCode)) {
+            "That code doesn't match. Ask the person who invited you to read out their device code."
+        }
+        setVerified(invite.k, true)
+        val extra = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.value.relays }.take(4)
+        if (keepRelays && extra.isNotEmpty()) applyRelays(state.value.relays + extra)
+        val inbox = if (invite.v >= 2) InviteLinks.inbox(invite.s) else null
         update {
             it.copy(pendingJoins = it.pendingJoins.filterNot { p -> p.circleId == invite.c } +
-                PendingJoin(invite.c, invite.cn, invite.k, invite.n, now()))
+                PendingJoin(invite.c, invite.cn, invite.k, invite.n, now(), inbox = inbox, relays = if (keepRelays) emptyList() else extra))
         }
+        pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         val body = JoinRequestBody(myPubkey, now(), invite.c, invite.s, state.value.myName)
-        pool.publish(DirectMessages.seal(identity, invite.k, body, now()))
+        pool.publish(DirectMessages.seal(identity, invite.k, body, now(), inbox ?: invite.k))
+    }
+
+    /**
+     * Starts sharing with a circle we were just let into. Until then nothing (location or profile)
+     * goes to it, so the user sees who is in it before anyone sees them.
+     */
+    /**
+     * How precisely this phone shares with a circle. Making it more precise needs the PIN (if set),
+     * so someone holding the phone can't quietly turn approximate sharing back into exact.
+     */
+    suspend fun setCirclePrecision(circleId: String, precision: Precision) {
+        val c = state.value.circles.firstOrNull { it.id == circleId } ?: return
+        if (precision.ordinal < c.precision.ordinal) requireAuthorized()
+        update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(precision = precision) else it }) }
+    }
+
+    /** Whether updates to a circle carry the recent path. Turning it on needs the PIN (if set). */
+    suspend fun setCircleTrail(circleId: String, on: Boolean) {
+        if (on) requireAuthorized()
+        update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(shareTrail = on) else it }) }
+    }
+
+    suspend fun confirmCircle(circleId: String) {
+        update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(confirmed = true) else it }, consentAt = now()) }
+        state.value.circles.firstOrNull { it.id == circleId }?.let { publishProfile(it) }
     }
 
     suspend fun approve(requestId: String) {
@@ -464,8 +521,10 @@ class Engine(
                 joinRequests = s.joinRequests.filterNot { it.id == requestId },
             )
         }
-        // The new member is still listening on their public key (they don't know the circle's inboxes yet).
-        sendRoster(updated, updated.members.map { it.pubkey }, identityInboxFor = setOf(req.pubkey))
+        // The new member doesn't know the circle's inboxes yet: reach them on the invite's inbox
+        // (v2), or on their public key (an invite from an older version).
+        val joinerInbox = req.secret?.let { InviteLinks.inbox(it) } ?: req.pubkey
+        sendRoster(updated, updated.members.map { it.pubkey }, extraInboxes = mapOf(req.pubkey to listOf(joinerInbox)))
         refreshSubscriptions()
         // The new member needs our profile; republishing also refreshes it on the relays.
         publishProfile(updated)
@@ -620,8 +679,8 @@ class Engine(
         // Anyone still publishing under the old key stops as soon as they see this.
         if (oldCtl != null) publishControl(c.id, oldCtl.hexToBytes(), c.epoch, closed = true, signer = signer)
         // v1 members only listen on their public key; v2 members get it on their old inbox too.
-        val identityInboxes = if (c.version < 2) keep else emptySet()
-        sendRoster(rotated, members.map { it.pubkey }, identityInboxFor = identityInboxes, signer = signer)
+        val identityInboxes = if (c.version < 2) keep.associateWith { listOf(it) } else emptyMap()
+        sendRoster(rotated, members.map { it.pubkey }, extraInboxes = identityInboxes, signer = signer)
         if (removed != null) sendDirect(c, removed, RemovedBody(signer.publicHex, t, c.id), signer = signer)
         refreshSubscriptions()
         if (newAdmin == myPubkey) publishHeartbeat(rotated)
@@ -636,18 +695,18 @@ class Engine(
     /**
      * The inbox tags [recipient] may be listening on for [c]: the current control key's inbox and
      * those of recent epochs (for members who missed a rotation), plus their public key for v1
-     * circles or when [identityInbox] is set (someone who hasn't joined yet).
+     * circles, plus [extra] (a joiner's invite inbox).
      */
-    private fun inboxesFor(c: Circle, recipient: String, identityInbox: Boolean = false): List<String> {
+    private fun inboxesFor(c: Circle, recipient: String, extra: List<String> = emptyList()): List<String> {
         val d = today()
         val ctls = listOfNotNull(c.ctlKeyHex) + c.oldControls.filter { it.until > now() }.map { it.ctlKeyHex }
         val tags = ctls.map { CircleCrypto.inbox(it.hexToBytes(), recipient, d) }
-        return (tags + listOfNotNull(recipient.takeIf { c.version < 2 || identityInbox })).distinct()
+        return (tags + listOfNotNull(recipient.takeIf { c.version < 2 }) + extra).distinct()
     }
 
     /** Seals [body] to [recipient] once per inbox they might be listening on. */
-    private suspend fun sendDirect(c: Circle, recipient: String, body: Body, identityInbox: Boolean = false, signer: KeyPair = identity) {
-        inboxesFor(c, recipient, identityInbox).forEach { inbox ->
+    private suspend fun sendDirect(c: Circle, recipient: String, body: Body, extraInboxes: List<String> = emptyList(), signer: KeyPair = identity) {
+        inboxesFor(c, recipient, extraInboxes).forEach { inbox ->
             pool.publish(DirectMessages.seal(signer, recipient, body, now(), inbox))
         }
     }
@@ -663,19 +722,22 @@ class Engine(
      * Sends the current roster of [c] to [recipients] (except ourselves) and, for v2, records them
      * as waiting for an acknowledgement so [retryRosters] resends until they confirm.
      */
-    private suspend fun sendRoster(c: Circle, recipients: List<String>, identityInboxFor: Set<String> = emptySet(), signer: KeyPair = identity) {
+    private suspend fun sendRoster(c: Circle, recipients: List<String>, extraInboxes: Map<String, List<String>> = emptyMap(), signer: KeyPair = identity) {
         val t = now()
         val rc = rosterOf(c)
         val body = if (c.version < 2) RosterBody(signer.publicHex, t, rc) else Roster2Body(signer.publicHex, t, rc)
         val targets = recipients.filter { it != signer.publicHex && it != myPubkey }.distinct()
-        targets.forEach { m -> sendDirect(c, m, body, identityInbox = m in identityInboxFor, signer = signer) }
+        val current = state.value.circles.firstOrNull { it.id == c.id }
+        // Keep reaching a joiner on their invite inbox when resending.
+        fun extraFor(m: String) = (extraInboxes[m].orEmpty() + current?.pendingAcks?.firstOrNull { it.pubkey == m }?.extraInboxes.orEmpty()).distinct()
+        targets.forEach { m -> sendDirect(c, m, body, extraFor(m), signer = signer) }
         if (c.version < 2 || targets.isEmpty() || signer.publicHex != myPubkey) return
         update { s ->
             s.copy(circles = s.circles.map { cur ->
                 if (cur.id != c.id) cur
                 else cur.copy(pendingAcks = cur.pendingAcks.filterNot { it.pubkey in targets } + targets.map { m ->
                     val prior = cur.pendingAcks.firstOrNull { it.pubkey == m && it.epoch == c.epoch }
-                    PendingAck(m, c.epoch, prior?.firstSentAt ?: t, t, (prior?.attempts ?: 0) + 1)
+                    PendingAck(m, c.epoch, prior?.firstSentAt ?: t, t, (prior?.attempts ?: 0) + 1, extraFor(m))
                 })
             })
         }
@@ -759,6 +821,7 @@ class Engine(
      * relays that have finished sending what they hold since the last (re)connect. Fails closed.
      */
     fun shareStatus(c: Circle): ShareStatus = when {
+        !c.confirmed -> ShareStatus.NOT_CONFIRMED
         c.version < 2 || c.adminPubkey == myPubkey -> ShareStatus.OK
         c.stale -> ShareStatus.KEY_REPLACED
         now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS -> ShareStatus.ADMIN_AWAY
@@ -769,7 +832,7 @@ class Engine(
     /** Member: if this phone can't confirm its key, ask the admin for the roster again. */
     private suspend fun memberDuties() {
         state.value.circles.filter { it.version >= 2 && it.adminPubkey != myPubkey }.forEach { c ->
-            val status = shareStatus(c)
+            val status = if (c.stale) ShareStatus.KEY_REPLACED else if (now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS) ShareStatus.ADMIN_AWAY else ShareStatus.OK
             if (status == ShareStatus.KEY_REPLACED || status == ShareStatus.ADMIN_AWAY) requestRoster(c)
         }
     }
@@ -875,7 +938,7 @@ class Engine(
             if (started) connectIfNeeded()
             return
         }
-        pool.setRelays(restored.relays)
+        pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         publishProfileIfDue()
     }
@@ -898,7 +961,9 @@ class Engine(
         val sentTo = mutableListOf<String>()
         s.circles.forEach { c ->
             if (shareStatus(c) != ShareStatus.OK) return@forEach
-            val event = if (c.version < 2) sealV1(c, location, t) else sealV2(c, location, t, seq) ?: return@forEach
+            // Each circle gets only the precision (and path) the user chose for it.
+            val shared = LocationPrecision.apply(location, c.precision, c.shareTrail)
+            val event = if (c.version < 2) sealV1(c, shared, t) else sealV2(c, shared, t, seq) ?: return@forEach
             pool.publish(event, queueIfOffline = false)
             sentTo += c.id
         }
@@ -1012,6 +1077,7 @@ class Engine(
     }
 
     private suspend fun publishProfile(circle: Circle) {
+        if (!circle.confirmed) return
         val s = state.value
         val t = now()
         if (circle.version < 2) {
@@ -1038,7 +1104,7 @@ class Engine(
     private suspend fun handleDirect(event: Event) {
         val ref = inboxIndex[event.tag("p") ?: return] ?: return
         when (val body = DirectMessages.open(identity, event) ?: return) {
-            is JoinRequestBody -> onJoinRequest(body)
+            is JoinRequestBody -> onJoinRequest(body, ref)
             is RosterBody -> onRoster(body.from, body.ts, body.circle, v2Body = false)
             is Roster2Body -> onRoster(body.from, body.ts, body.circle, v2Body = true)
             is RemovedBody -> onRemoved(body)
@@ -1050,12 +1116,14 @@ class Engine(
         update { it.copy(seenEventIds = (it.seenEventIds + event.id).takeLast(500)) }
     }
 
-    private suspend fun onJoinRequest(body: JoinRequestBody) {
+    private suspend fun onJoinRequest(body: JoinRequestBody, ref: InboxRef) {
         val s = state.value
         val invite = s.invites.firstOrNull { it.secret == body.secret && it.circleId == body.circle } ?: return
         if (invite.used || invite.expiresAt < now()) return
+        // A v2 invite's request must arrive on that invite's own inbox.
+        if (invite.v >= 2 && ref.inviteSecret != invite.secret) return
         if (s.joinRequests.any { it.pubkey == body.from && it.circleId == body.circle }) return
-        val req = JoinRequest(PlatformCrypto.randomBytes(8).toHex(), body.circle, body.from, body.name.take(40), now())
+        val req = JoinRequest(PlatformCrypto.randomBytes(8).toHex(), body.circle, body.from, body.name.take(40), now(), secret = invite.secret.takeIf { invite.v >= 2 })
         update { st ->
             st.copy(
                 joinRequests = st.joinRequests + req,
@@ -1123,6 +1191,8 @@ class Engine(
             previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
             stale = if (newEpoch) false else base.stale,
             history = (base.history + events).takeLast(HISTORY_SIZE),
+            // Joining: nothing is shared until the user has seen who's in the circle.
+            confirmed = if (existing == null) false else base.confirmed,
             heartbeatAt = if (fromAdmin && rc.admin == from) maxOf(if (newEpoch) 0 else base.heartbeatAt, minOf(ts, now())) else base.heartbeatAt,
         )
         update { st ->
@@ -1134,6 +1204,7 @@ class Engine(
                 locations = st.locations + (rc.id to st.locations[rc.id].orEmpty().filterKeys { it in memberKeys }),
             )
         }
+        if (pending != null && pending.relays.isNotEmpty()) pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         val approver = members.firstOrNull { it.pubkey == from }?.name ?: oldMembers.firstOrNull { it.pubkey == from }?.name
         joined.filter { it.pubkey != myPubkey }.forEach {
@@ -1226,8 +1297,11 @@ class Engine(
                 }
             }
         }
-        // Our public key is only needed as an inbox for v1 circles and for joins in progress.
-        val needIdentity = s.circles.any { it.version < 2 } || s.pendingJoins.isNotEmpty() || s.invites.any { !it.used && it.expiresAt > t }
+        // Open invites and joins in progress have their own inboxes.
+        s.invites.filter { it.v >= 2 && !it.used && it.expiresAt > t }.forEach { inboxes[InviteLinks.inbox(it.secret)] = InboxRef(it.circleId, null, inviteSecret = it.secret) }
+        s.pendingJoins.forEach { p -> p.inbox?.let { inboxes[it] = InboxRef(p.circleId, null) } }
+        // Our public key is only needed as an inbox for v1 circles, v1 invites and joins through them.
+        val needIdentity = s.circles.any { it.version < 2 } || s.pendingJoins.any { it.inbox == null } || s.invites.any { it.v < 2 && !it.used && it.expiresAt > t }
         if (needIdentity) inboxes[myPubkey] = InboxRef(null, null)
         tagIndex = index
         inboxIndex = inboxes
@@ -1243,6 +1317,7 @@ class Engine(
 
     private suspend fun pruneExpired() {
         val t = now()
+        val hadTemporaryRelays = state.value.pendingJoins.any { it.sentAt <= t - 7 * 24 * 3600 && it.relays.isNotEmpty() }
         update { s ->
             s.copy(
                 invites = s.invites.filter { it.expiresAt > t - 24 * 3600 },
@@ -1258,6 +1333,7 @@ class Engine(
             )
         }
         mutex.withLock { while (seen.size > 5000) seen.remove(seen.first()) }
+        if (hadTemporaryRelays) pool.setRelays(effectiveRelays())
     }
 
     private suspend fun update(transform: (AppState) -> AppState) {
@@ -1336,6 +1412,9 @@ enum class ShareStatus {
 
     /** No heartbeat from the admin for three days, so the key can't be confirmed. */
     ADMIN_AWAY,
+
+    /** Just joined: waiting for the user to look at who's in the circle and start sharing. */
+    NOT_CONFIRMED,
 }
 
 /** The result of entering the PIN. */

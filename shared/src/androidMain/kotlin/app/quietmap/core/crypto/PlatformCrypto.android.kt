@@ -1,6 +1,8 @@
 package app.quietmap.core.crypto
 
 import org.bouncycastle.crypto.engines.ChaCha7539Engine
+import org.bouncycastle.crypto.generators.Argon2BytesGenerator
+import org.bouncycastle.crypto.params.Argon2Parameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
 import java.security.MessageDigest
@@ -39,5 +41,21 @@ actual object PlatformCrypto {
         } finally {
             spec.clearPassword()
         }
+    }
+
+    actual fun argon2id(password: String, salt: ByteArray, memoryKiB: Int, iterations: Int, length: Int): ByteArray {
+        require(password.all { it.code < 128 }) { "argon2id input must be ASCII" }
+        val params = Argon2Parameters.Builder(Argon2Parameters.ARGON2_id)
+            .withVersion(Argon2Parameters.ARGON2_VERSION_13)
+            .withIterations(iterations)
+            .withMemoryAsKB(memoryKiB)
+            .withParallelism(1)
+            .withSalt(salt)
+            .build()
+        val generator = Argon2BytesGenerator()
+        generator.init(params)
+        val out = ByteArray(length)
+        generator.generateBytes(password.encodeToByteArray(), out)
+        return out
     }
 }
