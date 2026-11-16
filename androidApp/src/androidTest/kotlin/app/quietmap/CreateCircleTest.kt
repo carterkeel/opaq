@@ -68,11 +68,19 @@ class CreateCircleTest {
      */
     private fun typePin(vararg values: String, closeKeyboard: Boolean = true) {
         device.wait(Until.hasObject(By.clazz("android.widget.EditText")), 10_000)
-        val fields = device.findObjects(By.clazz("android.widget.EditText"))
-        check(fields.size >= values.size) { "expected ${values.size} PIN fields, found ${fields.size}" }
         values.forEachIndexed { i, v ->
-            fields[i].click()
-            fields[i].text = v
+            // Find the fields again each time: typing in one recomposes the screen, and a stale
+            // handle can silently drop the text. Check it landed (masked as dots) and retry.
+            repeat(3) { attempt ->
+                val fields = device.findObjects(By.clazz("android.widget.EditText"))
+                check(fields.size >= values.size) { "expected ${values.size} PIN fields, found ${fields.size}" }
+                fields[i].click()
+                fields[i].text = v
+                device.waitForIdle()
+                val now = device.findObjects(By.clazz("android.widget.EditText")).getOrNull(i)?.text.orEmpty()
+                if (now.length == v.length) return@forEachIndexed
+                Log.e(TAG, "PIN field ${i + 1} didn't take the text (attempt ${attempt + 1})")
+            }
         }
         if (closeKeyboard) device.pressBack()
     }
