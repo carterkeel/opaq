@@ -27,6 +27,7 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
                             publishing, handling incoming events, relay subscriptions.
   core/MotionPolicy.kt      When to publish and which activity to report (still/walking/...).
   core/Prediction.kt        Carrying a moving person's dot forward between updates (viewer side).
+  core/RoadSnap.kt          Lines a drawn history path up with nearby roads (display only).
   core/History.kt           On-device location history: encrypted per-person/day files, thinning,
                             pruning, and grouping into segments (still/walking/driving).
   core/model/Models.kt      AppState (everything persisted) and data classes.
@@ -117,7 +118,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Between updates.** Dots glide to each new update, and someone travelling is carried forward along their heading (`Prediction`, used by `MapPane`), only for exact, accurate, moving updates and never more than `Prediction.HORIZON_SECONDS` ahead.
 
-**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile.
+**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile. The drawn path is lined up with roads it runs close to (`RoadSnap`, 12 m walking, 25 m otherwise) using road shapes from the tiles already on screen (`queryRenderedFeatures`); stored points are never changed and nothing is sent to a map-matching service.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
@@ -162,4 +163,4 @@ Two-phone manual testing is described in `TESTING.md`.
 - New persisted fields go in `AppState` **with defaults**, so older saved state still loads.
 - New protocol messages: add a `Body` subclass with a `@SerialName`, keep old ones decodable, and add a round-trip test in `ProtocolTest`.
 - User-facing text: plain and short, and say what happens ("Stop sharing with everyone", not "Disable").
-- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Screens slide in from the side their button is on (Settings and sub-screens from the end edge, screens opened from the people sheet from the bottom; `Route.edge()` in App.kt) with a short tween, no fade, nothing bouncy. A soft fade at the top of the map keeps the status bar readable.
+- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Screens slide in from the side their button is on (Settings and sub-screens from the end edge, screens opened from the people sheet from the bottom; `Route.edge()` in App.kt) with a short tween, no fade, nothing bouncy. A soft fade at the top of the map keeps the status bar readable, and the same fade sits where the map meets the people sheet.
