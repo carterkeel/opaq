@@ -1,5 +1,6 @@
 package app.quietmap.ui
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -77,6 +78,12 @@ private const val STREET_ZOOM = 15.5
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
 
+/** OpenFreeMap's dark style, used when the phone is in dark mode so the map doesn't glare. */
+private const val DARK_STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
+
+@Composable
+private fun mapStyle(): BaseStyle = BaseStyle.Uri(if (isSystemInDarkTheme()) DARK_STYLE_URL else STYLE_URL)
+
 /** Text the map must show for OpenFreeMap / OpenMapTiles / OpenStreetMap data. */
 const val MAP_ATTRIBUTION = "© OpenFreeMap © OpenMapTiles © OpenStreetMap contributors"
 
@@ -100,7 +107,7 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
 fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier) {
     val shown = rememberMovingMarkers(markers)
     val geoJson = remember(shown) { markersToGeoJson(shown) }
-    val mapState = rememberMapState(baseStyle = BaseStyle.Uri(STYLE_URL)) {
+    val mapState = rememberMapState(baseStyle = mapStyle()) {
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
             cluster = true
             clusterRadius = 36
@@ -145,7 +152,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textField = format(span(feature["initial"].asString())),
             textFont = const(listOf("Noto Sans Bold")),
             textSize = const(13.sp),
-            textColor = const(Color.White),
+            textColor = feature["textColor"].convertToColor(),
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),
         )
@@ -245,6 +252,7 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
                 }
                 putJsonObject("properties") {
                     put("initial", mk.initial)
+                    put("textColor", "#FFFFFF")
                     put("color", if (mk.kind == MapMarker.Kind.OFFLINE) "#9E9E9E" else mk.color)
                 }
             }
@@ -260,7 +268,7 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
 fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier) {
     val lines = remember(segments) { historyLines(segments) }
     val stops = remember(segments) { historyStops(segments) }
-    val mapState = rememberMapState(baseStyle = BaseStyle.Uri(STYLE_URL)) {
+    val mapState = rememberMapState(baseStyle = mapStyle()) {
         val lineSource = rememberGeoJsonSource(GeoJsonData.JsonString(lines))
         val stopSource = rememberGeoJsonSource(GeoJsonData.JsonString(stops))
         LineLayer(
