@@ -342,6 +342,18 @@ fun HomeScreen(
                     )
                 }
             }
+
+            // The same fade at the bottom edge of the screen, so a person's row that runs off the
+            // screen fades out rather than being cut off. It goes away as the sheet closes to its handle.
+            val sheetScrim = MaterialTheme.colorScheme.surface
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(with(density) { insetBottom.toDp() } + 48.dp)
+                    .alpha(((collapsedY - sheetY) / (collapsedY - defaultY)).coerceIn(0f, 1f))
+                    .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
+            )
         }
     }
 

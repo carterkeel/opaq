@@ -1,28 +1,39 @@
 package app.quietmap.ui
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.quietmap.core.GeoPoint
 import app.quietmap.core.HistoryPoint
 import app.quietmap.core.HistorySegment
 import app.quietmap.core.LocationHistory
 import app.quietmap.core.MotionPolicy
 import app.quietmap.core.Prediction
+import app.quietmap.core.RoadSnap
+import app.quietmap.core.model.Activity
 import app.quietmap.core.model.MemberLocation
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.ln
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.addJsonObject
@@ -48,6 +59,8 @@ import org.maplibre.compose.map.rememberMapState
 import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
+import org.maplibre.spatialk.geojson.LineString
+import org.maplibre.spatialk.geojson.MultiLineString
 import org.maplibre.spatialk.geojson.Position
 
 /**
@@ -262,10 +275,13 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
 /**
  * A day of someone's history: the path coloured by activity (driving, cycling, walking) and a
  * dot where they stayed put. Frames the whole day, or [focus] (one tapped stretch) when set.
+ *
+ * The path is lined up with roads it runs close to ([RoadSnap]), using the roads in the map tiles
+ * already on screen, so it's redone whenever the map stops moving. Nothing is sent anywhere.
  */
 @Composable
 fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false) {
-    val lines = remember(segments) { historyLines(segments) }
+    var lines by remember(segments) { mutableStateOf(historyLines(segments, emptyList())) }
     val stops = remember(segments) { historyStops(segments) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val lineSource = rememberGeoJsonSource(GeoJsonData.JsonString(lines))
@@ -296,17 +312,65 @@ fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus
         val zoom = (ln(200.0 * 360 / (512 * span)) / ln(2.0)).coerceIn(3.0, STREET_ZOOM)
         mapState.animateCamera(CameraUpdate(center = Position((minLon + maxLon) / 2, midLat), zoom = zoom))
     }
-    MaplibreMap(modifier = modifier, state = mapState, interactions = Interactions, overlay = {})
+    BoxWithConstraints(modifier) {
+        val view = DpRect(0.dp, 0.dp, maxWidth, maxHeight)
+        LaunchedEffect(mapState, segments) {
+            snapshotFlow { mapState.isCameraMoving }.collectLatest { moving ->
+                if (moving) return@collectLatest
+                // Tiles for a new view arrive over a second or two, so look again as they do.
+                var seen = -1
+                for (wait in listOf(300L, 900L, 2000L)) {
+                    delay(wait)
+                    val roads = runCatching { visibleRoads(mapState.queryRenderedFeatures(view)) }.getOrDefault(emptyList())
+                    if (roads.size == seen) continue
+                    seen = roads.size
+                    lines = withContext(Dispatchers.Default) { historyLines(segments, roads) }
+                }
+            }
+        }
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, interactions = Interactions, overlay = {})
+    }
 }
 
-private fun historyLines(segments: List<HistorySegment>): String = buildJsonObject {
+/** Road classes in OpenMapTiles' transportation layer that people travel along (not rail or ferries). */
+private val ROAD_CLASSES = setOf("motorway", "trunk", "primary", "secondary", "tertiary", "minor", "service", "track", "path", "busway")
+
+/** How close a recorded point must be to a road to be drawn on it. Walkers leave roads more, so less. */
+private fun snapMeters(activity: Activity) = if (activity == Activity.WALKING) 12.0 else 25.0
+
+/** The roads among the features drawn on the map, once each (a road is drawn by several layers). */
+private fun visibleRoads(features: List<org.maplibre.spatialk.geojson.Feature<org.maplibre.spatialk.geojson.Geometry, kotlinx.serialization.json.JsonObject?>>): List<List<GeoPoint>> {
+    val seen = HashSet<String>()
+    val roads = ArrayList<List<GeoPoint>>()
+    for (f in features) {
+        val cls = (f.properties?.get("class") as? JsonPrimitive)?.content
+        if (cls !in ROAD_CLASSES) continue
+        val parts: List<List<Position>> = when (val g = f.geometry) {
+            is LineString -> listOf(g.coordinates)
+            is MultiLineString -> g.coordinates
+            else -> continue
+        }
+        for (part in parts) {
+            if (part.size < 2) continue
+            val a = part.first(); val b = part.last()
+            if (seen.add("${a.longitude},${a.latitude},${b.longitude},${b.latitude},${part.size}")) roads += part.map { GeoPoint(it.latitude, it.longitude) }
+        }
+    }
+    return roads
+}
+
+private fun historyLines(segments: List<HistorySegment>, roads: List<List<GeoPoint>>): String = buildJsonObject {
     put("type", "FeatureCollection")
     putJsonArray("features") {
         segments.forEachIndexed { i, seg ->
             if (!LocationHistory.moving(seg.activity)) return@forEachIndexed
             // Start from where the previous stretch ended, so the path has no gaps.
-            val path = listOfNotNull(segments.getOrNull(i - 1)?.points?.lastOrNull()) + seg.points
-            if (path.size < 2) return@forEachIndexed
+            val recorded = (listOfNotNull(segments.getOrNull(i - 1)?.points?.lastOrNull()) + seg.points).map { GeoPoint(it.lat, it.lon) }
+            if (recorded.size < 2) return@forEachIndexed
+            val snapped = RoadSnap.snap(recorded, roads, snapMeters(seg.activity))
+            // Still leave from the dot of the stop before, which is drawn where it was recorded.
+            val fromStop = segments.getOrNull(i - 1)?.let { !LocationHistory.moving(it.activity) } == true
+            val path = if (fromStop && snapped.first() != recorded.first()) listOf(recorded.first()) + snapped else snapped
             addJsonObject {
                 put("type", "Feature")
                 putJsonObject("geometry") {
