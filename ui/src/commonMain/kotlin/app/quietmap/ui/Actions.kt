@@ -15,6 +15,9 @@ class Actions(
 ) {
     val me: String get() = engine.myPubkey
 
+    /** Whether this phone is currently sending its location to [circle], and if not, why. */
+    fun shareStatus(circle: app.quietmap.core.model.Circle): app.quietmap.core.ShareStatus = engine.shareStatus(circle)
+
     private fun launchAction(after: (() -> Unit)? = null, block: suspend () -> Unit) {
         scope.launch {
             try {

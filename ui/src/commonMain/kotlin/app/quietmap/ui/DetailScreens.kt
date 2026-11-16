@@ -141,6 +141,14 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             pubkey == circle.adminPubkey -> SettingsRow("Admin of ${circle.name}", "Can invite, approve and remove people", AppIcons.Star)
             isManager -> SettingsRow("Manager in ${circle.name}", "Can invite and approve people", AppIcons.Person)
         }
+        val waiting = circle.pendingAcks.firstOrNull { it.pubkey == pubkey && now - it.firstSentAt > 600 }
+        if (waiting != null) {
+            SettingsRow(
+                "Hasn't received the circle's new key",
+                "Their phone may be off or offline. Quietmap keeps resending it for two weeks.",
+                AppIcons.Lock,
+            )
+        }
         if (!isMe) SettingsRow("Rename", "Only changes the name on your phone", AppIcons.Edit, onClick = { renaming = true })
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)

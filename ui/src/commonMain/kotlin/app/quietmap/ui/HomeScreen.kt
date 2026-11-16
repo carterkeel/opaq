@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.quietmap.core.ShareStatus
 import app.quietmap.core.model.AppState
 import app.quietmap.core.model.Circle
 import app.quietmap.core.model.JoinRequest
@@ -284,6 +285,7 @@ fun HomeScreen(
                         me = me,
                         circle = circle,
                         now = now,
+                        shareStatus = actions.shareStatus(circle),
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
@@ -388,6 +390,7 @@ private fun PeopleList(
     me: String,
     circle: Circle,
     now: Long,
+    shareStatus: ShareStatus,
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
@@ -400,6 +403,26 @@ private fun PeopleList(
         item(key = "banners") {
             Column {
                 Banner(visible = state.sharing && !hasLocationPermission, text = "Allow location access so your circle can see you.", action = "Allow", onAction = onRequestLocation)
+                val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
+                Banner(
+                    visible = state.sharing && shareStatus == ShareStatus.KEY_REPLACED,
+                    text = "Sharing with ${circle.name} is paused. The circle has a new key and this phone is still waiting for it.",
+                    action = null,
+                    onAction = null,
+                )
+                Banner(
+                    visible = state.sharing && shareStatus == ShareStatus.ADMIN_AWAY,
+                    text = "Sharing with ${circle.name} is paused. $adminName hasn't been online for 3 days, so this phone can't check the circle key is still current.",
+                    action = null,
+                    onAction = null,
+                )
+                val waiting = circle.pendingAcks.count { now - it.firstSentAt > 600 && circle.members.any { m -> m.pubkey == it.pubkey } }
+                Banner(
+                    visible = waiting > 0,
+                    text = if (waiting == 1) "1 person hasn't received the circle's new key yet. Quietmap keeps trying." else "$waiting people haven't received the circle's new key yet. Quietmap keeps trying.",
+                    action = null,
+                    onAction = null,
+                )
                 requests.forEach { req ->
                     Banner(visible = true, text = "${req.name.ifBlank { "Someone" }} wants to join ${circle.name}", action = "Review") { onReview(req) }
                 }

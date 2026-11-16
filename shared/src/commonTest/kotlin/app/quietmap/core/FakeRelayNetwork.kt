@@ -37,7 +37,7 @@ class FakeRelayNetwork(private val clock: () -> Long) {
         while (queue.isNotEmpty()) {
             check(++guard < 100_000) { "message loop" }
             when (val p = queue.removeFirst()) {
-                is Pending.Deliver -> if (p.client.online) p.client.onEvent(RELAY, p.event)
+                is Pending.Deliver -> if (p.client.online && !p.client.drop(p.event)) p.client.onEvent(RELAY, p.event)
                 is Pending.Eose -> if (p.client.online && p.client.subs[p.subId] == p.filters) p.client.synced += p.subId
             }
         }
@@ -76,6 +76,9 @@ class FakeRelayNetwork(private val clock: () -> Long) {
         var subs: Map<String, List<Filter>> = emptyMap()
             private set
         val synced = mutableSetOf<String>()
+
+        /** Events this client never receives, to model a relay that loses or withholds messages. */
+        var drop: (Event) -> Boolean = { false }
         private val outbox = mutableListOf<Event>()
         private val _status = MutableStateFlow<Map<String, RelayStatus>>(emptyMap())
         override val status: StateFlow<Map<String, RelayStatus>> = _status

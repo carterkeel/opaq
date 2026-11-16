@@ -59,7 +59,10 @@ object Backups {
         relays = s.relays,
         shareBattery = s.shareBattery,
         showPhotos = s.showPhotos,
-        circles = s.circles,
+        // Only current keys: replaced keys and control keys of earlier epochs never go into a backup.
+        circles = s.circles.map {
+            it.copy(previousKeyHex = null, previousEpoch = null, previousValidUntil = null, previousKeyDay = null, oldControls = emptyList(), pendingAcks = emptyList())
+        },
         contacts = s.contacts,
         pendingJoins = s.pendingJoins,
         lastCircleId = s.lastCircleId,

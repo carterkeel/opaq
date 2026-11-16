@@ -41,6 +41,10 @@ data class AppState(
     /** circleId -> member pubkey -> latest location */
     val locations: Map<String, Map<String, MemberLocation>> = emptyMap(),
     val seenEventIds: List<String> = emptyList(),
+    /** The sequence number of our last location update (v2 replay protection). */
+    val lastSeq: Long = 0,
+    /** Newest sequence number accepted from each member, keyed "circleId|pubkey". */
+    val memberSeqs: Map<String, Long> = emptyMap(),
 )
 
 @Serializable
@@ -70,6 +74,40 @@ data class Circle(
     val previousKeyHex: String? = null,
     val previousEpoch: Int? = null,
     val previousValidUntil: Long? = null,
+    /** Circle protocol version: 1 (one static key per epoch) or 2 (see CircleCrypto). */
+    val version: Int = 1,
+    /** v2: UTC day that [keyHex] belongs to. Keys for earlier days are deleted. */
+    val keyDay: Long = 0,
+    val previousKeyDay: Long? = null,
+    /** v2: this epoch's control key. */
+    val ctlKeyHex: String? = null,
+    /** v2: control keys of recent epochs, kept a while so stragglers can still be reached. */
+    val oldControls: List<OldControl> = emptyList(),
+    /** v2 admin: when a fresh key was last made (removal, weekly rotation, or creation). */
+    val rotatedAt: Long = 0,
+    /** v2 admin: when the last heartbeat for this epoch was published. */
+    val heartbeatPublishedAt: Long = 0,
+    /** v2 member: time of the newest valid admin heartbeat (or roster) for the current epoch. */
+    val heartbeatAt: Long = 0,
+    /** v2 member: the admin said this epoch is over, or a newer one exists. Publishing stops. */
+    val stale: Boolean = false,
+    val rosterRequestedAt: Long = 0,
+    /** v2 admin or manager: members who haven't confirmed the newest roster yet. */
+    val pendingAcks: List<PendingAck> = emptyList(),
+)
+
+/** A replaced epoch's control key, kept until [until] to answer and close out stragglers. */
+@Serializable
+data class OldControl(val epoch: Int, val ctlKeyHex: String, val until: Long, val closedPublishedDay: Long = -1)
+
+/** A roster we sent that the member hasn't acknowledged yet. */
+@Serializable
+data class PendingAck(
+    val pubkey: String,
+    val epoch: Int,
+    val firstSentAt: Long,
+    val lastSentAt: Long,
+    val attempts: Int,
 )
 
 /** Local-only knowledge about another person. */

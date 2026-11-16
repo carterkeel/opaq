@@ -12,6 +12,8 @@ import app.quietmap.core.model.JoinRequest
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
 import app.quietmap.core.model.MemberProfile
+import app.quietmap.core.model.OldControl
+import app.quietmap.core.model.PendingAck
 import app.quietmap.core.model.PendingJoin
 import app.quietmap.core.nostr.Event
 import app.quietmap.core.nostr.Filter
@@ -20,8 +22,10 @@ import app.quietmap.core.nostr.RelayPool
 import app.quietmap.core.nostr.RelayStatus
 import app.quietmap.core.nostr.RelayTransport
 import app.quietmap.core.nostr.RelayUrls
+import app.quietmap.core.protocol.Body
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DirectMessages
+import app.quietmap.core.protocol.EpochBody
 import app.quietmap.core.protocol.InviteData
 import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.Backups
@@ -30,8 +34,11 @@ import app.quietmap.core.protocol.LeftBody
 import app.quietmap.core.protocol.LocationBody
 import app.quietmap.core.protocol.ProfileBody
 import app.quietmap.core.protocol.RemovedBody
+import app.quietmap.core.protocol.Roster2Body
+import app.quietmap.core.protocol.RosterAckBody
 import app.quietmap.core.protocol.RosterBody
 import app.quietmap.core.protocol.RosterCircle
+import app.quietmap.core.protocol.RosterRequestBody
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -93,10 +100,16 @@ class Engine(
     private val pool: RelayTransport = transport?.invoke(::onEvent) ?: RelayPool(scope, ::onEvent, log)
     val relayStatus: StateFlow<Map<String, RelayStatus>> = pool.status
 
-    /** What a d-tag we listen on belongs to. */
-    private class TagTarget(val circleId: String, val key: ByteArray, val epoch: Int, val isProfile: Boolean)
+    private enum class TagKind { LOCATION, PROFILE, CONTROL }
+
+    /** What a d-tag we listen on belongs to. [key] is the key that opens events under it. */
+    private class TagTarget(val circleId: String, val key: ByteArray, val epoch: Int, val kind: TagKind, val v2: Boolean)
+
+    /** What an inbox (`p` tag) we listen on belongs to: our identity key (v1), or a circle's control key (v2). */
+    private class InboxRef(val circleId: String?, val ctl: ByteArray?)
 
     private var tagIndex: Map<String, TagTarget> = emptyMap()
+    private var inboxIndex: Map<String, InboxRef> = emptyMap()
     private val seen = LinkedHashSet<String>()
 
     private val _recovery = MutableStateFlow<Recovery?>(null)
@@ -174,6 +187,10 @@ class Engine(
     suspend fun housekeeping() {
         if (_recovery.value != null) return
         pruneExpired()
+        advanceRatchets()
+        adminDuties()
+        retryRosters()
+        memberDuties()
         refreshSubscriptions()
         publishProfileIfDue()
     }
@@ -272,8 +289,10 @@ class Engine(
     // Circles and invites
     // -----------------------------------------------------------------------------------------
 
+    /** Creates a circle on protocol v2: ratcheting location key, control key, own publisher keys. */
     suspend fun createCircle(name: String): Circle {
         checkReady()
+        val t = now()
         val circle = Circle(
             id = CircleCrypto.newId(),
             name = name.trim().ifEmpty { "Family" },
@@ -281,9 +300,15 @@ class Engine(
             epoch = 1,
             adminPubkey = myPubkey,
             members = listOf(Member(myPubkey, state.value.myName)),
+            version = 2,
+            keyDay = CircleCrypto.day(t),
+            ctlKeyHex = CircleCrypto.newKey(),
+            rotatedAt = t,
+            heartbeatAt = t,
         )
         update { it.copy(circles = it.circles + circle, lastCircleId = circle.id) }
         refreshSubscriptions()
+        publishHeartbeat(circle)
         publishProfile(circle)
         return circle
     }
@@ -293,12 +318,14 @@ class Engine(
 
     /** Creates a single-use invite link valid for 24 hours. Only the admin and managers can invite. */
     suspend fun createInvite(circleId: String): String {
+        checkReady()
         val s = state.value
         val circle = s.circles.first { it.id == circleId }
         require(canInvite(circle)) { "Only the circle admin and managers can invite" }
         val secret = PlatformCrypto.randomBytes(16).toHex()
         val expires = now() + 24 * 3600
         update { it.copy(invites = it.invites + Invite(secret, circleId, expires)) }
+        refreshSubscriptions()
         return InviteLinks.encode(InviteData(k = myPubkey, n = s.myName, r = s.relays, c = circleId, cn = circle.name, s = secret, e = expires))
     }
 
@@ -307,13 +334,14 @@ class Engine(
         checkReady()
         require(invite.e > now()) { "This invite has expired" }
         require(invite.k != myPubkey) { "This is your own invite" }
-        // Make sure we can reach the inviter's relays too.
-        val merged = (state.value.relays + invite.r).distinct().take(8)
+        // Make sure we can reach the inviter's relays too (TLS ones only).
+        val merged = (state.value.relays + invite.r.mapNotNull { RelayUrls.clean(it) }).distinct().take(8)
         if (merged != state.value.relays) setRelays(merged)
         update {
             it.copy(pendingJoins = it.pendingJoins.filterNot { p -> p.circleId == invite.c } +
                 PendingJoin(invite.c, invite.cn, invite.k, invite.n, now()))
         }
+        refreshSubscriptions()
         val body = JoinRequestBody(myPubkey, now(), invite.c, invite.s, state.value.myName)
         pool.publish(DirectMessages.seal(identity, invite.k, body, now()))
     }
@@ -329,7 +357,8 @@ class Engine(
                 joinRequests = s.joinRequests.filterNot { it.id == requestId },
             )
         }
-        sendRoster(updated)
+        // The new member is still listening on their public key (they don't know the circle's inboxes yet).
+        sendRoster(updated, updated.members.map { it.pubkey }, identityInboxFor = setOf(req.pubkey))
         refreshSubscriptions()
         // The new member needs our profile; republishing also refreshes it on the relays.
         publishProfile(updated)
@@ -337,29 +366,12 @@ class Engine(
 
     suspend fun deny(requestId: String) = update { s -> s.copy(joinRequests = s.joinRequests.filterNot { it.id == requestId }) }
 
-    /** Removes a member and rotates the circle key so they can't read anything new. */
+    /** Removes a member and gives the circle a fresh key so they can't read anything new. */
     suspend fun removeMember(circleId: String, pubkey: String) {
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can remove people" }
         require(pubkey != myPubkey)
-        val rotated = circle.copy(
-            keyHex = CircleCrypto.newKey(),
-            epoch = circle.epoch + 1,
-            members = circle.members.filterNot { it.pubkey == pubkey },
-            previousKeyHex = circle.keyHex,
-            previousEpoch = circle.epoch,
-            previousValidUntil = now() + OVERLAP_SECONDS,
-        )
-        update { s ->
-            s.copy(
-                circles = s.circles.map { if (it.id == circleId) rotated else it },
-                locations = s.locations + (circleId to (s.locations[circleId].orEmpty() - pubkey)),
-            )
-        }
-        sendRoster(rotated)
-        pool.publish(DirectMessages.seal(identity, pubkey, RemovedBody(myPubkey, now(), circleId), now()))
-        refreshSubscriptions()
-        publishProfile(rotated)
+        rotate(circle, circle.members.filterNot { it.pubkey == pubkey }, removed = pubkey)
     }
 
     /** Lets a member invite and approve people (admin only). */
@@ -369,7 +381,7 @@ class Engine(
         require(circle.members.any { it.pubkey == pubkey } && pubkey != myPubkey)
         val updated = circle.copy(managers = if (manager) (circle.managers + pubkey).distinct() else circle.managers - pubkey)
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) updated else it }) }
-        sendRoster(updated)
+        sendRoster(updated, updated.members.map { it.pubkey })
     }
 
     /** Hands the admin role to another member, so the old admin can leave (admin only). */
@@ -379,7 +391,7 @@ class Engine(
         require(circle.members.any { it.pubkey == pubkey } && pubkey != myPubkey)
         val updated = circle.copy(adminPubkey = pubkey, managers = circle.managers - pubkey)
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) updated else it }) }
-        sendRoster(updated)
+        sendRoster(updated, updated.members.map { it.pubkey })
     }
 
     /** Deletes the circle for everyone (admin only). */
@@ -387,7 +399,7 @@ class Engine(
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey == myPubkey) { "Only the circle admin can delete it" }
         circle.members.filter { it.pubkey != myPubkey }.forEach { m ->
-            pool.publish(DirectMessages.seal(identity, m.pubkey, RemovedBody(myPubkey, now(), circleId, deleted = true), now()))
+            sendDirect(circle, m.pubkey, RemovedBody(myPubkey, now(), circleId, deleted = true))
         }
         forgetCircle(circleId)
     }
@@ -399,9 +411,7 @@ class Engine(
     suspend fun leaveCircle(circleId: String) {
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         require(circle.adminPubkey != myPubkey || circle.members.size <= 1) { "Make someone else the admin first, or delete the circle" }
-        if (circle.adminPubkey != myPubkey) {
-            pool.publish(DirectMessages.seal(identity, circle.adminPubkey, LeftBody(myPubkey, now(), circleId), now()))
-        }
+        if (circle.adminPubkey != myPubkey) sendDirect(circle, circle.adminPubkey, LeftBody(myPubkey, now(), circleId))
         forgetCircle(circleId)
     }
 
@@ -412,9 +422,241 @@ class Engine(
                 locations = s.locations - circleId,
                 joinRequests = s.joinRequests.filterNot { it.circleId == circleId },
                 lastCircleId = if (s.lastCircleId == circleId) null else s.lastCircleId,
+                memberSeqs = s.memberSeqs.filterKeys { !it.startsWith("$circleId|") },
             )
         }
         refreshSubscriptions()
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Keys (protocol v2)
+    // -----------------------------------------------------------------------------------------
+
+    private fun today(): Long = CircleCrypto.day(now())
+
+    /** The location key for [day], or null if that day's key was already deleted (or never held). */
+    private fun dayKey(c: Circle, day: Long): ByteArray? =
+        if (c.version < 2) c.keyHex.hexToBytes() else CircleCrypto.keyForDay(c.keyHex.hexToBytes(), c.keyDay, c.id, c.epoch, day)
+
+    private fun previousDayKey(c: Circle, day: Long): ByteArray? {
+        val key = c.previousKeyHex ?: return null
+        val epoch = c.previousEpoch ?: return null
+        val heldDay = c.previousKeyDay ?: return key.hexToBytes() // the previous epoch was v1
+        return CircleCrypto.keyForDay(key.hexToBytes(), heldDay, c.id, epoch, day)
+    }
+
+    /**
+     * Moves each v2 circle's stored key forward so nothing older than yesterday is kept. Keeping
+     * yesterday's key lets updates sent just before midnight still be read.
+     */
+    private suspend fun advanceRatchets() {
+        val keep = today() - 1
+        update { s ->
+            s.copy(circles = s.circles.map { c ->
+                if (c.version < 2 || c.keyDay >= keep) c
+                else c.copy(keyHex = dayKey(c, keep)!!.toHex(), keyDay = keep)
+            })
+        }
+    }
+
+    /**
+     * Gives [c] a fresh random key and control key (a new epoch), with [members] and [newAdmin].
+     * Members still on the old key are told it's closed; everyone remaining gets the new roster,
+     * which is resent until they confirm it.
+     */
+    private suspend fun rotate(c: Circle, members: List<Member>, newAdmin: String = c.adminPubkey, signer: KeyPair = identity, removed: String? = null): Circle {
+        val t = now()
+        val d = CircleCrypto.day(t)
+        val oldCtl = c.ctlKeyHex
+        val rotated = c.copy(
+            version = 2,
+            keyHex = CircleCrypto.newKey(),
+            keyDay = d,
+            ctlKeyHex = CircleCrypto.newKey(),
+            epoch = c.epoch + 1,
+            adminPubkey = newAdmin,
+            members = members,
+            managers = c.managers.filter { m -> m != newAdmin && members.any { it.pubkey == m } },
+            previousKeyHex = dayKey(c, d)?.toHex(),
+            previousKeyDay = if (c.version >= 2) d else null,
+            previousEpoch = c.epoch,
+            previousValidUntil = t + OVERLAP_SECONDS,
+            oldControls = c.oldControls.filter { it.until > t } + listOfNotNull(oldCtl?.let { OldControl(c.epoch, it, t + OLD_CONTROL_SECONDS, closedPublishedDay = d) }),
+            rotatedAt = t,
+            heartbeatAt = t,
+            heartbeatPublishedAt = 0,
+            stale = false,
+            pendingAcks = emptyList(),
+        )
+        val keep = members.map { it.pubkey }.toSet()
+        update { s ->
+            s.copy(
+                circles = s.circles.map { if (it.id == c.id) rotated else it },
+                locations = s.locations + (c.id to s.locations[c.id].orEmpty().filterKeys { it in keep }),
+            )
+        }
+        // Anyone still publishing under the old key stops as soon as they see this.
+        if (oldCtl != null) publishControl(c.id, oldCtl.hexToBytes(), c.epoch, closed = true, signer = signer)
+        // v1 members only listen on their public key; v2 members get it on their old inbox too.
+        val identityInboxes = if (c.version < 2) keep else emptySet()
+        sendRoster(rotated, members.map { it.pubkey }, identityInboxFor = identityInboxes, signer = signer)
+        if (removed != null) sendDirect(c, removed, RemovedBody(signer.publicHex, t, c.id), signer = signer)
+        refreshSubscriptions()
+        if (newAdmin == myPubkey) publishHeartbeat(rotated)
+        if (rotated.members.any { it.pubkey == myPubkey }) publishProfile(rotated)
+        return rotated
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Messages to members
+    // -----------------------------------------------------------------------------------------
+
+    /**
+     * The inbox tags [recipient] may be listening on for [c]: the current control key's inbox and
+     * those of recent epochs (for members who missed a rotation), plus their public key for v1
+     * circles or when [identityInbox] is set (someone who hasn't joined yet).
+     */
+    private fun inboxesFor(c: Circle, recipient: String, identityInbox: Boolean = false): List<String> {
+        val d = today()
+        val ctls = listOfNotNull(c.ctlKeyHex) + c.oldControls.filter { it.until > now() }.map { it.ctlKeyHex }
+        val tags = ctls.map { CircleCrypto.inbox(it.hexToBytes(), recipient, d) }
+        return (tags + listOfNotNull(recipient.takeIf { c.version < 2 || identityInbox })).distinct()
+    }
+
+    /** Seals [body] to [recipient] once per inbox they might be listening on. */
+    private suspend fun sendDirect(c: Circle, recipient: String, body: Body, identityInbox: Boolean = false, signer: KeyPair = identity) {
+        inboxesFor(c, recipient, identityInbox).forEach { inbox ->
+            pool.publish(DirectMessages.seal(signer, recipient, body, now(), inbox))
+        }
+    }
+
+    private fun rosterOf(c: Circle): RosterCircle =
+        if (c.version < 2) RosterCircle(c.id, c.name, c.keyHex, c.epoch, c.adminPubkey, c.members, c.managers)
+        else {
+            val d = today()
+            RosterCircle(c.id, c.name, dayKey(c, d)!!.toHex(), c.epoch, c.adminPubkey, c.members, c.managers, v = 2, day = d, ctl = c.ctlKeyHex)
+        }
+
+    /**
+     * Sends the current roster of [c] to [recipients] (except ourselves) and, for v2, records them
+     * as waiting for an acknowledgement so [retryRosters] resends until they confirm.
+     */
+    private suspend fun sendRoster(c: Circle, recipients: List<String>, identityInboxFor: Set<String> = emptySet(), signer: KeyPair = identity) {
+        val t = now()
+        val rc = rosterOf(c)
+        val body = if (c.version < 2) RosterBody(signer.publicHex, t, rc) else Roster2Body(signer.publicHex, t, rc)
+        val targets = recipients.filter { it != signer.publicHex && it != myPubkey }.distinct()
+        targets.forEach { m -> sendDirect(c, m, body, identityInbox = m in identityInboxFor, signer = signer) }
+        if (c.version < 2 || targets.isEmpty() || signer.publicHex != myPubkey) return
+        update { s ->
+            s.copy(circles = s.circles.map { cur ->
+                if (cur.id != c.id) cur
+                else cur.copy(pendingAcks = cur.pendingAcks.filterNot { it.pubkey in targets } + targets.map { m ->
+                    val prior = cur.pendingAcks.firstOrNull { it.pubkey == m && it.epoch == c.epoch }
+                    PendingAck(m, c.epoch, prior?.firstSentAt ?: t, t, (prior?.attempts ?: 0) + 1)
+                })
+            })
+        }
+    }
+
+    /** Resends rosters that haven't been acknowledged, backing off, for up to two weeks. */
+    private suspend fun retryRosters() {
+        val t = now()
+        state.value.circles.filter { it.version >= 2 && it.pendingAcks.isNotEmpty() && canInvite(it) }.forEach { c ->
+            val memberKeys = c.members.map { it.pubkey }.toSet()
+            val due = c.pendingAcks.filter { p ->
+                p.pubkey in memberKeys && p.epoch == c.epoch && t - p.firstSentAt < RETRY_WINDOW_SECONDS && t - p.lastSentAt >= retryDelay(p.attempts)
+            }
+            if (due.isNotEmpty()) sendRoster(c, due.map { it.pubkey })
+            // Forget entries for people no longer in the circle, or for an older key.
+            update { s ->
+                s.copy(circles = s.circles.map { cur ->
+                    if (cur.id != c.id) cur else cur.copy(pendingAcks = cur.pendingAcks.filter { it.pubkey in memberKeys && it.epoch == cur.epoch })
+                })
+            }
+        }
+    }
+
+    private fun retryDelay(attempts: Int): Long = when (attempts) {
+        0, 1 -> 120L
+        2 -> 600L
+        3 -> 1_800L
+        4 -> 7_200L
+        else -> 21_600L
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Heartbeats and key checks (protocol v2)
+    // -----------------------------------------------------------------------------------------
+
+    private suspend fun publishControl(circleId: String, ctl: ByteArray, epoch: Int, closed: Boolean, signer: KeyPair = identity) {
+        val t = now()
+        val body = EpochBody(signer.publicHex, t, circleId, epoch, closed)
+        val publisher = CircleCrypto.controlPublisher(signer.secret, circleId, epoch, CircleCrypto.day(t))
+        pool.publish(CircleCrypto.sealControl(signer, ctl, epoch, body, publisher, t))
+    }
+
+    /** The admin's signed "this epoch is current", which members need to keep publishing. */
+    private suspend fun publishHeartbeat(c: Circle) {
+        if (c.version < 2 || c.adminPubkey != myPubkey) return
+        val ctl = c.ctlKeyHex ?: return
+        publishControl(c.id, ctl.hexToBytes(), c.epoch, closed = false)
+        val t = now()
+        update { s -> s.copy(circles = s.circles.map { if (it.id == c.id) it.copy(heartbeatPublishedAt = t, heartbeatAt = t) else it }) }
+    }
+
+    /** Admin: upgrade v1 circles, rotate weekly, publish heartbeats and closed notices. */
+    private suspend fun adminDuties() {
+        val t = now()
+        state.value.circles.filter { it.adminPubkey == myPubkey }.forEach { c ->
+            val current = state.value.circles.firstOrNull { it.id == c.id } ?: return@forEach
+            when {
+                current.version < 2 -> rotate(current, current.members)
+                t - current.rotatedAt >= ROTATE_EVERY_SECONDS && current.members.size > 1 -> rotate(current, current.members)
+                CircleCrypto.day(current.heartbeatPublishedAt) != CircleCrypto.day(t) || t - current.heartbeatPublishedAt >= HEARTBEAT_EVERY_SECONDS ->
+                    publishHeartbeat(current)
+            }
+        }
+        // Repeat "closed" notices daily for recent epochs, so a phone that was off still hears it.
+        val d = CircleCrypto.day(t)
+        state.value.circles.filter { it.adminPubkey == myPubkey }.forEach { c ->
+            val due = c.oldControls.filter { it.until > t && it.closedPublishedDay != d }
+            if (due.isEmpty()) return@forEach
+            due.forEach { old -> publishControl(c.id, old.ctlKeyHex.hexToBytes(), old.epoch, closed = true) }
+            update { s ->
+                s.copy(circles = s.circles.map { cur ->
+                    if (cur.id != c.id) cur else cur.copy(oldControls = cur.oldControls.map { o -> if (due.any { it.epoch == o.epoch }) o.copy(closedPublishedDay = d) else o })
+                })
+            }
+        }
+    }
+
+    /**
+     * Whether this phone may publish its location to [c] right now. For v2 circles a member needs
+     * to know its key is current: a fresh admin heartbeat for this epoch, no "closed" notice, and
+     * relays that have finished sending what they hold since the last (re)connect. Fails closed.
+     */
+    fun shareStatus(c: Circle): ShareStatus = when {
+        c.version < 2 || c.adminPubkey == myPubkey -> ShareStatus.OK
+        c.stale -> ShareStatus.KEY_REPLACED
+        now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS -> ShareStatus.ADMIN_AWAY
+        !pool.isSynced(SUB_CONTROL) -> ShareStatus.CHECKING
+        else -> ShareStatus.OK
+    }
+
+    /** Member: if this phone can't confirm its key, ask the admin for the roster again. */
+    private suspend fun memberDuties() {
+        state.value.circles.filter { it.version >= 2 && it.adminPubkey != myPubkey }.forEach { c ->
+            val status = shareStatus(c)
+            if (status == ShareStatus.KEY_REPLACED || status == ShareStatus.ADMIN_AWAY) requestRoster(c)
+        }
+    }
+
+    private suspend fun requestRoster(c: Circle) {
+        val t = now()
+        if (t - c.rosterRequestedAt < ROSTER_REQUEST_EVERY_SECONDS) return
+        update { s -> s.copy(circles = s.circles.map { if (it.id == c.id) it.copy(rosterRequestedAt = t) else it }) }
+        sendDirect(c, c.adminPubkey, RosterRequestBody(myPubkey, t, c.id, c.epoch))
     }
 
     // -----------------------------------------------------------------------------------------
@@ -451,36 +693,55 @@ class Engine(
         publishProfileIfDue()
     }
 
-    private suspend fun sendRoster(circle: Circle) {
-        val body = RosterBody(myPubkey, now(), RosterCircle(circle.id, circle.name, circle.keyHex, circle.epoch, circle.adminPubkey, circle.members, circle.managers))
-        circle.members.filter { it.pubkey != myPubkey }.forEach { m ->
-            pool.publish(DirectMessages.seal(identity, m.pubkey, body, now()))
-        }
-    }
-
     // -----------------------------------------------------------------------------------------
     // Location
     // -----------------------------------------------------------------------------------------
 
-    /** Publishes one encrypted update to every circle. Called by the platform's location service. */
+    /**
+     * Publishes one encrypted update to every circle this phone may publish to (see [shareStatus]).
+     * Called by the platform's location service. Updates are never queued for later: one that
+     * can't go out now is dropped, so nothing is sent late under a key replaced in the meantime.
+     */
     suspend fun publishLocation(location: MemberLocation) {
         val s = state.value
         if (!s.sharing || _recovery.value != null) return
         val t = now()
         val location = if (s.shareBattery) location else location.copy(battery = null)
+        val seq = maxOf(s.lastSeq + 1, t * 1000)
+        val sentTo = mutableListOf<String>()
         s.circles.forEach { c ->
-            var loc = location
-            var event: Event
-            // Drop the oldest batched points until the padded envelope fits the fixed size.
-            while (true) {
-                event = CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
-                if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) break
-                loc = loc.copy(points = loc.points.drop(1))
-            }
-            pool.publish(event)
+            if (shareStatus(c) != ShareStatus.OK) return@forEach
+            val event = if (c.version < 2) sealV1(c, location, t) else sealV2(c, location, t, seq) ?: return@forEach
+            pool.publish(event, queueIfOffline = false)
+            sentTo += c.id
         }
         update { st ->
-            st.copy(locations = st.locations + st.circles.associate { c -> c.id to (st.locations[c.id].orEmpty() + (myPubkey to location)) })
+            st.copy(
+                lastSeq = maxOf(st.lastSeq, seq),
+                locations = st.locations + st.circles.filter { it.id in sentTo }.associate { c -> c.id to (st.locations[c.id].orEmpty() + (myPubkey to location)) },
+            )
+        }
+    }
+
+    private fun sealV1(c: Circle, location: MemberLocation, t: Long): Event {
+        var loc = location
+        while (true) {
+            val event = CircleCrypto.seal(identity, c.keyHex.hexToBytes(), c.epoch, LocationBody(myPubkey, t, c.id, c.epoch, loc), t)
+            // Drop the oldest batched points until the padded envelope fits the fixed size.
+            if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
+            loc = loc.copy(points = loc.points.drop(1))
+        }
+    }
+
+    private fun sealV2(c: Circle, location: MemberLocation, t: Long, seq: Long): Event? {
+        val key = dayKey(c, CircleCrypto.day(t)) ?: return null
+        val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(t))
+        var loc = location
+        while (true) {
+            val body = LocationBody(myPubkey, t, c.id, c.epoch, loc, pub = publisher.publicHex, seq = seq)
+            val event = CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, t)
+            if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
+            loc = loc.copy(points = loc.points.drop(1))
         }
     }
 
@@ -489,6 +750,7 @@ class Engine(
     // -----------------------------------------------------------------------------------------
 
     private suspend fun onEvent(relay: String, event: Event) {
+        if (_recovery.value != null) return
         val fresh = mutex.withLock { seen.add(event.id) }
         if (!fresh || !event.isValid()) return
         when (event.kind) {
@@ -499,20 +761,35 @@ class Engine(
 
     private suspend fun handleCircleUpdate(event: Event) {
         val target = tagIndex[event.tag("d") ?: return] ?: return
-        if (target.isProfile) return handleProfile(target, event)
+        when (target.kind) {
+            TagKind.PROFILE -> return handleProfile(target, event)
+            TagKind.CONTROL -> return handleControl(target, event)
+            TagKind.LOCATION -> Unit
+        }
         val circleId = target.circleId
-        val key = target.key
-        val epoch = target.epoch
-        val body = CircleCrypto.open(key, epoch, event) as? LocationBody ?: return
+        val body = CircleCrypto.open(target.key, target.epoch, event) as? LocationBody ?: return
         val circle = state.value.circles.firstOrNull { it.id == circleId } ?: return
         if (body.circle != circleId || body.from == myPubkey || circle.members.none { it.pubkey == body.from }) return
-        // The publisher key must be the one this member derives for this hour, or someone else is posing as them.
-        if (CircleCrypto.publisher(key, body.from, CircleCrypto.slot(event.createdAt)).publicHex != event.pubkey) return
+        if (body.loc.time > now() + MAX_CLOCK_SKEW_SECONDS) return
+        val seqKey = "$circleId|${body.from}"
+        if (target.v2) {
+            // Only the member can sign with the key named inside their signed body, and each
+            // update must be newer than the last one accepted: no overwrites, no replays.
+            if (body.pub != event.pubkey || body.epoch != target.epoch) return
+            if (body.seq <= (state.value.memberSeqs[seqKey] ?: 0L)) return
+        } else {
+            // v1: the publisher key must be the one this member derives for this hour.
+            if (CircleCrypto.publisher(target.key, body.from, CircleCrypto.slot(event.createdAt)).publicHex != event.pubkey) return
+        }
         update { s ->
             val current = s.locations[circleId].orEmpty()
             val existing = current[body.from]
-            if (existing != null && existing.time >= body.loc.time) s
-            else s.copy(locations = s.locations + (circleId to (current + (body.from to body.loc))))
+            if (!target.v2 && existing != null && existing.time >= body.loc.time) s
+            else if (target.v2 && body.seq <= (s.memberSeqs[seqKey] ?: 0L)) s
+            else s.copy(
+                locations = s.locations + (circleId to (current + (body.from to body.loc))),
+                memberSeqs = if (target.v2) s.memberSeqs + (seqKey to body.seq) else s.memberSeqs,
+            )
         }
     }
 
@@ -521,7 +798,9 @@ class Engine(
         if (body.from == myPubkey) return
         val circle = state.value.circles.firstOrNull { it.id == target.circleId } ?: return
         if (circle.members.none { it.pubkey == body.from }) return
-        if (CircleCrypto.profilePublisher(target.key, body.from, target.epoch).publicHex != event.pubkey) return
+        if (target.v2) {
+            if (body.pub != event.pubkey) return
+        } else if (CircleCrypto.profilePublisher(target.key, body.from, target.epoch).publicHex != event.pubkey) return
         val photo = body.photo?.takeIf { it.length <= CircleCrypto.MAX_PHOTO_CHARS }
         update { s ->
             val existing = s.profiles[body.from]
@@ -530,10 +809,33 @@ class Engine(
         }
     }
 
+    /** An admin heartbeat or "closed" notice under the control key of our current epoch. */
+    private suspend fun handleControl(target: TagTarget, event: Event) {
+        val body = CircleCrypto.open(target.key, target.epoch, event) as? EpochBody ?: return
+        val c = state.value.circles.firstOrNull { it.id == target.circleId } ?: return
+        if (body.from != c.adminPubkey || body.circle != c.id || c.adminPubkey == myPubkey) return
+        if (target.epoch != c.epoch || body.epoch != c.epoch) return
+        if (body.closed) {
+            update { s -> s.copy(circles = s.circles.map { if (it.id == c.id && it.epoch == body.epoch) it.copy(stale = true) else it }) }
+            state.value.circles.firstOrNull { it.id == c.id }?.let { requestRoster(it) }
+        } else {
+            val ts = minOf(body.ts, now())
+            update { s -> s.copy(circles = s.circles.map { if (it.id == c.id && it.epoch == body.epoch && ts > it.heartbeatAt) it.copy(heartbeatAt = ts) else it }) }
+        }
+    }
+
     private suspend fun publishProfile(circle: Circle) {
         val s = state.value
-        val body = ProfileBody(myPubkey, maxOf(s.profileChangedAt, 1), s.myName, s.myColor, s.myPhoto)
-        pool.publish(CircleCrypto.sealProfile(identity, circle.keyHex.hexToBytes(), circle.epoch, body, now()))
+        val t = now()
+        if (circle.version < 2) {
+            val body = ProfileBody(myPubkey, maxOf(s.profileChangedAt, 1), s.myName, s.myColor, s.myPhoto)
+            pool.publish(CircleCrypto.sealProfile(identity, circle.keyHex.hexToBytes(), circle.epoch, body, t))
+        } else {
+            val ctl = circle.ctlKeyHex ?: return
+            val publisher = CircleCrypto.memberProfilePublisher(identity.secret, circle.id, circle.epoch)
+            val body = ProfileBody(myPubkey, maxOf(s.profileChangedAt, 1), s.myName, s.myColor, s.myPhoto, pub = publisher.publicHex)
+            pool.publish(CircleCrypto.sealProfileV2(identity, ctl.hexToBytes(), circle.epoch, body, publisher, t))
+        }
     }
 
     /** Publishes the profile to every circle when it changed, and once a day so it stays on the relays. */
@@ -547,11 +849,15 @@ class Engine(
     }
 
     private suspend fun handleDirect(event: Event) {
+        val ref = inboxIndex[event.tag("p") ?: return] ?: return
         when (val body = DirectMessages.open(identity, event) ?: return) {
             is JoinRequestBody -> onJoinRequest(body)
-            is RosterBody -> onRoster(body)
+            is RosterBody -> onRoster(body.from, body.ts, body.circle, v2Body = false)
+            is Roster2Body -> onRoster(body.from, body.ts, body.circle, v2Body = true)
             is RemovedBody -> onRemoved(body)
             is LeftBody -> onLeft(body)
+            is RosterAckBody -> onRosterAck(body)
+            is RosterRequestBody -> onRosterRequest(body, ref)
             else -> Unit
         }
         update { it.copy(seenEventIds = (it.seenEventIds + event.id).takeLast(500)) }
@@ -571,44 +877,53 @@ class Engine(
         }
     }
 
-    private suspend fun onRoster(body: RosterBody) {
-        val rc = body.circle
+    private suspend fun onRoster(from: String, ts: Long, rc: RosterCircle, v2Body: Boolean) {
+        // A v2 roster must arrive as a v2 message (and v1 as v1), so neither can be misread as the other.
+        if ((rc.v >= 2) != v2Body) return
+        if (rc.v >= 2 && rc.ctl == null) return
         val s = state.value
         val existing = s.circles.firstOrNull { it.id == rc.id }
         val pending = s.pendingJoins.firstOrNull { it.circleId == rc.id }
+        val sameEpochKey = existing != null && rc.epoch == existing.epoch &&
+            (if (rc.v >= 2) rc.ctl == existing.ctlKeyHex else rc.key == existing.keyHex)
         val trusted = when {
             // The admin can do anything: add people, rotate keys, change managers, hand over the role.
-            existing != null && body.from == existing.adminPubkey -> rc.epoch >= existing.epoch
+            existing != null && from == existing.adminPubkey -> rc.epoch >= existing.epoch
             // Managers can only add people under the current key.
-            existing != null && body.from in existing.managers ->
-                rc.epoch == existing.epoch && rc.key == existing.keyHex && rc.admin == existing.adminPubkey
+            existing != null && from in existing.managers -> sameEpochKey && rc.admin == existing.adminPubkey
             existing != null -> false
             // Joining: the roster must come from whoever invited us (the admin or a manager).
-            pending != null -> body.from == pending.inviterPubkey
+            pending != null -> from == pending.inviterPubkey
             else -> false
         }
         if (!trusted) return
-        val fromAdmin = existing == null || body.from == existing.adminPubkey
-        val sameKey = existing != null && rc.epoch == existing.epoch
+        val fromAdmin = existing == null || from == existing.adminPubkey
+        val newEpoch = existing == null || rc.epoch > existing.epoch
         // Within one key, rosters only add people (removal always rotates the key), so merge them.
         // That way an admin and a manager approving people at the same moment don't drop anyone.
-        val members = if (sameKey) (existing.members + rc.members).distinctBy { it.pubkey } else rc.members
+        val members = if (!newEpoch && existing != null) (existing.members + rc.members).distinctBy { it.pubkey } else rc.members
         if (members.none { it.pubkey == myPubkey }) {
             if (fromAdmin) forgetCircle(rc.id)
             return
         }
         val rotated = existing != null && rc.epoch > existing.epoch
-        val circle = Circle(
-            id = rc.id,
+        val base = existing ?: Circle(id = rc.id, name = rc.name, keyHex = rc.key, epoch = rc.epoch, adminPubkey = rc.admin, members = members)
+        val circle = base.copy(
             name = rc.name,
-            keyHex = rc.key,
-            epoch = rc.epoch,
-            adminPubkey = if (fromAdmin) rc.admin else existing.adminPubkey,
             members = members,
-            managers = if (fromAdmin) rc.managers else existing.managers,
-            previousKeyHex = if (rotated) existing.keyHex else existing?.previousKeyHex,
-            previousEpoch = if (rotated) existing.epoch else existing?.previousEpoch,
-            previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else existing?.previousValidUntil,
+            adminPubkey = if (fromAdmin) rc.admin else base.adminPubkey,
+            managers = if (fromAdmin) rc.managers else base.managers,
+            version = if (newEpoch) rc.v else base.version,
+            keyHex = if (newEpoch) rc.key else base.keyHex,
+            keyDay = if (newEpoch) rc.day else base.keyDay,
+            ctlKeyHex = if (newEpoch) rc.ctl else base.ctlKeyHex,
+            epoch = rc.epoch,
+            previousKeyHex = if (rotated) dayKey(existing!!, today())?.toHex() else base.previousKeyHex,
+            previousKeyDay = if (rotated) (if (existing!!.version >= 2) today() else null) else base.previousKeyDay,
+            previousEpoch = if (rotated) existing!!.epoch else base.previousEpoch,
+            previousValidUntil = if (rotated) now() + OVERLAP_SECONDS else base.previousValidUntil,
+            stale = if (newEpoch) false else base.stale,
+            heartbeatAt = if (fromAdmin && rc.admin == from) maxOf(if (newEpoch) 0 else base.heartbeatAt, minOf(ts, now())) else base.heartbeatAt,
         )
         update { st ->
             val memberKeys = members.map { it.pubkey }.toSet()
@@ -620,8 +935,34 @@ class Engine(
             )
         }
         refreshSubscriptions()
+        // Tell the sender we have it, so they stop resending. After a handover the new admin tracks it.
+        if (circle.version >= 2) {
+            val ackTo = if (fromAdmin) rc.admin else from
+            if (ackTo != myPubkey) sendDirect(circle, ackTo, RosterAckBody(myPubkey, now(), circle.id, circle.epoch))
+        }
         // Joined, rotated or someone new arrived: (re)publish our profile under the current key.
         if (existing == null || rotated || existing.members.size != members.size) publishProfile(circle)
+    }
+
+    private suspend fun onRosterAck(body: RosterAckBody) {
+        update { s ->
+            s.copy(circles = s.circles.map { c ->
+                if (c.id != body.circle) c else c.copy(pendingAcks = c.pendingAcks.filterNot { it.pubkey == body.from && it.epoch <= body.epoch })
+            })
+        }
+    }
+
+    /** A member can't confirm its key: resend the roster if they're still in, otherwise tell them they're out. */
+    private suspend fun onRosterRequest(body: RosterRequestBody, ref: InboxRef) {
+        val c = state.value.circles.firstOrNull { it.id == body.circle } ?: return
+        if (c.adminPubkey != myPubkey || c.version < 2) return
+        if (c.members.any { it.pubkey == body.from }) {
+            val recent = c.pendingAcks.firstOrNull { it.pubkey == body.from && it.epoch == c.epoch }
+            if (recent != null && now() - recent.lastSentAt < 600) return
+            sendRoster(c, listOf(body.from))
+        } else if (ref.circleId == c.id) {
+            sendDirect(c, body.from, RemovedBody(myPubkey, now(), c.id))
+        }
     }
 
     private suspend fun onRemoved(body: RemovedBody) {
@@ -644,21 +985,51 @@ class Engine(
     private suspend fun refreshSubscriptions() {
         val t = now()
         val slot = CircleCrypto.slot(t)
+        val d = CircleCrypto.day(t)
+        val s = state.value
         val index = mutableMapOf<String, TagTarget>()
-        state.value.circles.forEach { c ->
-            val keys = mutableListOf(c.keyHex to c.epoch)
-            if (c.previousKeyHex != null && c.previousEpoch != null && (c.previousValidUntil ?: 0) > t) keys += c.previousKeyHex to c.previousEpoch
-            keys.forEach { (k, e) ->
-                val kb = k.hexToBytes()
-                // Current and previous hour, so updates published just before the hour still arrive.
-                listOf(slot, slot - 1).forEach { sl -> index[CircleCrypto.tag(kb, e, sl)] = TagTarget(c.id, kb, e, isProfile = false) }
-                index[CircleCrypto.profileTag(kb, e)] = TagTarget(c.id, kb, e, isProfile = true)
+        val inboxes = mutableMapOf<String, InboxRef>()
+        s.circles.forEach { c ->
+            val v2 = c.version >= 2
+            // Current and previous hour, so updates published just before the hour still arrive.
+            listOf(slot, slot - 1).forEach { sl ->
+                val day = CircleCrypto.day(sl * 3600)
+                dayKey(c, day)?.let { k -> index[CircleCrypto.tag(k, c.epoch, sl)] = TagTarget(c.id, k, c.epoch, TagKind.LOCATION, v2) }
+                if (c.previousEpoch != null && (c.previousValidUntil ?: 0) > t) {
+                    previousDayKey(c, day)?.let { k ->
+                        index[CircleCrypto.tag(k, c.previousEpoch, sl)] = TagTarget(c.id, k, c.previousEpoch, TagKind.LOCATION, c.previousKeyDay != null)
+                    }
+                }
+            }
+            if (!v2) {
+                val k = c.keyHex.hexToBytes()
+                index[CircleCrypto.profileTag(k, c.epoch)] = TagTarget(c.id, k, c.epoch, TagKind.PROFILE, false)
+            } else {
+                val ctl = c.ctlKeyHex!!.hexToBytes()
+                index[CircleCrypto.profileTag(ctl, c.epoch)] = TagTarget(c.id, ctl, c.epoch, TagKind.PROFILE, true)
+                // Heartbeats and closed notices for the past week.
+                if (c.adminPubkey != myPubkey) {
+                    (0..7).forEach { back -> index[CircleCrypto.controlTag(ctl, c.epoch, d - back)] = TagTarget(c.id, ctl, c.epoch, TagKind.CONTROL, true) }
+                    index[CircleCrypto.closedTag(ctl, c.epoch)] = TagTarget(c.id, ctl, c.epoch, TagKind.CONTROL, true)
+                }
+                // Our inboxes for the past week (messages expire after 7 days), under this and recent control keys.
+                (listOf(c.ctlKeyHex) + c.oldControls.filter { it.until > t }.map { it.ctlKeyHex }).forEach { k ->
+                    val kb = k.hexToBytes()
+                    (0..7).forEach { back -> inboxes[CircleCrypto.inbox(kb, myPubkey, d - back)] = InboxRef(c.id, kb) }
+                }
             }
         }
+        // Our public key is only needed as an inbox for v1 circles and for joins in progress.
+        val needIdentity = s.circles.any { it.version < 2 } || s.pendingJoins.isNotEmpty() || s.invites.any { !it.used && it.expiresAt > t }
+        if (needIdentity) inboxes[myPubkey] = InboxRef(null, null)
         tagIndex = index
+        inboxIndex = inboxes
         val subs = buildMap {
-            put("qm-dm", listOf(Filter(kinds = listOf(Kinds.SEALED_DIRECT), tagP = listOf(myPubkey), since = t - 7 * 24 * 3600)))
-            if (index.isNotEmpty()) put("qm-circles", listOf(Filter(kinds = listOf(Kinds.CIRCLE_UPDATE), tagD = index.keys.sorted())))
+            if (inboxes.isNotEmpty()) put(SUB_DIRECT, listOf(Filter(kinds = listOf(Kinds.SEALED_DIRECT), tagP = inboxes.keys.sorted(), since = t - 7 * 24 * 3600)))
+            val circleTags = index.filterValues { it.kind != TagKind.CONTROL }.keys.sorted()
+            if (circleTags.isNotEmpty()) put(SUB_CIRCLES, listOf(Filter(kinds = listOf(Kinds.CIRCLE_UPDATE), tagD = circleTags)))
+            val controlTags = index.filterValues { it.kind == TagKind.CONTROL }.keys.sorted()
+            if (controlTags.isNotEmpty()) put(SUB_CONTROL, listOf(Filter(kinds = listOf(Kinds.CIRCLE_UPDATE), tagD = controlTags)))
         }
         pool.setSubscriptions(subs)
     }
@@ -670,7 +1041,12 @@ class Engine(
                 invites = s.invites.filter { it.expiresAt > t - 24 * 3600 },
                 pendingJoins = s.pendingJoins.filter { it.sentAt > t - 7 * 24 * 3600 },
                 circles = s.circles.map { c ->
-                    if (c.previousValidUntil != null && c.previousValidUntil < t) c.copy(previousKeyHex = null, previousEpoch = null, previousValidUntil = null) else c
+                    var n = c
+                    if (n.previousValidUntil != null && n.previousValidUntil!! < t) {
+                        n = n.copy(previousKeyHex = null, previousEpoch = null, previousValidUntil = null, previousKeyDay = null)
+                    }
+                    if (n.oldControls.any { it.until <= t }) n = n.copy(oldControls = n.oldControls.filter { it.until > t })
+                    n
                 },
             )
         }
@@ -693,6 +1069,28 @@ class Engine(
         /** How long the previous circle key stays valid after a rotation. */
         const val OVERLAP_SECONDS = 10 * 60L
 
+        /** How long a replaced epoch's control key is kept to reach members who missed the rotation. */
+        const val OLD_CONTROL_SECONDS = 14 * 24 * 3600L
+
+        /** v2 circles get a fresh random key this often, so a stolen key stops working. */
+        const val ROTATE_EVERY_SECONDS = 7 * 24 * 3600L
+
+        const val HEARTBEAT_EVERY_SECONDS = 6 * 3600L
+
+        /**
+         * A member stops publishing if the admin's newest heartbeat is older than this. It bounds how
+         * long a phone could keep using a replaced key if every relay withheld the "closed" notice.
+         */
+        const val HEARTBEAT_MAX_AGE_SECONDS = 3 * 24 * 3600L
+
+        /** Unacknowledged rosters are resent for this long. */
+        const val RETRY_WINDOW_SECONDS = 14 * 24 * 3600L
+
+        const val ROSTER_REQUEST_EVERY_SECONDS = 30 * 60L
+
+        /** Updates claiming to be from further in the future than this are ignored. */
+        const val MAX_CLOCK_SKEW_SECONDS = 10 * 60L
+
         /**
          * Envelopes are padded to 1400 bytes, which NIP-44 pads to 1536, which base64-encodes to 2140
          * characters. Anything bigger drops batched points, so every update on the relays is the same size.
@@ -701,5 +1099,23 @@ class Engine(
 
         /** No update for this long means the person is shown as offline. */
         const val OFFLINE_AFTER_SECONDS = 45 * 60L
+
+        private const val SUB_DIRECT = "qm-dm"
+        private const val SUB_CIRCLES = "qm-circles"
+        private const val SUB_CONTROL = "qm-ctl"
     }
+}
+
+/** Whether this phone is sending its location to a circle, and if not, why. */
+enum class ShareStatus {
+    OK,
+
+    /** Waiting for relays to confirm the circle key is still current (after starting or reconnecting). */
+    CHECKING,
+
+    /** The admin replaced the key and this phone hasn't received the new one yet. */
+    KEY_REPLACED,
+
+    /** No heartbeat from the admin for three days, so the key can't be confirmed. */
+    ADMIN_AWAY,
 }

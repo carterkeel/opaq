@@ -90,3 +90,70 @@ Development note: this sandbox can't reach Maven, so shared code was also compil
 **Tests.** `SecurityTest.remoteRelaysMustUseTls`, `plaintextRelaysAreDroppedFromSettings`.
 
 Invite-supplied relays are covered under QM-08 below.
+
+## Circle protocol v2 (Phases 3, 4, 7 and part of 12)
+
+QM-03, QM-04, QM-05 and the inbox part of QM-02 all needed changes to the same message formats, so they ship together as **circle protocol v2**. New circles are created on v2. An admin's app upgrades each v1 circle it runs to v2 the first time it runs this version, by rotating to a fresh v2 key (the roster goes to members' public keys, as v1 members expect). v1 circles stay fully readable until then.
+
+Compatibility: v2 rosters use a new message type (`roster2`), so an older app ignores them instead of misreading a v2 key as a v1 key. A member still on an older app stops receiving the circle after the upgrade, so everyone in a circle needs this version. The app is pre-release, which is why this is acceptable; it should be stated in release notes.
+
+### QM-03: acknowledged key rotation and stale-key protection
+
+**Vulnerability.** The new key after a removal was sent once, as a message that expires after 7 days. A member who missed it kept publishing under the old key indefinitely, and only the removed person (who still had that key) could read those updates.
+
+**Root cause.** No acknowledgement, no retry, and no way for a member to learn that its key had been replaced.
+
+**Changes.**
+
+- **Acknowledgements and retries.** Every v2 roster (rotation, approval, role change) is recorded per recipient in `Circle.pendingAcks`. Members reply with `RosterAckBody`. Unacknowledged rosters are resent after 2 min, 10 min, 30 min, 2 h, then every 6 h, for 14 days (`Engine.retryRosters`). The admin sees who hasn't received the new key (a banner in the people list and a row on the person's profile).
+- **Closed notices.** A rotation publishes a signed `EpochBody(closed = true)` under the old epoch's control key, on its own tag so a heartbeat can never replace it on a relay. The admin republishes it daily for 14 days. A member that sees it marks the circle `stale`, stops publishing to it and asks for the roster (`RosterRequestBody`). The admin resends the roster to members, and sends a removal notice to anyone who isn't one.
+- **Heartbeats.** The admin publishes a signed `EpochBody(closed = false)` for the current epoch every 6 hours and at least once a day. A member publishes only while the newest heartbeat is under 3 days old (`HEARTBEAT_MAX_AGE_SECONDS`). This bounds how long a phone could keep a replaced key if every relay withheld the closed notice.
+- **Sync before sending.** After starting or reconnecting, a member publishes only once a relay has finished sending what it stores for the control subscription (EOSE), so a phone that was off for days checks for closed notices first.
+- **No late sends.** Location updates are never queued while offline (`publish(..., queueIfOffline = false)`), so nothing goes out late under a key replaced in the meantime.
+- `Engine.shareStatus(circle)` reports `OK`, `CHECKING`, `KEY_REPLACED` or `ADMIN_AWAY`, and the home screen explains a pause.
+
+**Tests.** `CircleSecurityTest`: `memberWhoMissesTheRotationNeverPublishesUnderTheOldKey` (C offline during A removing B; C's offline update is dropped; C reconnects through a relay that loses all its messages and still stops publishing; once messages flow C gets the new key; nothing published after the removal opens with any key B kept), `relaysWithholdingEverythingStopsPublishingAfterTheHeartbeatExpires`, `aDeviceThatWasOffForDaysChecksBeforePublishing`, `unacknowledgedRostersAreResentUntilConfirmed`, `removedMemberWhoIgnoresTheNoticeIsToldAgainWhenAsking`.
+
+**Found by the tests.** The first version put the closed notice and the heartbeat under the same relay key and tag, so a relay could keep the heartbeat and drop the closed notice when both had the same timestamp. Closed notices now have their own tag (`CircleCrypto.closedTag`).
+
+**Remaining limitations.** If the admin's phone is off for more than 3 days, members pause sharing until it comes back, and the app says why. Only the admin can rotate keys or send heartbeats; MLS would remove that single point.
+
+### QM-04: forward secrecy and post-compromise recovery
+
+**Vulnerability.** One static key per epoch, and the epoch changed only on removal. A key taken from any phone or backup decrypted every archived update since the last removal.
+
+**Changes.**
+
+- **Daily ratchet.** The location key moves forward every UTC day: `key(d+1) = HMAC-SHA256(key(d), "qm-ratchet|circle|epoch|d+1")`, an HKDF-Expand step. It can't be run backwards. Phones keep only yesterday's key (to read updates sent just before midnight) and derive today's. `CircleCrypto.keyForDay` returns null for any earlier day.
+- **Fresh randomness.** Removals and a weekly automatic rotation replace the key and control key with new random keys (a new epoch), so a stolen key stops working within a week even if nobody is removed.
+- **Catching up.** An offline member ratchets its stored key forward when it comes back. It is never sent older keys.
+- **Backups** carry only the current key: previous keys and old control keys are stripped (`Backups.fromState`).
+- **Control key.** Profiles, heartbeats and inbox tags use a per-epoch control key that doesn't ratchet. It protects no location data.
+
+**Tests.** `CircleSecurityTest.yesterdaysKeyIsGoneAndTodaysCantReachBack`, `weeklyRotationReplacesTheKeyWithFreshRandomness`, `backupsCarryOnlyCurrentKeys`. `ProtocolTest.ratchetIsDeterministicOneWayAndCircleSpecific`.
+
+**Remaining limitations.** Someone who takes a phone's keys can read up to about two days back (yesterday's key) and forward until the next fresh rotation (at most a week). A stolen identity (QM-01) still receives new keys; see Phase 1. MLS was evaluated and not adopted for now: it needs a delivery service model that Nostr relays don't provide without much more machinery, and the changes above meet the plan's acceptance criteria.
+
+### QM-05: members overwriting or replaying each other's updates
+
+**Vulnerability.** Publisher keys were derived from the shared circle key, so any member could compute everyone's and replace their newest update on a relay.
+
+**Changes.**
+
+- **Own publisher keys.** v2 publisher keys come from the member's own identity secret (`CircleCrypto.memberPublisher`, `memberProfilePublisher`, `controlPublisher`). Nobody else can sign with them, so nobody else can replace their events.
+- **Binding.** The signed body names the outer event's key (`LocationBody.pub`, `ProfileBody.pub`), and receivers reject a mismatch. A member can't re-wrap someone's real update under a different key.
+- **Replay protection.** Every update carries a sequence number (`seq`, at least the current time in milliseconds, so a restored phone keeps counting up). Receivers keep the newest per member (`AppState.memberSeqs`) and reject anything not newer. This doesn't rely on relay timestamps.
+
+**Tests.** `CircleSecurityTest.aMemberCannotOverwriteOrReplayAnotherMembersUpdates`. `ProtocolTest.memberPublisherKeysDependOnTheMembersOwnSecret`, `v2BodiesRoundTripAndOldOnesStillDecode`.
+
+### QM-02 (part): inboxes instead of permanent public keys
+
+**Changes.**
+
+- v2 messages to members go to rotating inbox tags (`CircleCrypto.inbox`: an HMAC of the control key, the member and the day) instead of the member's public key. The content is still encrypted to the member's identity key.
+- A phone subscribes to its public key only while it has a v1 circle, a join in progress, or an open invite. Once joined, no subscription names a permanent key.
+- Messages for members who may have missed a rotation also go to inboxes under recent control keys.
+
+**Tests.** `CircleSecurityTest.relaysDontSeePermanentKeysOnceJoined`.
+
+The rest of QM-02 is under Phase 12 below.
