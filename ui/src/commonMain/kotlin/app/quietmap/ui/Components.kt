@@ -369,8 +369,8 @@ fun ConfirmSheet(
     destructive: Boolean = false,
     dismiss: String = "Cancel",
     header: (@Composable () -> Unit)? = null,
-    body: (@Composable ColumnScope.() -> Unit)? = null,
     confirmEnabled: Boolean = true,
+    body: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
