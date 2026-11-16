@@ -29,4 +29,13 @@ interface RelayTransport {
     fun isSynced(subscriptionId: String): Boolean
 
     fun shutdown()
+
+    /**
+     * Routes relay connections through a SOCKS proxy (Tor via Orbot on Android), or directly when
+     * null. Connections are re-made. If the proxy isn't running, nothing connects: it never falls
+     * back to a direct connection.
+     */
+    suspend fun setSocksProxy(proxy: SocksProxy?) {}
 }
+
+data class SocksProxy(val host: String, val port: Int)

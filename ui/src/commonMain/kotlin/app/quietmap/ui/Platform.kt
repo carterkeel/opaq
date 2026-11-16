@@ -40,6 +40,9 @@ interface PlatformBridge {
         onDone(true)
     }
 
+    /** Whether relays can be routed through Tor here (Android with Orbot). */
+    val supportsTor: Boolean get() = false
+
     /** Lets the user pick a text file (a backup) and calls [onResult] with its contents, or null. */
     fun openTextFile(onResult: (String?) -> Unit) {
         showMessage("Opening files isn't available on this device yet")

@@ -291,6 +291,7 @@ fun HomeScreen(
                         shareStatus = actions.shareStatus(circle),
                         sharingBlocked = sharingBlocked,
                         onFixSharing = onFixSharing,
+                        onStartSharing = { actions.confirmCircle(circle.id) },
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
@@ -398,6 +399,7 @@ private fun PeopleList(
     shareStatus: ShareStatus,
     sharingBlocked: String?,
     onFixSharing: () -> Unit,
+    onStartSharing: () -> Unit,
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
@@ -416,7 +418,7 @@ private fun PeopleList(
                     visible = !circle.confirmed,
                     text = "You're in ${circle.name} with $others. Nobody here sees your location until you start sharing.",
                     action = "Start sharing",
-                    onAction = { actions.confirmCircle(circle.id) },
+                    onAction = onStartSharing,
                 )
                 val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
                 Banner(

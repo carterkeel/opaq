@@ -1,6 +1,7 @@
 package app.quietmap.core.nostr
 
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.websocket.Frame
@@ -28,8 +29,30 @@ class RelayPool(
     private val onEvent: suspend (relay: String, event: Event) -> Unit,
     private val log: (String) -> Unit = {},
 ) : RelayTransport {
-    private val client = HttpClient {
+    @kotlin.concurrent.Volatile
+    private var client = newClient(null)
+
+    private fun newClient(proxy: SocksProxy?) = HttpClient {
         install(WebSockets) { pingIntervalMillis = 30_000 }
+        if (proxy != null) engine { this.proxy = ProxyBuilder.socks(proxy.host, proxy.port) }
+    }
+
+    private var proxy: SocksProxy? = null
+
+    override suspend fun setSocksProxy(proxy: SocksProxy?) {
+        val urls = mutex.withLock {
+            if (proxy == this.proxy) return
+            this.proxy = proxy
+            val old = client
+            client = newClient(proxy)
+            val urls = connections.keys.toList()
+            connections.values.forEach { it.job?.cancel() }
+            connections.clear()
+            live.value = emptyList()
+            old.close()
+            urls
+        }
+        setRelays(urls)
     }
 
     private val mutex = Mutex()

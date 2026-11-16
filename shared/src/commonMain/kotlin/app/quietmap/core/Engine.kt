@@ -30,6 +30,7 @@ import app.quietmap.core.nostr.RelayPool
 import app.quietmap.core.nostr.RelayStatus
 import app.quietmap.core.nostr.RelayTransport
 import app.quietmap.core.nostr.RelayUrls
+import app.quietmap.core.nostr.SocksProxy
 import app.quietmap.core.protocol.Body
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DeviceCode
@@ -200,6 +201,7 @@ class Engine(
     private suspend fun connectIfNeeded() {
         if (connected) return
         connected = true
+        pool.setSocksProxy(torProxy())
         pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         publishProfileIfDue()
@@ -311,6 +313,20 @@ class Engine(
     private fun effectiveRelays(): List<String> {
         val s = state.value
         return (s.relays + s.pendingJoins.flatMap { it.relays }).mapNotNull { RelayUrls.clean(it) }.distinct()
+    }
+
+    private fun torProxy(): SocksProxy? = if (state.value.useTor) SocksProxy("127.0.0.1", TOR_SOCKS_PORT) else null
+
+    /**
+     * Routes relay traffic through Tor (Orbot's SOCKS proxy), so relays see a Tor exit instead of
+     * this phone's IP address. If Orbot isn't running nothing connects, rather than falling back to
+     * a direct connection. Turning it off needs the PIN, if one is set.
+     */
+    suspend fun setUseTor(on: Boolean) {
+        if (!on) requireAuthorized()
+        update { it.copy(useTor = on) }
+        pool.setSocksProxy(torProxy())
+        refreshSubscriptions()
     }
 
     /** Hides the app in recent apps and screenshots. Turning it off needs the PIN, if one is set. */
@@ -985,13 +1001,21 @@ class Engine(
         }
     }
 
+    /** Last outer timestamp used per circle, so blurred timestamps still only move forward. */
+    private val lastCreatedAt = mutableMapOf<String, Long>()
+
     private fun sealV2(c: Circle, location: MemberLocation, t: Long, seq: Long): Event? {
-        val key = dayKey(c, CircleCrypto.day(t)) ?: return null
-        val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(t))
+        // Relays see a timestamp blurred by up to 15 seconds rather than the exact moment of the fix;
+        // it never goes backwards, so relays keep the newest update. The exact time is inside.
+        val jitter = (PlatformCrypto.randomBytes(1)[0].toInt() and 0xff) % 16
+        val created = maxOf(t - jitter, (lastCreatedAt[c.id] ?: 0L) + 1).coerceAtMost(t)
+        lastCreatedAt[c.id] = created
+        val key = dayKey(c, CircleCrypto.day(created)) ?: return null
+        val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(created))
         var loc = location
         while (true) {
             val body = LocationBody(myPubkey, t, c.id, c.epoch, loc, pub = publisher.publicHex, seq = seq)
-            val event = CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, t)
+            val event = CircleCrypto.sealLocation(identity, key, c.epoch, body, publisher, created)
             if (event.content.length <= MAX_LOCATION_CONTENT || loc.points.isEmpty()) return event
             loc = loc.copy(points = loc.points.drop(1))
         }
@@ -1393,6 +1417,9 @@ class Engine(
         const val CONSENT_EVERY_SECONDS = 30 * 24 * 3600L
 
         const val HISTORY_SIZE = 100
+
+        /** Orbot's default SOCKS port. */
+        const val TOR_SOCKS_PORT = 9050
 
         private const val SUB_DIRECT = "qm-dm"
         private const val SUB_CIRCLES = "qm-circles"

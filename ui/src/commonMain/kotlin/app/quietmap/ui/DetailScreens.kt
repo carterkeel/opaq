@@ -584,6 +584,15 @@ fun SettingsScreen(
         SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
 
         SectionHeader("Privacy")
+        if (platform.supportsTor) {
+            SwitchRow(
+                "Connect through Tor",
+                if (state.useTor) "Relays see a Tor address, not yours. Needs Orbot running; nothing connects without it. The map still loads directly."
+                else "Hide your IP address from relays. Needs the Orbot app.",
+                state.useTor,
+                AppIcons.Shield,
+            ) { on -> if (on) actions.setUseTor(true) else gate.require { actions.setUseTor(false) } }
+        }
         val connected = state.relays.count { relayStatus[it] == RelayStatus.CONNECTED }
         SettingsRow("Relays", "$connected of ${state.relays.size} connected · they only see encrypted data", AppIcons.Relay, onClick = { showRelays = !showRelays })
         AnimatedVisibility(showRelays, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {

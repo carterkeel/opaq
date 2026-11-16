@@ -47,6 +47,8 @@ data class AppState(
     val securityLog: List<SecurityEvent> = emptyList(),
     /** Hide the app's screen in recent apps and screenshots (Android). */
     val hideInRecents: Boolean = false,
+    /** Connect to relays through Tor (Orbot's SOCKS proxy on this phone). Never falls back to direct. */
+    val useTor: Boolean = false,
     /** When the user last confirmed they want to keep sharing (monthly reminder). 0 = not yet set. */
     val consentAt: Long = 0,
     /** The sequence number of our last location update (v2 replay protection). */

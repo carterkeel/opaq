@@ -99,6 +99,7 @@ class Actions(
     fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
     fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
     fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }
+    fun setUseTor(on: Boolean) = launchAction { engine.setUseTor(on) }
     fun consentDue(): Boolean = engine.consentDue()
     fun confirmConsent() = launchAction { engine.confirmConsent() }
 
