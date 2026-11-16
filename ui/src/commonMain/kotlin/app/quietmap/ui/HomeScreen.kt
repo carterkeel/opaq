@@ -145,7 +145,7 @@ fun HomeScreen(
                     Format.isOffline(l, now) -> MapMarker.Kind.OFFLINE
                     else -> MapMarker.Kind.ONLINE
                 }
-                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l)
+                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l, photo = info.photo)
             }
         }
         fun flyTo(pubkey: String): Boolean {

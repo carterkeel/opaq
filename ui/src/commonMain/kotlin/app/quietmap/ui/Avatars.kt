@@ -23,7 +23,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -85,7 +92,7 @@ fun avatarFor(state: AppState, pubkey: String, me: String, fallbackName: String)
 }
 
 /** Decoded photos, keyed by the base64 text, so scrolling lists don't decode the same JPEG twice. */
-private object PhotoCache {
+internal object PhotoCache {
     private val map = LinkedHashMap<String, ImageBitmap?>()
     fun get(b64: String): ImageBitmap? {
         map[b64]?.let { return it }
@@ -93,6 +100,21 @@ private object PhotoCache {
         map[b64] = img
         if (map.size > 64) map.remove(map.keys.first())
         return img
+    }
+}
+
+/** A photo cropped to a circle, for a person's dot on the map (the map can't clip images itself). */
+internal class CirclePhotoPainter(private val image: ImageBitmap) : Painter() {
+    override val intrinsicSize: Size get() = Size.Unspecified
+
+    override fun DrawScope.onDraw() {
+        // Centre-crop to a square, then draw it inside a circle that fills the icon.
+        val side = minOf(image.width, image.height)
+        val from = IntOffset((image.width - side) / 2, (image.height - side) / 2)
+        val circle = Path().apply { addOval(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height)) }
+        clipPath(circle) {
+            drawImage(image, srcOffset = from, srcSize = IntSize(side, side), dstSize = IntSize(size.width.toInt(), size.height.toInt()))
+        }
     }
 }
 

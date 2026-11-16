@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.quietmap.core.GeoPoint
@@ -43,13 +44,17 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
+import org.maplibre.compose.expressions.dsl.asNumber
 import org.maplibre.compose.expressions.dsl.asString
+import org.maplibre.compose.expressions.dsl.case
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.convertToColor
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
+import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
+import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.LineLayer
@@ -75,6 +80,8 @@ data class MapMarker(
     val color: String,
     val kind: Kind,
     val location: MemberLocation? = null,
+    /** Their profile photo (base64 JPEG), drawn in the dot instead of the initial. */
+    val photo: String? = null,
 ) {
     enum class Kind { ME, ONLINE, OFFLINE }
 }
@@ -110,6 +117,7 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - The map stays composed while other screens slide over it, so it keeps its position.
  * - It opens at city level around you, and [focus] glides the camera to a point (yourself for the
  *   recenter button, or a person you tapped).
+ * - A person's dot shows their profile photo if they have one, otherwise their initial.
  * - People close together merge into one bubble with a count, and separate as you zoom in.
  * - [bottomInset] keeps centred points above the people sheet.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
@@ -117,7 +125,13 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
 @Composable
 fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier, darkMap: Boolean = false) {
     val shown = rememberMovingMarkers(markers)
-    val geoJson = remember(shown) { markersToGeoJson(shown) }
+    // Profile photos, cropped to circles. Remembered per photo so the map registers each image once.
+    val photos = markers.mapNotNull { m -> m.photo?.let { m.id to it } }
+    val photoIcons = remember(photos) {
+        photos.mapNotNull { (id, b64) -> PhotoCache.get(b64)?.let { id to CirclePhotoPainter(it) } }
+    }
+    val photoIds = remember(photoIcons) { photoIcons.map { it.first }.toSet() }
+    val geoJson = remember(shown, photoIds) { markersToGeoJson(shown, photoIds) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
             cluster = true
@@ -168,6 +182,19 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),
         )
+        // A profile photo fills the dot, inside its white ring, in place of the initial.
+        if (photoIcons.isNotEmpty()) {
+            val icons = photoIcons.map { (id, painter) -> id to image(painter, size = DpSize(30.dp, 30.dp)) }
+            SymbolLayer(
+                id = "people-photo",
+                source = people,
+                filter = feature.has("photo"),
+                iconImage = switch(feature["photo"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
+                iconOpacity = feature["photoOpacity"].asNumber(const(1f)),
+                iconAllowOverlap = const(true),
+                iconIgnorePlacement = const(true),
+            )
+        }
     }
 
     // Open once per circle at city level around me (or whoever has a location first).
@@ -252,7 +279,7 @@ private fun rememberMovingMarkers(markers: List<MapMarker>): List<MapMarker> {
     return shown
 }
 
-private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject {
+private fun markersToGeoJson(markers: List<MapMarker>, photoIds: Set<String>): String = buildJsonObject {
     put("type", "FeatureCollection")
     putJsonArray("features") {
         markers.forEach { mk ->
@@ -263,9 +290,17 @@ private fun markersToGeoJson(markers: List<MapMarker>): String = buildJsonObject
                     putJsonArray("coordinates") { add(mk.lon); add(mk.lat) }
                 }
                 putJsonObject("properties") {
-                    put("initial", mk.initial)
+                    val offline = mk.kind == MapMarker.Kind.OFFLINE
+                    if (mk.id in photoIds) {
+                        // The photo layer picks the image by id; offline people's photos are dimmed.
+                        put("photo", mk.id)
+                        put("photoOpacity", if (offline) 0.45 else 1.0)
+                        put("initial", "")
+                    } else {
+                        put("initial", mk.initial)
+                    }
                     put("textColor", "#FFFFFF")
-                    put("color", if (mk.kind == MapMarker.Kind.OFFLINE) "#9E9E9E" else mk.color)
+                    put("color", if (offline) "#9E9E9E" else mk.color)
                 }
             }
         }
