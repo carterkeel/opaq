@@ -20,6 +20,35 @@ object Format {
     fun speed(mps: Float): String =
         if (usesMiles) "${(mps * 2.23694f).toInt()} mph" else "${(mps * 3.6f).toInt()} km/h"
 
+    /** "3.2 mi" or "5.1 km" (one decimal under 10, whole numbers above). */
+    fun distance(meters: Double): String {
+        val v = if (usesMiles) meters / 1609.344 else meters / 1000
+        val unit = if (usesMiles) "mi" else "km"
+        val text = if (v < 10) "${kotlin.math.round(v * 10) / 10}" else "${kotlin.math.round(v).toLong()}"
+        return "$text $unit"
+    }
+
+    /** "25 min", "3 h 10 min". */
+    fun duration(seconds: Long): String {
+        val m = (seconds + 30) / 60
+        return when {
+            m < 1 -> "under a minute"
+            m < 60 -> "$m min"
+            m % 60 == 0L -> "${m / 60} h"
+            else -> "${m / 60} h ${m % 60} min"
+        }
+    }
+
+    /** How long history is kept, for Settings and the history screen. */
+    fun historyDays(days: Int): String = when (days) {
+        0 -> "Off"
+        1 -> "1 day"
+        7 -> "1 week"
+        30 -> "1 month"
+        90 -> "3 months"
+        else -> "$days days"
+    }
+
     fun activity(a: Activity): String = when (a) {
         Activity.STILL -> "Still"
         Activity.WALKING -> "Walking"

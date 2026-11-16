@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The invite is in the part of the address after #, which browsers never send to this host.
+     This page makes no requests of its own and loads nothing from anywhere else. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Quietmap invite</title>
+<style>
+  :root {
+    --bg: #ffffff; --surface: #f6f6f9; --text: #1b1b1f; --muted: #5e5e66; --accent: #2c6bed; --on-accent: #ffffff; --line: #e4e4ea;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121212; --surface: #1e1e22; --text: #ececf0; --muted: #a2a2ab; --accent: #4a82ff; --on-accent: #ffffff; --line: #2c2c31; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    display: flex; min-height: 100vh; align-items: center; justify-content: center;
+  }
+  main { width: 100%; max-width: 420px; padding: 32px 24px; }
+  .mark { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; margin-bottom: 24px; }
+  .mark svg { width: 28px; height: 28px; }
+  h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; font-weight: 600; }
+  p { margin: 0 0 16px; color: var(--muted); }
+  .btn {
+    display: block; width: 100%; text-align: center; text-decoration: none; border: 0; cursor: pointer;
+    padding: 14px 20px; border-radius: 999px; font: inherit; font-weight: 600; margin-top: 12px;
+  }
+  .primary { background: var(--accent); color: var(--on-accent); }
+  .tonal { background: var(--surface); color: var(--text); }
+  .card { background: var(--surface); border-radius: 16px; padding: 16px; margin: 24px 0 8px; font-size: 14px; color: var(--muted); }
+  .card strong { color: var(--text); font-weight: 600; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>
+  </div>
+
+  <section id="invite" hidden>
+    <h1 id="title">You're invited to a circle</h1>
+    <p id="detail">Open the invite in Quietmap to ask to join.</p>
+    <a class="btn primary" id="open" href="quietmap://join">Open in Quietmap</a>
+    <button class="btn tonal" id="copy" type="button">Copy invite</button>
+    <div class="card">
+      <strong>Nothing is shared yet.</strong> Quietmap asks you to check the person's device code, then they approve you. Your location is only shared once you tap "Start sharing".
+    </div>
+    <p style="font-size:14px">Don't have Quietmap? Ask the person who invited you how to get it, then come back to this link. If the button doesn't open the app, copy the invite and paste it into Quietmap under Join a circle.</p>
+  </section>
+
+  <section id="none" hidden>
+    <h1>This invite link is incomplete</h1>
+    <p>Part of the link is missing. Ask the person who invited you to send it again, or to show you the QR code.</p>
+  </section>
+</main>
+<script>
+(function () {
+  var hash = location.hash.slice(1);
+  var invite = null;
+  try {
+    var b64 = hash.replace(/-/g, "+").replace(/_/g, "/");
+    while (b64.length % 4) b64 += "=";
+    var bytes = Uint8Array.from(atob(b64), function (c) { return c.charCodeAt(0); });
+    invite = JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { invite = null; }
+
+  if (!invite || typeof invite.k !== "string" || typeof invite.s !== "string") {
+    document.getElementById("none").hidden = false;
+    return;
+  }
+  document.getElementById("invite").hidden = false;
+
+  // Shown as plain text only. The app checks the invite's signature; this page can't vouch for it.
+  var name = typeof invite.n === "string" ? invite.n.slice(0, 40) : "";
+  var circle = typeof invite.cn === "string" ? invite.cn.slice(0, 40) : "";
+  if (name && circle) document.getElementById("title").textContent = name + " invited you to “" + circle + "”";
+  if (typeof invite.e === "number" && invite.e * 1000 < Date.now()) {
+    document.getElementById("detail").textContent = "This invite has expired. Ask for a new one.";
+  }
+
+  var appLink = "quietmap://join#" + hash;
+  document.getElementById("open").href = appLink;
+  var copy = document.getElementById("copy");
+  copy.addEventListener("click", function () {
+    var done = function () { copy.textContent = "Copied"; setTimeout(function () { copy.textContent = "Copy invite"; }, 2000); };
+    if (navigator.clipboard) navigator.clipboard.writeText(appLink).then(done, function () {});
+  });
+})();
+</script>
+</body>
+</html>

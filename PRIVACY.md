@@ -10,7 +10,7 @@ Phones exchange encrypted messages through public [Nostr](https://nostr.com) rel
 | --- | --- |
 | Your IP address, and when you're online | Unless you use Tor (below). Every phone keeps a connection open to each of its relays. |
 | Which circle tags your phone follows | Tags change every hour (locations) or every day (heartbeats and inboxes), and come from keys the relay doesn't have. But one connection asks for all of a phone's circles at once, so a relay can tell that the same phone follows those tags, and that other connections follow the same ones: roughly who shares a circle with whom, and how many people are in it. |
-| When you publish, and how often | Updates go out about every minute while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
+| When you publish, and how often | Updates go out about every 30 seconds while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
 | The size of each event | Location updates are padded to one fixed size, so their size reveals nothing. |
 | When a circle changes | Key rotations, joins and removals send a burst of messages. |
 
@@ -38,7 +38,13 @@ Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app load
 
 ## Invite links
 
-An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
+An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Shared links open a static page on GitHub Pages that hands the invite to the app. The invite is in the part after `#`, which browsers never send, so GitHub only sees that someone opened an invite page, from which IP address. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
+
+## Location history
+
+Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time and activity (still, walking, cycling, driving), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
+
+How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Quietmap deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Quietmap can't prevent that.
 
 ## Backups
 

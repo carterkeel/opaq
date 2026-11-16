@@ -277,6 +277,21 @@ object AppIcons {
         moveTo(6f, 9f); lineTo(12f, 15f); lineTo(18f, 9f)
     }
 
+    val ChevronLeft: ImageVector = stroke("ChevronLeft") {
+        moveTo(15f, 6f); lineTo(9f, 12f); lineTo(15f, 18f)
+    }
+
+    val ChevronRight: ImageVector = stroke("ChevronRight") {
+        moveTo(9f, 6f); lineTo(15f, 12f); lineTo(9f, 18f)
+    }
+
+    /** A clock with an arrow going back round it. */
+    val History: ImageVector = stroke("History") {
+        moveTo(4f, 12f); arcTo(8f, 8f, 0f, true, true, 6.3f, 17.7f)
+        moveTo(4f, 12f); lineTo(2f, 10f); moveTo(4f, 12f); lineTo(6f, 10f)
+        moveTo(12f, 8f); lineTo(12f, 12f); lineTo(15f, 14f)
+    }
+
     val Delete: ImageVector = stroke("Delete") {
         moveTo(4f, 7f); lineTo(20f, 7f)
         moveTo(9f, 7f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 7f)
@@ -293,6 +308,11 @@ object AppIcons {
         moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
         moveTo(8.5f, 14.5f); curveTo(10f, 16.5f, 14f, 16.5f, 15.5f, 14.5f)
         moveTo(9f, 9.5f); lineTo(9f, 10f); moveTo(15f, 9.5f); lineTo(15f, 10f)
+    }
+
+    /** A crescent moon. */
+    val Moon: ImageVector = stroke("Moon") {
+        moveTo(20f, 14.5f); arcTo(8.5f, 8.5f, 0f, true, true, 9.5f, 4f); arcTo(7f, 7f, 0f, false, false, 20f, 14.5f); close()
     }
 
     val Info: ImageVector = stroke("Info") {

@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import app.quietmap.core.Engine
+import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.ui.QuietmapScreens
 import app.quietmap.ui.epochSeconds
 import kotlinx.coroutines.CoroutineScope
@@ -56,6 +57,7 @@ object QuietmapIos {
             deviceName = UIDevice.currentDevice.model,
             // Time since boot: changing the date can't shorten a PIN lockout.
             elapsed = { NSProcessInfo.processInfo.systemUptime.toLong() },
+            historyFiles = IosHistoryFiles(),
         ).also { it.start() }
     }
 
@@ -90,9 +92,9 @@ object QuietmapIos {
         location.update()
     }
 
-    /** Handles a `quietmap://join…` link. Returns false for links that aren't Quietmap's. */
+    /** Handles a `quietmap://join…` or shared web invite link. Returns false for links that aren't Quietmap's. */
     fun handleUrl(url: String): Boolean {
-        if (!url.startsWith("quietmap://")) return false
+        if (!url.startsWith("quietmap://") && !url.startsWith(InviteLinks.WEB_PREFIX)) return false
         incomingLink.value = url
         return true
     }

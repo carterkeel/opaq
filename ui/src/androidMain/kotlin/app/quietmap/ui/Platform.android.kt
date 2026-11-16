@@ -9,6 +9,19 @@ import java.util.Locale
 
 actual fun epochSeconds(): Long = System.currentTimeMillis() / 1000
 
+actual fun epochMillis(): Long = System.currentTimeMillis()
+
+private fun zoned(epochSeconds: Long) = java.time.Instant.ofEpochSecond(epochSeconds).atZone(java.time.ZoneId.systemDefault())
+
+actual fun localDayStart(epochSeconds: Long): Long =
+    zoned(epochSeconds).toLocalDate().atStartOfDay(java.time.ZoneId.systemDefault()).toEpochSecond()
+
+actual fun formatClock(epochSeconds: Long): String =
+    java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT).format(zoned(epochSeconds))
+
+actual fun formatDay(epochSeconds: Long): String =
+    java.time.format.DateTimeFormatter.ofPattern(android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), "EEEMMMd")).format(zoned(epochSeconds))
+
 actual fun regionUsesMiles(): Boolean = Locale.getDefault().country in MILES_REGIONS
 
 actual fun decodeImage(bytes: ByteArray): ImageBitmap? =

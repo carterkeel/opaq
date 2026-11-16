@@ -115,6 +115,10 @@ class ProtocolTest {
         assertEquals(data, InviteLinks.decode(link))
         assertEquals(data, InviteLinks.decode("Join my circle: $link"))
         assertNull(InviteLinks.decode("quietmap://join#garbage"))
+        val web = InviteLinks.webLink(link)
+        assertTrue(web.startsWith("https://carterkeel.github.io/quietmap/join#"))
+        assertEquals(link.substringAfter('#'), web.substringAfter('#'), "the invite stays after #, so the web host never gets it")
+        assertEquals(data, InviteLinks.decode("Join my circle \"Family\" on Quietmap: $web"))
     }
 
     @Test
@@ -168,7 +172,8 @@ class ProtocolTest {
         assertTrue(p.shouldPublish(t))
         p.markPublished(t)
         assertFalse(p.shouldPublish(t + 10), "no flood right after publishing")
-        assertTrue(p.shouldPublish(t + 70), "about once a minute while moving")
+        assertFalse(p.shouldPublish(t + 20), "never faster than the moving rate")
+        assertTrue(p.shouldPublish(t + 35), "about every half minute while moving")
 
         // Parks: the stop is reported promptly instead of showing "Driving" for minutes.
         p.markPublished(t + 70)

@@ -94,6 +94,27 @@ class CreateCircleTest {
         error("\"$label\" never took the PIN")
     }
 
+    private var shots = 0
+
+    /**
+     * Saves a half-size screenshot for the CI summary (ci/emulator-test.sh pulls them), so screens
+     * can be checked for visual glitches without a device. The emulator has no real data on it.
+     */
+    private fun shot(name: String) {
+        device.waitForIdle()
+        Thread.sleep(600) // let animations settle
+        shots++
+        // screencap runs as the shell user, which can always write here and adb can always read.
+        device.executeShellCommand("mkdir -p /sdcard/Download/quietmap-screens")
+        device.executeShellCommand("screencap -p /sdcard/Download/quietmap-screens/%02d-%s.png".format(shots, name))
+    }
+
+    /** Switches the emulator between light and dark mode; the app follows the system. */
+    private fun darkMode(on: Boolean) {
+        device.executeShellCommand("cmd uimode night ${if (on) "yes" else "no"}")
+        Thread.sleep(2_500)
+    }
+
     /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
     private fun hideKeyboard() {
         if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
@@ -136,6 +157,7 @@ class CreateCircleTest {
 
         // Setup, step 1: name.
         waitFor("What should people call you?")
+        shot("setup-name")
         val nameField = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no name field")
         nameField.click()
         nameField.text = "Tester"
@@ -144,26 +166,44 @@ class CreateCircleTest {
 
         // Step 2: photo (skip).
         waitFor("Add a profile photo")
+        shot("setup-photo")
         waitFor("Skip").click()
 
         // Step 3: optional PIN (set one, so the PIN prompt gets exercised later).
         waitFor("Add a PIN?")
+        shot("setup-pin")
         typePin("New PIN (4 to 8 digits)")
         typePin("New PIN again")
+        shot("setup-pin-typed")
         hideKeyboard()
-        waitFor("Set PIN").click()
+        shot("setup-pin-keyboard-closed")
+        val setPin = waitFor("Set PIN")
+        Log.e(TAG, "Set PIN: enabled=${setPin.isEnabled} clickable=${setPin.isClickable} bounds=${setPin.visibleBounds}")
+        setPin.click()
+        Thread.sleep(400)
+        shot("setup-pin-after-set")
+        if (!device.wait(Until.hasObject(By.text("Create a circle")), 8_000)) {
+            Log.e(TAG, "still on the PIN step 8 s after tapping Set PIN")
+            logScreen()
+            shot("setup-pin-stuck")
+        }
 
         // Step 4: create a circle.
+        waitFor("Create a circle")
+        shot("setup-circle")
         waitFor("Create a circle").click()
         waitFor("Create").click()
 
         // Step 5: location (already granted by the test rule).
+        waitFor("Open the map")
+        shot("setup-location")
         waitFor("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
         waitFor("Invite", 30_000)
         Thread.sleep(25_000)
         assertNotNull("Home screen is gone after 25 s (did the app crash?)", device.findObject(By.text("Invite")))
+        shot("home")
 
         // Sharing toggle on the map.
         tapUntil("Sharing", expected = "Paused")
@@ -177,14 +217,59 @@ class CreateCircleTest {
             waitFor("Continue").click()
         }
         waitFor("Share link")
+        shot("invite")
         device.pressBack()
 
         // Settings, then back to the map.
         waitFor("Invite")
         (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
         waitFor("Share my location")
+        shot("settings")
+        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
+        shot("settings-lower")
         device.pressBack()
         waitFor("Invite")
+
+        // Your profile, then your location history (#58).
+        (device.wait(Until.findObject(By.desc("Profile")), 10_000) ?: error("no Profile button")).click()
+        waitFor("Location history")
+        shot("profile")
+        waitFor("Location history").click()
+        waitFor("Your history")
+        waitFor("Today")
+        Thread.sleep(3_000) // let the history map load
+        shot("history")
+        device.pressBack()
+        waitFor("Location history")
+        device.pressBack()
+        waitFor("Invite")
+
+        // The same screens in dark mode.
+        darkMode(true)
+        try {
+            waitFor("Invite")
+            shot("dark-home")
+            (device.wait(Until.findObject(By.desc("Profile")), 10_000) ?: error("no Profile button")).click()
+            waitFor("Location history")
+            shot("dark-profile")
+            waitFor("Location history").click()
+            waitFor("Your history")
+            Thread.sleep(2_000)
+            shot("dark-history")
+            device.pressBack()
+            device.pressBack()
+            (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+            waitFor("Share my location")
+            shot("dark-settings")
+            device.pressBack()
+            waitFor("Invite")
+        } catch (t: Throwable) {
+            // Screenshots only: a missed step here shouldn't fail the run (a crash still shows in logcat).
+            Log.e(TAG, "dark mode screenshots stopped: ${t.message}")
+            logScreen()
+        } finally {
+            darkMode(false)
+        }
         Thread.sleep(3_000)
     }
 }

@@ -367,6 +367,16 @@ data class InviteData(
 
 object InviteLinks {
     const val SCHEME_PREFIX = "quietmap://join#"
+
+    /**
+     * Shared links use a web address, since chat apps only make http(s) links tappable (#56). The
+     * static page there hands the invite to the app. Everything after `#` stays on the phone:
+     * browsers never send it to the web host.
+     */
+    const val WEB_PREFIX = "https://carterkeel.github.io/quietmap/join#"
+
+    /** The tappable web form of an invite link. Both forms decode the same way. */
+    fun webLink(link: String): String = WEB_PREFIX + link.trim().substringAfter('#')
     private val json = Json { ignoreUnknownKeys = true }
 
     fun encode(data: InviteData): String =

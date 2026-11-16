@@ -123,7 +123,7 @@ class MotionPolicy {
     }
 
     companion object {
-        const val MOVING_INTERVAL = 60L
+        const val MOVING_INTERVAL = 30L
         const val STILL_INTERVAL = 300L
         private const val MIN_GAP_SECONDS = 20L
         private const val HINT_SECONDS = 120L

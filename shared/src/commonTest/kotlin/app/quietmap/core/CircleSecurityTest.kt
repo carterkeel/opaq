@@ -54,7 +54,8 @@ class CircleSecurityTest {
 
     private inner class Phone(name: String, store: StateStore = MemoryStore()) {
         lateinit var client: FakeRelayNetwork.Client
-        val engine = Engine(store, scope, { clock }, transport = { onEvent -> net.client(onEvent).also { client = it } })
+        val historyFiles = MemoryHistoryFiles()
+        val engine = Engine(store, scope, { clock }, transport = { onEvent -> net.client(onEvent).also { client = it } }, historyFiles = historyFiles)
         val me get() = engine.myPubkey
 
         init {
@@ -690,6 +691,40 @@ class CircleSecurityTest {
         assertEquals(PinResult.Ok, b.engine.unlock("2468"))
         b.engine.confirmCircle(c.id)
         assertTrue(b.circle(c.id)!!.confirmed)
+    }
+
+    @Test
+    fun historyIsKeptOnTheViewersPhoneAndFollowsTheSettings() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val start = clock
+        repeat(4) { i ->
+            clock += 30
+            b.engine.publishLocation(MemberLocation(lat = 41.0 + i * 0.01, lon = -87.6, accuracy = 5f, activity = app.quietmap.core.model.Activity.DRIVING, time = clock))
+            net.flush()
+        }
+        val seen = a.engine.history(b.me, start, clock + 1)
+        assertEquals(4, seen.size)
+        assertTrue(seen.all { it.a == app.quietmap.core.model.Activity.DRIVING })
+        assertEquals(4, b.engine.history(b.me, start, clock + 1).size, "your own history too")
+        // Keeping more needs the PIN; keeping none deletes it at once.
+        a.engine.setPin("1357")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException> { a.engine.setHistoryDays(90) }
+        a.engine.setHistoryDays(0)
+        assertTrue(a.historyFiles.files.isEmpty())
+        assertTrue(a.engine.history(b.me, start, clock + 1).isEmpty())
+        // Once Ben is removed, Ana's phone drops what it had kept about him.
+        assertEquals(PinResult.Ok, a.engine.unlock("1357"))
+        a.engine.setHistoryDays(7)
+        clock += 30
+        b.engine.publishLocation(MemberLocation(lat = 42.0, lon = -87.6, accuracy = 5f, activity = app.quietmap.core.model.Activity.STILL, time = clock))
+        net.flush()
+        assertEquals(1, a.engine.history(b.me, start, clock + 1).size)
+        a.engine.removeMember(id, b.me)
+        clock += 3601
+        sync(a, b)
+        assertTrue(a.engine.history(b.me, start, clock + 1).isEmpty())
     }
 
     /** Fails if any event opens with [c]'s keys for any day from its key day up to 400 days on. */

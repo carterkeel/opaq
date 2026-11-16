@@ -38,6 +38,7 @@ class QuietmapApp : Application() {
             log = { Log.d("Quietmap", it) },
             deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
             elapsed = { SystemClock.elapsedRealtime() / 1000 },
+            historyFiles = FileHistory(this),
         ).also { it.start() }
     }
 

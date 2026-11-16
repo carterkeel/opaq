@@ -45,6 +45,7 @@ sealed interface Route {
     data object Restore : Route
     data object SecurityLog : Route
     data class CircleInfo(val circleId: String) : Route
+    data class History(val circleId: String, val pubkey: String) : Route
 }
 
 /**
@@ -166,7 +167,8 @@ fun QuietmapScreens(
                             else -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {
                                     when (route) {
-                                        is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
+                                        is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop, onHistory = { push(Route.History(route.circleId, route.pubkey)) })
+                                        is Route.History -> HistoryScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
                                         is Route.Add -> AddScreen(state, me, route.circleId, actions, ::pop)
                                         is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home)
                                         Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)

@@ -29,6 +29,8 @@ data class AppState(
     val profiles: Map<String, MemberProfile> = emptyMap(),
     /** Show other people's profile photos; off shows everyone's initial avatar instead. */
     val showPhotos: Boolean = true,
+    /** Draw the map with the dark style. Off (the light map) unless turned on in Settings. */
+    val darkMap: Boolean = false,
     /** The circle shown when the app opens. */
     val lastCircleId: String? = null,
     /** First-run setup finished (or skipped). */
@@ -55,6 +57,10 @@ data class AppState(
     val lastSeq: Long = 0,
     /** Newest sequence number accepted from each member, keyed "circleId|pubkey". */
     val memberSeqs: Map<String, Long> = emptyMap(),
+    /** How many days of location history this phone keeps (0 = none). See LocationHistory. */
+    val historyDays: Int = 7,
+    /** Key for the history files. Never in backups: a restored phone starts its history afresh. */
+    val historyKeyHex: String? = null,
 )
 
 @Serializable

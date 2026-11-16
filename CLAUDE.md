@@ -13,7 +13,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~60 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
+  - Updates go out at only two steady rates (~30 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Quietmap", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -26,6 +26,9 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/Engine.kt            The whole protocol: state, circles, invites, key rotation, profiles,
                             publishing, handling incoming events, relay subscriptions.
   core/MotionPolicy.kt      When to publish and which activity to report (still/walking/...).
+  core/Prediction.kt        Carrying a moving person's dot forward between updates (viewer side).
+  core/History.kt           On-device location history: encrypted per-person/day files, thinning,
+                            pruning, and grouping into segments (still/walking/driving).
   core/model/Models.kt      AppState (everything persisted) and data classes.
   core/protocol/Protocol.kt Message bodies, sealed DMs, circle crypto (tags, publisher keys),
                             profiles, device codes, invite links.
@@ -70,7 +73,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Invites.**
 - `Engine.createInvite` makes a single-use secret that expires in 24 h.
-- The link is `quietmap://join#<base64url JSON>`. The payload is after `#`, so web hosts never see it.
+- The link is `quietmap://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/quietmap/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app. The payload is after `#`, so web hosts never see it.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 
@@ -95,6 +98,10 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - The Android significant-motion sensor sets a "motion hint" that switches to GPS straight away.
 - `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 20 s after the last publish.
 - On the receiving side, `Format.status` shows a stale moving update as "Was driving".
+
+**Between updates.** Dots glide to each new update, and someone travelling is carried forward along their heading (`Prediction`, used by `MapPane`), only for exact, accurate, moving updates and never more than `Prediction.HORIZON_SECONDS` ahead.
+
+**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
