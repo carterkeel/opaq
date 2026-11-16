@@ -152,6 +152,7 @@ private fun SegmentRow(seg: HistorySegment, selected: Boolean, onClick: () -> Un
 }
 
 /** Settings: how long this phone keeps location history. Keeping more needs the PIN. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun HistoryDaysSheet(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
