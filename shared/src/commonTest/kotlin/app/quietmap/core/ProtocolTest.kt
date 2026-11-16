@@ -112,6 +112,10 @@ class ProtocolTest {
         assertEquals(data, InviteLinks.decode(link))
         assertEquals(data, InviteLinks.decode("Join my circle: $link"))
         assertNull(InviteLinks.decode("quietmap://join#garbage"))
+        val web = InviteLinks.webLink(link)
+        assertTrue(web.startsWith("https://carterkeel.github.io/quietmap/join#"))
+        assertEquals(link.substringAfter('#'), web.substringAfter('#'), "the invite stays after #, so the web host never gets it")
+        assertEquals(data, InviteLinks.decode("Join my circle \"Family\" on Quietmap: $web"))
     }
 
     @Test

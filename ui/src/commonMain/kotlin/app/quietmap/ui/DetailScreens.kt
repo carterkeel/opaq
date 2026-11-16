@@ -59,6 +59,7 @@ import app.quietmap.core.model.AppState
 import app.quietmap.core.nostr.RelayStatus
 import app.quietmap.core.protocol.Backups
 import app.quietmap.core.protocol.DeviceCode
+import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.InviteData
 import io.github.alexzhirkevich.qrose.rememberQrCodePainter
 
@@ -363,8 +364,8 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                             Caption("If you send the link instead, read this out to them on a call. Quietmap asks them to type it.")
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            TonalButton("Share link", { platform.shareText("Join my circle \"${circle.name}\" on Quietmap: $current", "Share invite link") }, Modifier.weight(1f), icon = AppIcons.Share)
-                            TonalButton("Copy", { platform.copyToClipboard("Quietmap invite", current) }, Modifier.weight(1f))
+                            TonalButton("Share link", { platform.shareText("Join my circle \"${circle.name}\" on Quietmap: ${InviteLinks.webLink(current)}", "Share invite link") }, Modifier.weight(1f), icon = AppIcons.Share)
+                            TonalButton("Copy", { platform.copyToClipboard("Quietmap invite", InviteLinks.webLink(current)) }, Modifier.weight(1f))
                         }
                         Caption("Tip: send links in an end-to-end encrypted chat. The app that carries a link can read it.")
                     }

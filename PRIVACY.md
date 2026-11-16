@@ -38,7 +38,7 @@ Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app load
 
 ## Invite links
 
-An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
+An invite link contains your name, the circle's name, your relays, your public key and a one-time secret. Whatever app carries the link (a chat app, email) can read it. Scanning the QR code in person avoids that. Shared links open a static page on GitHub Pages that hands the invite to the app. The invite is in the part after `#`, which browsers never send, so GitHub only sees that someone opened an invite page, from which IP address. Links are signed, so they can't be changed on the way, and someone who joins from a link has to type in your device code, which you read out to them.
 
 ## Backups
 

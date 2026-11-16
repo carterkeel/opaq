@@ -70,7 +70,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Invites.**
 - `Engine.createInvite` makes a single-use secret that expires in 24 h.
-- The link is `quietmap://join#<base64url JSON>`. The payload is after `#`, so web hosts never see it.
+- The link is `quietmap://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/quietmap/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app. The payload is after `#`, so web hosts never see it.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 

@@ -40,6 +40,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="quietmap" android:host="join" />
             </intent-filter>
+            <!-- Shared invite links (https). Without verified App Links these open the web page,
+                 which hands the invite to the app; people can also allow "Open supported links". -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="carterkeel.github.io" android:pathPrefix="/quietmap/join" />
+            </intent-filter>
         </activity>
 
         <service
