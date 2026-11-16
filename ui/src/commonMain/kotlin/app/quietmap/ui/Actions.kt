@@ -59,6 +59,19 @@ class Actions(
     fun setManager(circleId: String, pubkey: String, manager: Boolean) = launchAction { engine.setManager(circleId, pubkey, manager) }
     fun transferAdmin(circleId: String, pubkey: String) = launchAction { engine.transferAdmin(circleId, pubkey) }
 
+    /** Reads unreadable saved state again; [onDone] runs either way. */
+    fun retryLoad(onDone: () -> Unit) {
+        scope.launch {
+            val ok = runCatching { engine.retryLoad() }.getOrDefault(false)
+            withContext(Dispatchers.Main) {
+                if (ok) platform.ensureSharingService() else platform.showMessage("Still can't read the saved data")
+                onDone()
+            }
+        }
+    }
+
+    fun startFresh() = launchAction { engine.startFresh() }
+
     /** Builds an encrypted backup off the main thread (PBKDF2 takes a moment) and hands back the text. */
     fun exportBackup(passphrase: String, onReady: (String) -> Unit) {
         var text = ""

@@ -1,5 +1,6 @@
 package app.quietmap.ios
 
+import app.quietmap.core.StoredState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSData
@@ -10,9 +11,9 @@ import platform.Foundation.dataWithContentsOfURL
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalForeignApi::class)
 class IosStateStoreTest {
@@ -36,11 +37,11 @@ class IosStateStoreTest {
     fun savesAndLoadsAcrossInstances() {
         val secret = """{"identitySecretHex":"00ff","myName":"Ana ✓"}"""
         IosStateStore(keys).save(secret)
-        assertEquals(secret, IosStateStore(keys).load())
+        assertEquals(secret, assertIs<StoredState.Found>(IosStateStore(keys).read()).data)
 
         val newer = """{"identitySecretHex":"00ff","myName":"Ana 2"}"""
         IosStateStore(keys).save(newer)
-        assertEquals(newer, IosStateStore(keys).load())
+        assertEquals(newer, assertIs<StoredState.Found>(IosStateStore(keys).read()).data)
     }
 
     @Test
@@ -51,17 +52,24 @@ class IosStateStoreTest {
     }
 
     @Test
-    fun lockedKeychainThrowsInsteadOfLookingEmpty() {
+    fun lockedKeychainIsUnreadableNotEmpty() {
         IosStateStore(keys).save("{}")
         keys.locked = true
-        // Returning null here would make the engine create a new identity and overwrite the old one.
-        assertFailsWith<IllegalStateException> { IosStateStore(keys).load() }
+        // Reporting "missing" here would make the engine create a new identity and overwrite the old one.
+        assertTrue(assertIs<StoredState.Unreadable>(IosStateStore(keys).read()).retryable)
     }
 
     @Test
-    fun lostKeyStartsFresh() {
+    fun lostKeyIsUnreadableNotEmpty() {
         IosStateStore(keys).save("{}")
         keys.items.clear()
-        assertNull(IosStateStore(keys).load())
+        assertFalse(assertIs<StoredState.Unreadable>(IosStateStore(keys).read()).retryable)
+    }
+
+    @Test
+    fun setAsideKeepsTheOldFile() {
+        IosStateStore(keys).save("{}")
+        IosStateStore(keys).setAside()
+        assertEquals(StoredState.Missing, IosStateStore(keys).read())
     }
 }

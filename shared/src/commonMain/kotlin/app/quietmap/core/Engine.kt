@@ -18,6 +18,8 @@ import app.quietmap.core.nostr.Filter
 import app.quietmap.core.nostr.Kinds
 import app.quietmap.core.nostr.RelayPool
 import app.quietmap.core.nostr.RelayStatus
+import app.quietmap.core.nostr.RelayTransport
+import app.quietmap.core.nostr.RelayUrls
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DirectMessages
 import app.quietmap.core.protocol.InviteData
@@ -41,11 +43,31 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 
-/** Persists the app state blob. The Android implementation encrypts it with a Keystore key. */
-interface StateStore {
-    fun load(): String?
-    fun save(data: String)
+/** What a [StateStore] found on disk. */
+sealed interface StoredState {
+    /** Nothing was ever saved: a first launch. The only case in which a new identity is made. */
+    data object Missing : StoredState
+
+    class Found(val data: String) : StoredState
+
+    /**
+     * Saved state exists but can't be read. [retryable] means the secure storage may come back
+     * (phone still locked after a reboot, Keystore busy); otherwise the file or its key is damaged.
+     */
+    class Unreadable(val reason: String, val retryable: Boolean) : StoredState
 }
+
+/** Persists the app state blob, encrypted with a Keystore (Android) or Keychain (iOS) key. */
+interface StateStore {
+    fun read(): StoredState
+    fun save(data: String)
+
+    /** Renames an unreadable state file so a restore or a fresh start can't overwrite it. */
+    fun setAside() {}
+}
+
+/** Saved state couldn't be read. Nothing is overwritten and nothing is shared until this is resolved. */
+data class Recovery(val reason: String, val retryable: Boolean)
 
 /**
  * The whole Quietmap protocol: identity, circles, invites, key rotation and location exchange.
@@ -56,6 +78,8 @@ class Engine(
     private val scope: CoroutineScope,
     private val now: () -> Long,
     private val log: (String) -> Unit = {},
+    /** Builds the relay connection; tests pass an in-memory network instead of real relays. */
+    transport: ((onEvent: suspend (relay: String, event: Event) -> Unit) -> RelayTransport)? = null,
 ) {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
@@ -66,7 +90,7 @@ class Engine(
     var identity: KeyPair
         private set
 
-    private val pool = RelayPool(scope, ::onEvent, log)
+    private val pool: RelayTransport = transport?.invoke(::onEvent) ?: RelayPool(scope, ::onEvent, log)
     val relayStatus: StateFlow<Map<String, RelayStatus>> = pool.status
 
     /** What a d-tag we listen on belongs to. */
@@ -75,30 +99,124 @@ class Engine(
     private var tagIndex: Map<String, TagTarget> = emptyMap()
     private val seen = LinkedHashSet<String>()
 
+    private val _recovery = MutableStateFlow<Recovery?>(null)
+
+    /**
+     * Non-null when saved state exists but couldn't be read. Then the engine fails closed: it keeps
+     * the old file, never writes over it, doesn't connect and doesn't share, until the state is
+     * read on a retry, restored from a backup, or the user explicitly starts over.
+     */
+    val recovery: StateFlow<Recovery?> = _recovery.asStateFlow()
+
+    private var started = false
+    private var connected = false
+
     init {
-        val loaded = store.load()?.let { runCatching { json.decodeFromString(AppState.serializer(), it) }.getOrNull() }
-        val initial = loaded ?: AppState(identitySecretHex = KeyPair.generate().secret.toHex())
+        val found = try {
+            store.read()
+        } catch (t: Throwable) {
+            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
+        }
+        val loaded: AppState? = when (found) {
+            StoredState.Missing -> null
+            is StoredState.Found -> decode(found.data) ?: run {
+                _recovery.value = Recovery("The saved data is damaged", retryable = false)
+                null
+            }
+            is StoredState.Unreadable -> {
+                _recovery.value = Recovery(found.reason, found.retryable)
+                null
+            }
+        }
+        val initial = when {
+            loaded != null -> loaded
+            // Only a true first launch gets a new identity, and only that is saved.
+            _recovery.value == null -> AppState(identitySecretHex = KeyPair.generate().secret.toHex())
+            // Placeholder while recovering: never saved, never connected.
+            else -> AppState(identitySecretHex = KeyPair.generate().secret.toHex(), relays = emptyList(), sharing = false, setupDone = true)
+        }
         identity = KeyPair(initial.identitySecretHex.hexToBytes())
         _state = MutableStateFlow(initial)
         state = _state.asStateFlow()
         seen.addAll(initial.seenEventIds)
-        if (loaded == null) store.save(json.encodeToString(AppState.serializer(), initial))
+        if (found == StoredState.Missing) store.save(json.encodeToString(AppState.serializer(), initial))
     }
+
+    private fun checkReady() = check(_recovery.value == null) { "Quietmap can't read its saved data yet" }
+
+    private fun decode(data: String): AppState? = runCatching { json.decodeFromString(AppState.serializer(), data) }.getOrNull()
 
     val myPubkey: String get() = identity.publicHex
 
     fun start() {
+        if (started) return
+        started = true
         scope.launch {
-            pool.setRelays(state.value.relays)
-            refreshSubscriptions()
-            publishProfileIfDue()
             while (isActive) {
+                if (_recovery.value == null) {
+                    connectIfNeeded()
+                    housekeeping()
+                }
                 delay(60_000)
-                pruneExpired()
-                refreshSubscriptions()
-                publishProfileIfDue()
             }
         }
+    }
+
+    private suspend fun connectIfNeeded() {
+        if (connected) return
+        connected = true
+        pool.setRelays(state.value.relays)
+        refreshSubscriptions()
+        publishProfileIfDue()
+    }
+
+    /** One pass of the periodic work. Tests call it directly instead of waiting for the timer. */
+    suspend fun housekeeping() {
+        if (_recovery.value != null) return
+        pruneExpired()
+        refreshSubscriptions()
+        publishProfileIfDue()
+    }
+
+    /** Reads saved state again, e.g. once the phone is unlocked. Returns true if it worked. */
+    suspend fun retryLoad(): Boolean {
+        if (_recovery.value == null) return true
+        val found = try {
+            store.read()
+        } catch (t: Throwable) {
+            StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
+        }
+        val loaded = (found as? StoredState.Found)?.let { decode(it.data) } ?: run {
+            if (found is StoredState.Unreadable) _recovery.value = Recovery(found.reason, found.retryable)
+            return false
+        }
+        mutex.withLock {
+            identity = KeyPair(loaded.identitySecretHex.hexToBytes())
+            seen.clear()
+            seen.addAll(loaded.seenEventIds)
+            _state.value = loaded
+            _recovery.value = null
+        }
+        if (started) connectIfNeeded()
+        return true
+    }
+
+    /**
+     * Gives up on unreadable saved state: the old file is kept under another name, and a new
+     * identity starts. Circles have to be joined again with new invites.
+     */
+    suspend fun startFresh() {
+        if (_recovery.value == null) return
+        store.setAside()
+        val fresh = AppState(identitySecretHex = KeyPair.generate().secret.toHex())
+        mutex.withLock {
+            identity = KeyPair(fresh.identitySecretHex.hexToBytes())
+            seen.clear()
+            _state.value = fresh
+            store.save(json.encodeToString(AppState.serializer(), fresh))
+            _recovery.value = null
+        }
+        if (started) connectIfNeeded()
     }
 
     fun stop() = pool.shutdown()
@@ -131,8 +249,10 @@ class Engine(
 
     suspend fun setSetupDone() = update { it.copy(setupDone = true) }
 
+    /** Remote relays must use TLS (wss://); anything else is dropped, never silently downgraded. */
     suspend fun setRelays(relays: List<String>) {
-        val clean = relays.map { it.trim() }.filter { it.startsWith("wss://") || it.startsWith("ws://") }.distinct()
+        checkReady()
+        val clean = relays.mapNotNull { RelayUrls.clean(it) }.distinct()
         update { it.copy(relays = clean) }
         pool.setRelays(clean)
         refreshSubscriptions()
@@ -153,6 +273,7 @@ class Engine(
     // -----------------------------------------------------------------------------------------
 
     suspend fun createCircle(name: String): Circle {
+        checkReady()
         val circle = Circle(
             id = CircleCrypto.newId(),
             name = name.trim().ifEmpty { "Family" },
@@ -183,6 +304,7 @@ class Engine(
 
     /** Sends a join request for an invite the user has agreed to. */
     suspend fun acceptInvite(invite: InviteData) {
+        checkReady()
         require(invite.e > now()) { "This invite has expired" }
         require(invite.k != myPubkey) { "This is your own invite" }
         // Make sure we can reach the inviter's relays too.
@@ -307,13 +429,22 @@ class Engine(
      * paused. Slow on purpose (PBKDF2), so call it off the main thread.
      */
     suspend fun importBackup(text: String, passphrase: String) {
+        // Decrypting first means a wrong passphrase or damaged file changes nothing at all.
         val restored = Backups.toState(Backups.decrypt(text, passphrase)).copy(profileChangedAt = now())
         val keys = KeyPair(restored.identitySecretHex.hexToBytes())
+        val recovering = _recovery.value != null
+        // Keep the unreadable file rather than writing over it.
+        if (recovering) store.setAside()
         mutex.withLock {
             identity = keys
             seen.clear()
             _state.value = restored
             store.save(json.encodeToString(AppState.serializer(), restored))
+            _recovery.value = null
+        }
+        if (recovering) {
+            if (started) connectIfNeeded()
+            return
         }
         pool.setRelays(restored.relays)
         refreshSubscriptions()
@@ -334,7 +465,7 @@ class Engine(
     /** Publishes one encrypted update to every circle. Called by the platform's location service. */
     suspend fun publishLocation(location: MemberLocation) {
         val s = state.value
-        if (!s.sharing) return
+        if (!s.sharing || _recovery.value != null) return
         val t = now()
         val location = if (s.shareBattery) location else location.copy(battery = null)
         s.circles.forEach { c ->
@@ -548,6 +679,8 @@ class Engine(
 
     private suspend fun update(transform: (AppState) -> AppState) {
         mutex.withLock {
+            // Fail closed while saved state is unreadable: nothing changes and nothing is written.
+            if (_recovery.value != null) return
             val next = transform(_state.value)
             if (next != _state.value) {
                 _state.value = next

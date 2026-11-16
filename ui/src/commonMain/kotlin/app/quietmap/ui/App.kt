@@ -68,6 +68,7 @@ fun QuietmapScreens(
 ) {
     val actions = remember(engine, scope, platform) { Actions(engine, scope, platform) }
     val state by engine.state.collectAsStateWithLifecycle()
+    val recovery by engine.recovery.collectAsStateWithLifecycle()
     val relayStatus by engine.relayStatus.collectAsStateWithLifecycle()
     val me = engine.myPubkey
 
@@ -76,8 +77,9 @@ fun QuietmapScreens(
     var selectedCircle by remember { mutableStateOf(state.lastCircleId) }
     val selectCircle: (String) -> Unit = { selectedCircle = it; actions.setLastCircle(it) }
     // First-run setup shows for new installs. Existing installs that already have circles skip it.
-    val needsSetup = remember { !state.setupDone && state.circles.isEmpty() }
-    LaunchedEffect(Unit) { if (!needsSetup && !state.setupDone) actions.setSetupDone() }
+    // Recomputed when unreadable saved state is resolved (a fresh start goes through setup).
+    val needsSetup = remember(recovery) { !state.setupDone && state.circles.isEmpty() }
+    LaunchedEffect(recovery) { if (recovery == null && !needsSetup && !state.setupDone) actions.setSetupDone() }
     val showSetup = needsSetup && !state.setupDone
     fun push(r: Route) { stack.add(r) }
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
@@ -102,7 +104,10 @@ fun QuietmapScreens(
         QuietmapTheme {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                    if (showSetup) {
+                    val unreadable = recovery
+                    if (unreadable != null) {
+                        RecoveryScreen(unreadable, actions, onRestore = { push(Route.Restore) })
+                    } else if (showSetup) {
                         SetupScreen(
                             state = state,
                             me = me,

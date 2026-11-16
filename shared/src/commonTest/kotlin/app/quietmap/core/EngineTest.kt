@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class EngineTest {
     private class MemoryStore : StateStore {
         var data: String? = null
-        override fun load(): String? = data
+        override fun read(): StoredState = data?.let { StoredState.Found(it) } ?: StoredState.Missing
         override fun save(data: String) { this.data = data }
     }
 

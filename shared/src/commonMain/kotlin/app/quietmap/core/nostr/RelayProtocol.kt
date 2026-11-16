@@ -73,3 +73,30 @@ sealed interface RelayMessage {
         }
     }
 }
+
+/** Which relay addresses the app will connect to. */
+object RelayUrls {
+    /**
+     * Plain ws:// to this machine or the Android emulator's host, for local relay testing. Only
+     * debug builds turn this on; release builds connect to remote relays over TLS only.
+     */
+    var allowLocalPlaintext: Boolean = false
+
+    private val localHosts = setOf("localhost", "127.0.0.1", "[::1]", "10.0.2.2")
+
+    /** Normalises a typed address: trims it and drops a trailing slash. Null if it isn't allowed. */
+    fun clean(url: String): String? = url.trim().removeSuffix("/").takeIf { isAllowed(it) }
+
+    fun isAllowed(url: String): Boolean {
+        val u = url.trim()
+        if (u.any { it.isWhitespace() || it == '#' }) return false
+        val (scheme, rest) = when {
+            u.startsWith("wss://") -> "wss" to u.removePrefix("wss://")
+            u.startsWith("ws://") -> "ws" to u.removePrefix("ws://")
+            else -> return false
+        }
+        val host = rest.substringBefore('/').substringBefore('?').let { h -> if (h.startsWith("[")) h.substringBefore(']') + "]" else h.substringBefore(':') }
+        if (host.isEmpty() || host.contains('@')) return false
+        return scheme == "wss" || (allowLocalPlaintext && host.lowercase() in localHosts)
+    }
+}

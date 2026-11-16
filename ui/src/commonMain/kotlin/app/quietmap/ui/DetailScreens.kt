@@ -538,7 +538,7 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(14.dp),
                         modifier = Modifier.weight(1f),
                     )
-                    IconButton(onClick = { actions.setRelays(state.relays + newRelay); newRelay = "" }, enabled = newRelay.startsWith("wss://") && newRelay.length > 8) {
+                    IconButton(onClick = { actions.setRelays(state.relays + newRelay); newRelay = "" }, enabled = app.quietmap.core.nostr.RelayUrls.isAllowed(newRelay)) {
                         Icon(AppIcons.Add, contentDescription = "Add relay")
                     }
                 }

@@ -30,6 +30,8 @@ class QuietmapApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Debug builds may use a relay on this machine over plain ws://; release builds never do.
+        app.quietmap.core.nostr.RelayUrls.allowLocalPlaintext = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
         getSystemService(NotificationManager::class.java)!!.createNotificationChannel(
             NotificationChannel(CHANNEL_SHARING, "Location sharing", NotificationManager.IMPORTANCE_LOW).apply {
                 description = "Shown while Quietmap shares your location with your circles"
