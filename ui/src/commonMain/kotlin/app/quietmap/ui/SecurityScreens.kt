@@ -2,7 +2,9 @@ package app.quietmap.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.input.KeyboardType
@@ -98,14 +100,17 @@ val LocalPinGate = staticCompositionLocalOf<PinGate> { error("No PinGate provide
 
 /** A field for 4 to 8 digits, hidden as they're typed. */
 @Composable
-fun PinField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
+fun PinField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier, onDone: (() -> Unit)? = null) {
     OutlinedTextField(
         value = value,
         onValueChange = { v -> onChange(v.filter { it in '0'..'9' }.take(8)) },
         label = { Text(label) },
         singleLine = true,
         visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        // The keyboard's ✓ key goes to the next field, or submits from the last one: on small
+        // screens the button underneath is hidden by the keyboard.
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = if (onDone != null) ImeAction.Done else ImeAction.Next),
+        keyboardActions = KeyboardActions(onDone = { onDone?.invoke() }),
         shape = RoundedCornerShape(14.dp),
         modifier = modifier.fillMaxWidth(),
     )
@@ -117,39 +122,40 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
     val action = gate.pending ?: return
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    val submit: () -> Unit = submit@{
+        if (pin.length < 4) return@submit
+        actions.unlock(pin) { result ->
+            pin = ""
+            when (result) {
+                PinResult.Ok -> {
+                    gate.pending = null
+                    action()
+                }
+                is PinResult.Wrong -> error = if (result.attemptsLeft > 0) "That's not your PIN. ${result.attemptsLeft} more tries before a short wait." else "That's not your PIN."
+                is PinResult.Locked -> error = "Too many wrong tries. Wait ${(result.until - epochSeconds()).coerceAtLeast(1)} seconds and try again."
+            }
+        }
+    }
     ConfirmSheet(
         title = "Enter your PIN",
         text = null,
         confirm = "Continue",
-        onConfirm = {
-            if (pin.length < 4) return@ConfirmSheet
-            actions.unlock(pin) { result ->
-                pin = ""
-                when (result) {
-                    PinResult.Ok -> {
-                        gate.pending = null
-                        action()
-                    }
-                    is PinResult.Wrong -> error = if (result.attemptsLeft > 0) "That's not your PIN. ${result.attemptsLeft} more tries before a short wait." else "That's not your PIN."
-                    is PinResult.Locked -> error = "Too many wrong tries. Wait ${(result.until - epochSeconds()).coerceAtLeast(1)} seconds and try again."
-                }
-            }
-        },
+        onConfirm = submit,
         onDismiss = { gate.pending = null },
     ) {
-        PinField(pin, { pin = it; error = null }, "PIN")
+        PinField(pin, { pin = it; error = null }, "PIN", onDone = submit)
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
     }
 }
 
 /** Two fields for choosing a PIN. [onValid] gets the PIN once both match and it's 4 to 8 digits, else null. */
 @Composable
-fun NewPinFields(onValid: (String?) -> Unit) {
+fun NewPinFields(onDone: (() -> Unit)? = null, onValid: (String?) -> Unit) {
     var pin by remember { mutableStateOf("") }
     var again by remember { mutableStateOf("") }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PinField(pin, { pin = it; onValid(if (it.length >= 4 && it == again) it else null) }, "New PIN (4 to 8 digits)")
-        PinField(again, { again = it; onValid(if (pin.length >= 4 && pin == it) pin else null) }, "New PIN again")
+        PinField(again, { again = it; onValid(if (pin.length >= 4 && pin == it) pin else null) }, "New PIN again", onDone = onDone ?: {})
         if (again.isNotEmpty() && again != pin) Caption("The PINs don't match.")
     }
 }
@@ -164,8 +170,9 @@ fun SetPinSheet(actions: Actions, title: String, onDismiss: () -> Unit) {
         confirm = "Save PIN",
         onConfirm = { chosen?.let { actions.setPin(it) { onDismiss() } } },
         onDismiss = onDismiss,
+        confirmEnabled = chosen != null,
     ) {
-        NewPinFields { chosen = it }
+        NewPinFields(onDone = { chosen?.let { actions.setPin(it) { onDismiss() } } }) { chosen = it }
     }
 }
 

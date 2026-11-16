@@ -182,8 +182,9 @@ private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () ->
         PrimaryButton("Continue", onNext)
         return
     }
-    NewPinFields { chosen = it }
-    PrimaryButton("Set PIN", { chosen?.let { actions.setPin(it, onNext) } }, enabled = chosen != null)
+    val save = { chosen?.let { actions.setPin(it, onNext) } ?: Unit }
+    NewPinFields(onDone = save) { chosen = it }
+    PrimaryButton("Set PIN", save, enabled = chosen != null)
     TextButton(onClick = onNext) { Text("Not now") }
 }
 
