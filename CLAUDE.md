@@ -81,7 +81,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - Only one person rotates keys, which avoids conflicting epochs. Moving to MLS later would remove that limit.
 
 **Invites.**
-- `Engine.createInvite` makes a single-use secret that expires in 1 h by default (24 h optional). Links are signed by the inviter (v2, `InviteLinks.signed`); v1 links still decode.
+- `Engine.createInvite` makes a single-use secret that expires in 1 h by default (24 h optional). Links are signed by the inviter (v2, `InviteLinks.signed`); unsigned v1 links are refused.
 - Joining needs the QR code scanned in the app, the inviter's device code typed in, or an inviter already verified (enforced by the engine). A new circle stays unconfirmed, sharing nothing, until the joiner taps "Start sharing".
 - The link is `quietmap://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/quietmap/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app. The payload is after `#`, so web hosts never see it.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).

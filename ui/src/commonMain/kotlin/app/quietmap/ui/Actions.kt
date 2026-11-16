@@ -108,11 +108,10 @@ class Actions(
     fun isAuthorized(): Boolean = engine.isAuthorized()
 
     /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
-    fun unlock(pin: String, onResult: (PinResult) -> Unit) {
-        scope.launch {
-            val r = engine.unlock(pin)
-            withContext(Dispatchers.Main) { onResult(r) }
-        }
+    /** [onFailed] runs (after the error is shown) if the check itself couldn't run. */
+    fun unlock(pin: String, onFailed: () -> Unit = {}, onResult: (PinResult) -> Unit) {
+        var result: PinResult? = null
+        launchAction(after = { result?.let(onResult) }, failed = onFailed) { result = engine.unlock(pin) }
     }
 
     fun setPin(pin: String, onFailed: () -> Unit = {}, onDone: () -> Unit = {}) = launchAction(after = onDone, failed = onFailed) { engine.setPin(pin) }

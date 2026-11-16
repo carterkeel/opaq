@@ -195,7 +195,7 @@ class LocationService : LifecycleService(), LocationListener {
             this, 1, Intent(this, LocationService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val text = when (people) {
-            0 -> "Sharing is on. Nobody else is in your circles yet."
+            0 -> "Sharing is on. Nobody sees your location yet."
             1 -> "Sharing your location with 1 person"
             else -> "Sharing your location with $people people"
         }

@@ -127,7 +127,7 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
     val submit: () -> Unit = submit@{
         if (pin.length < 4 || checking) return@submit
         checking = true
-        actions.unlock(pin) { result ->
+        actions.unlock(pin, onFailed = { checking = false }) { result ->
             checking = false
             pin = ""
             when (result) {
