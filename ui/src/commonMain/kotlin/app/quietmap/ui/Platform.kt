@@ -43,6 +43,10 @@ interface PlatformBridge {
     /** Whether relays can be routed through Tor here (Android with Orbot). */
     val supportsTor: Boolean get() = false
 
+    /** How the phone shows that sharing is on, for the setup screen ("A notification shows…"). */
+    val sharingIndicatorText: String
+        get() = "A notification shows while you're sharing"
+
     /** Lets the user pick a text file (a backup) and calls [onResult] with its contents, or null. */
     fun openTextFile(onResult: (String?) -> Unit) {
         showMessage("Opening files isn't available on this device yet")
@@ -50,12 +54,15 @@ interface PlatformBridge {
     }
 }
 
-/** A platform-specific row under Settings → Sharing, such as background access or battery optimisation. */
+/** A platform-specific row under Settings → Sharing, such as background access, battery optimisation or a switch. */
 data class SettingItem(
     val title: String,
     val detail: String,
     /** Button label, or null when nothing needs fixing. */
     val action: String?,
+    /** When set, the row shows a switch in this position instead of a button. */
+    val checked: Boolean? = null,
+    val onCheckedChange: (Boolean) -> Unit = {},
     val onAction: () -> Unit = {},
 )
 
