@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import app.quietmap.ui.PlatformBridge
 import app.quietmap.ui.SettingItem
@@ -26,6 +27,7 @@ class AndroidPlatform(
     private val app = QuietmapApp.from(context)
 
     override fun showMessage(text: String) {
+        Log.i("Quietmap", "message shown: $text") // UI text only, never locations or keys
         Toast.makeText(context, text, Toast.LENGTH_LONG).show()
     }
 

@@ -410,8 +410,11 @@ class Engine(
         val had = state.value.pin != null
         if (had) requireAuthorized()
         val salt = PlatformCrypto.randomBytes(16)
+        val started = elapsed()
         val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
+        log("pin: hashed in ${elapsed() - started} s")
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
+        log("pin: saved")
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
     }
 
