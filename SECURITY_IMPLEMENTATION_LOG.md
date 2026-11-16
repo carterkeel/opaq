@@ -310,7 +310,7 @@ The rest of QM-02 is under Phase 12 below.
 - **Pinned actions.** Every GitHub Action in `android.yml` is pinned to a full commit SHA (checked against its release tag), so a moved tag can't change what runs with the workflow's write token. The token's write access is used only to push the run summary to `ci-logs`.
 - **Dependabot** (`.github/dependabot.yml`) proposes weekly updates for Gradle dependencies and Actions.
 - **Dependency updates: tried and reverted.** Ktor 3.0.3 → 3.4.1 and BouncyCastle 1.80 → 1.84 built and passed the unit tests, but on the emulator the app's engine never started: no relay connections and no log output, and setup hung at "Set PIN". With the old versions everything works, so both stay at 3.0.3 and 1.80 for now. Dependabot will propose the updates again, and the emulator test catches the hang.
-- **APK checks.** CI verifies each APK's signature with `apksigner` and installs the R8 staging build on the emulator, so a missing ProGuard rule fails the run.
+- **APK checks.** CI verifies each APK's signature with `apksigner` and fails if any APK doesn't verify (the certificate digests still go into the run summary). It also installs the R8 staging build on the emulator and fails if that install fails; a missing ProGuard rule that crashes the app fails the UI smoke test.
 
 **Not done.**
 

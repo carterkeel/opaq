@@ -62,11 +62,22 @@ jobs:
       - name: Check APK signatures
         run: |
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          for apk in androidApp/build/outputs/apk/debug/*.apk androidApp/build/outputs/apk/staging/*.apk; do
-            echo "== $apk"
-            "$bt/aapt2" dump badging "$apk" | head -1
-            "$bt/apksigner" verify --verbose --print-certs "$apk" 2>&1 | grep -vE "^WARNING:" || echo "apksigner exit code $?"
-          done 2>&1 | tee apk.log
+          # Every APK is checked and logged; the step fails afterwards if any didn't verify
+          # (pipefail passes the subshell's exit status through tee).
+          (
+            failed=0
+            for apk in androidApp/build/outputs/apk/debug/*.apk androidApp/build/outputs/apk/staging/*.apk; do
+              echo "== $apk"
+              "$bt/aapt2" dump badging "$apk" | head -1
+              out=$("$bt/apksigner" verify --verbose --print-certs "$apk" 2>&1) && rc=0 || rc=$?
+              printf '%s\n' "$out" | grep -vE "^WARNING:" || true
+              if [ "$rc" -ne 0 ]; then
+                echo "FAILED: apksigner verify exited $rc for $apk"
+                failed=1
+              fi
+            done
+            exit $failed
+          ) 2>&1 | tee apk.log
 
       - name: Upload debug APK
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

@@ -649,6 +649,95 @@ class CircleSecurityTest {
     }
 
     @Test
+    fun aLeftMessageFromOurOwnKeyIsIgnoredByTheAdmin() = runTest {
+        // Issue #85: used to hit a require() inside event handling.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val epoch = a.circle(id)!!.epoch
+        clock += 60
+        deliver(a, a, id, app.quietmap.core.protocol.LeftBody(a.me, clock, id))
+        val c = a.circle(id)!!
+        assertEquals(a.me, c.adminPubkey)
+        assertEquals(setOf(a.me, b.me), c.members.map { it.pubkey }.toSet())
+        assertEquals(epoch, c.epoch, "no rotation")
+        // Still handles messages afterwards.
+        deliver(b, a, id, app.quietmap.core.protocol.LeftBody(b.me, clock, id))
+        assertFalse(a.circle(id)!!.members.any { it.pubkey == b.me })
+    }
+
+    @Test
+    fun aForgedCopyUnderARealIdDoesntBlockTheRealEvent() = runTest {
+        // Issue #74: one relay sends a broken copy carrying a real event's id before the others deliver it.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        clock += 61
+        a.client.drop = { it.kind == Kinds.CIRCLE_UPDATE }
+        b.engine.publishLocation(loc(44.4))
+        net.flush()
+        a.client.drop = { false }
+        assertNull(a.locationOf(id, b.me))
+        val real = b.client.published.last()
+        assertEquals(Kinds.CIRCLE_UPDATE, real.kind)
+        val otherSig = b.client.published.first { it.id != real.id }.sig
+        a.client.onEvent("wss://evil.example", real.copy(content = real.content.reversed()))
+        a.client.onEvent("wss://evil.example", real.copy(sig = otherSig))
+        a.client.onEvent("wss://evil.example", real.copy(createdAt = real.createdAt - 1))
+        assertNull(a.locationOf(id, b.me))
+        a.client.onEvent("wss://good.example", real)
+        assertEquals(44.4, a.locationOf(id, b.me)!!.lat, "the genuine copy is still handled")
+    }
+
+    @Test
+    fun publishesInTheSameSecondNeverShareATimestamp() = runTest {
+        // Issue #86: a tie lets a relay keep the older event.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        clock += 600
+        val stamps = mutableListOf<Long>()
+        repeat(20) { i ->
+            val before = b.client.published.size
+            b.engine.publishLocation(loc(1.0 + i / 1000.0))
+            val sent = b.client.published.drop(before)
+            assertTrue(sent.size <= 1)
+            sent.forEach { e ->
+                assertEquals(Kinds.CIRCLE_UPDATE, e.kind)
+                assertTrue(e.createdAt in (clock - 15)..clock, "timestamp ${clock - e.createdAt}s off")
+                stamps += e.createdAt
+            }
+        }
+        net.flush()
+        assertTrue(stamps.isNotEmpty())
+        assertTrue(stamps.size <= 16, "at most one per second of blur")
+        assertEquals(stamps.sorted().distinct(), stamps, "strictly increasing: $stamps")
+        // The relay keeps the newest, and the next second publishes again.
+        clock += 1
+        val before = b.client.published.size
+        b.engine.publishLocation(loc(2.0))
+        val next = b.client.published.drop(before).single()
+        assertTrue(next.createdAt > stamps.last() && next.createdAt <= clock)
+        net.flush()
+        assertEquals(2.0, a.locationOf(id, b.me)!!.lat)
+    }
+
+    @Test
+    fun updatesJustAfterMidnightOnTheKeysFirstDayAreNotDropped() = runTest {
+        // Issue #87: the blur could move the timestamp into yesterday, which the new key has no key for.
+        clock = (clock / 86_400 + 1) * 86_400 // midnight UTC
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        assertEquals(CircleCrypto.day(clock), b.circle(id)!!.keyDay)
+        repeat(6) { i ->
+            val before = b.client.published.size
+            b.engine.publishLocation(loc(3.0 + i / 1000.0))
+            val e = b.client.published.drop(before).single()
+            assertTrue(e.createdAt >= CircleCrypto.day(clock) * 86_400 && e.createdAt <= clock)
+            net.flush()
+            assertEquals(3.0 + i / 1000.0, a.locationOf(id, b.me)!!.lat)
+            clock += 1
+        }
+    }
+
+    @Test
     fun membersWhoMissAResetStillFollowItAndACopyCantPullThemBack() = runTest {
         val a = Phone("Ana"); val b = Phone("Ben")
         val id = circleWith(a, b)

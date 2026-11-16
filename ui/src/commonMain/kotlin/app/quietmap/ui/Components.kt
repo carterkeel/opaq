@@ -384,7 +384,11 @@ object AppIcons {
 // Prompts that slide up from the bottom instead of popping in from the centre
 // -------------------------------------------------------------------------------------------------
 
-/** A yes/no question as a bottom sheet. [destructive] colours the confirm button red. */
+/**
+ * A yes/no question as a bottom sheet. [destructive] colours the confirm button red.
+ * [onDismiss] runs when the sheet is swiped away, closed with back or tapped outside; the
+ * [dismiss] button runs [onSecondary] if given (a real answer, like "Deny"), else [onDismiss].
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmSheet(
@@ -397,6 +401,7 @@ fun ConfirmSheet(
     dismiss: String = "Cancel",
     header: (@Composable () -> Unit)? = null,
     confirmEnabled: Boolean = true,
+    onSecondary: (() -> Unit)? = null,
     body: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     ModalBottomSheet(
@@ -410,7 +415,7 @@ fun ConfirmSheet(
             body?.invoke(this)
             Spacer(Modifier.heightIn(min = 4.dp))
             if (destructive) DangerButton(confirm, onConfirm) else PrimaryButton(confirm, onConfirm, enabled = confirmEnabled)
-            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text(dismiss) }
+            TextButton(onClick = onSecondary ?: onDismiss, modifier = Modifier.fillMaxWidth()) { Text(dismiss) }
         }
     }
 }

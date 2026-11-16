@@ -65,10 +65,21 @@ class MainActivity : ComponentActivity() {
         onOpenFile = null
         if (uri == null) return@registerForActivityResult callback(null)
         // Backups are a few tens of KB; refuse anything huge rather than reading it all.
-        val text = runCatching {
-            contentResolver.openInputStream(uri)?.use { input -> input.readNBytesCompat(512 * 1024).decodeToString() }
+        // One byte past the limit is read to tell "exactly at the limit" from "too big".
+        val bytes = runCatching {
+            contentResolver.openInputStream(uri)?.use { input -> input.readNBytesCompat(MAX_BACKUP_BYTES + 1) }
         }.getOrNull()
-        if (text == null) Toast.makeText(this, "Couldn't open that file", Toast.LENGTH_LONG).show()
+        val text = when {
+            bytes == null -> {
+                Toast.makeText(this, "Couldn't open that file", Toast.LENGTH_LONG).show()
+                null
+            }
+            bytes.size > MAX_BACKUP_BYTES -> {
+                Toast.makeText(this, "That file is too big to be a Quietmap backup", Toast.LENGTH_LONG).show()
+                null
+            }
+            else -> bytes.decodeToString()
+        }
         callback(text)
     }
 
@@ -142,7 +153,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        incomingLink.value = intent?.dataString
+        // Only on a fresh start: when Android recreates the activity (dark mode, font size) the
+        // launch intent is the same one, and its invite link was already handled.
+        if (savedInstanceState == null) incomingLink.value = intent?.dataString
         setContent { Root(incomingLink, platform) }
     }
 
@@ -215,6 +228,9 @@ private fun Root(incomingLink: MutableStateFlow<String?>, platform: AndroidPlatf
         onFixSharing = fixNotifications,
     )
 }
+
+/** Largest backup file accepted. Real backups are a few tens of KB. */
+private const val MAX_BACKUP_BYTES = 512 * 1024
 
 private fun java.io.InputStream.readNBytesCompat(limit: Int): ByteArray {
     val out = java.io.ByteArrayOutputStream()

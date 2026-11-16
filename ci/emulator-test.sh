@@ -6,11 +6,20 @@
 # once from a clean app state. A real crash fails both attempts.
 set -uo pipefail
 
-# The staging APK is what people install on their phones, so check it installs too.
+# The staging APK is what people install on their phones, so check it installs too. A failed
+# install fails the script (after the UI test has run, so its results are still logged).
+# Older adb versions print "Failure [...]" but exit 0, so the output is checked as well.
+install_failed=0
 for apk in androidApp/build/outputs/apk/staging/*.apk; do
   echo "=== Installing $apk ===" | tee -a emulator.log
-  adb install -r "$apk" 2>&1 | tee -a emulator.log
+  install_out=$(adb install -r "$apk" 2>&1)
+  install_rc=$?
+  printf '%s\n' "$install_out" | tee -a emulator.log
   adb uninstall app.quietmap.staging >/dev/null 2>&1 || true
+  if [ "$install_rc" -ne 0 ] || grep -q "Failure" <<< "$install_out"; then
+    echo "=== Staging install FAILED (adb exit $install_rc): $apk ===" | tee -a emulator.log
+    install_failed=1
+  fi
 done
 status=1
 for attempt in 1 2; do
@@ -30,4 +39,8 @@ for attempt in 1 2; do
   echo "=== Screenshots: $(ls screens | wc -l) ===" | tee -a emulator.log
   [ $status -eq 0 ] && break
 done
+if [ "$install_failed" -ne 0 ]; then
+  echo "=== FAILED: the staging APK did not install (see above) ===" | tee -a emulator.log
+  [ $status -eq 0 ] && status=1
+fi
 exit $status

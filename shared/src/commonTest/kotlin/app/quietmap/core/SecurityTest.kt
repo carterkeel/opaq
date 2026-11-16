@@ -7,6 +7,8 @@ import app.quietmap.core.nostr.RelayUrls
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
@@ -229,6 +231,22 @@ class SecurityTest {
         assertTrue(e.unlock("2468") is PinResult.Locked)
         uptime += 31
         assertEquals(PinResult.Ok, e.unlock("2468"))
+    }
+
+    @Test
+    fun concurrentWrongPinsAreEachCountedAndStopAtTheLockout() = runTest {
+        val e = engine(FlakyStore())
+        e.setPin("2468")
+        // Issue #83: tries racing each other must not all record the same failure count.
+        val results = kotlinx.coroutines.withContext(Dispatchers.Default) {
+            (1..8).map { async { e.unlock("0000") } }.awaitAll()
+        }
+        assertEquals(Engine.PIN_FREE_ATTEMPTS, e.state.value.pin!!.failedAttempts, "every evaluated try counts once")
+        val wrong = results.filterIsInstance<PinResult.Wrong>()
+        assertEquals(Engine.PIN_FREE_ATTEMPTS - 1, wrong.size, "$results")
+        assertEquals((1 until Engine.PIN_FREE_ATTEMPTS).toSet(), wrong.map { it.attemptsLeft }.toSet())
+        assertEquals(8 - wrong.size, results.count { it is PinResult.Locked }, "tries after the lockout are refused")
+        assertTrue(e.unlock("2468") is PinResult.Locked)
     }
 
     @Test

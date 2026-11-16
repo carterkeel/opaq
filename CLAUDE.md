@@ -162,4 +162,4 @@ Two-phone manual testing is described in `TESTING.md`.
 - New persisted fields go in `AppState` **with defaults**, so older saved state still loads.
 - New protocol messages: add a `Body` subclass with a `@SerialName`, keep old ones decodable, and add a round-trip test in `ProtocolTest`.
 - User-facing text: plain and short, and say what happens ("Stop sharing with everyone", not "Disable").
-- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Use spring-based animations, nothing bouncy.
+- Look: Signal-like. White or near-black surfaces, one ultramarine accent, the system font, pill buttons, 24 dp gutters, and settings rows with leading icons. Screens slide in and out across the full width like Signal's (a short tween, no fade, nothing bouncy).

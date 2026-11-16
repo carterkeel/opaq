@@ -353,8 +353,11 @@ fun HomeScreen(
             confirm = "Create",
             onDismiss = { showCreate = false },
             onConfirm = { name ->
-                showCreate = false
-                actions.createCircle(name) { onSelectCircle(it) }
+                // A second tap before the sheet has gone would make a second circle.
+                if (showCreate) {
+                    showCreate = false
+                    actions.createCircle(name) { onSelectCircle(it) }
+                }
             },
         )
     }
@@ -370,7 +373,9 @@ fun HomeScreen(
             confirmEnabled = matches,
             dismiss = "Deny",
             onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); actions.approve(req.id) } },
-            onDismiss = { actions.deny(req.id); reviewing = null },
+            // Swiping the sheet away, back or tapping outside only closes it; the request stays pending.
+            onDismiss = { reviewing = null },
+            onSecondary = { actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
             InfoCard {

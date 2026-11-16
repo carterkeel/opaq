@@ -63,7 +63,7 @@ class LocationService : LifecycleService(), LocationListener {
 
         lifecycleScope.launch {
             app.engine.state
-                .map { s -> Triple(s.sharing, s.circles.isEmpty(), s.circles.flatMap { c -> c.members.map { it.pubkey } }.toSet().size - 1) }
+                .map { s -> Triple(s.sharing, s.circles.isEmpty(), app.sharingWithCount(s)) }
                 .distinctUntilChanged()
                 .collect { (sharing, noCircles, people) ->
                     if (!sharing || noCircles) stopSelf() else startInForeground(people.coerceAtLeast(0))
@@ -111,7 +111,10 @@ class LocationService : LifecycleService(), LocationListener {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_STOP) {
-            lifecycleScope.launch { QuietmapApp.from(this@LocationService).engine.setSharing(false) }
+            // On the app's scope, not the service's: stopSelf() below cancels the service's scope,
+            // which could otherwise drop this before sharing is actually turned off.
+            val app = QuietmapApp.from(this)
+            app.scope.launch { app.engine.setSharing(false) }
             stopSelf()
         }
         return START_STICKY

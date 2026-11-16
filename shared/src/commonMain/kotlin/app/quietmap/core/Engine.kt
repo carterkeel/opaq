@@ -117,6 +117,9 @@ class Engine(
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
+    /** Serializes PIN checks. Separate from [mutex], which is never held during the slow PIN hash. */
+    private val pinMutex = Mutex()
+
     private val _state: MutableStateFlow<AppState>
     val state: StateFlow<AppState>
     /** This device's identity key. Changes only when a backup is imported. */
@@ -360,7 +363,12 @@ class Engine(
     private fun requireAuthorized() = check(isAuthorized()) { "Enter your PIN first" }
 
     /** Checks the PIN. Five wrong tries lock it for 30 seconds, doubling with each further miss. */
-    suspend fun unlock(pin: String): PinResult {
+    suspend fun unlock(pin: String): PinResult = pinMutex.withLock {
+        // One check at a time, so every wrong try is counted and a lockout one sets stops the next.
+        unlockLocked(pin)
+    }
+
+    private suspend fun unlockLocked(pin: String): PinResult {
         val lock = state.value.pin ?: return PinResult.Ok
         val t = now()
         lockedUntil(lock)?.let { return PinResult.Locked(it) }
@@ -1133,10 +1141,15 @@ class Engine(
     private fun sealV2(c: Circle, location: MemberLocation, t: Long, seq: Long): Event? {
         // Relays see a timestamp blurred by up to 15 seconds rather than the exact moment of the fix;
         // it never goes backwards, so relays keep the newest update. The exact time is inside.
+        // Each one is strictly newer than the last for this circle (a tie could make a relay keep the
+        // older event), never in the future, and never before the start of the key's first day (there's
+        // no key for earlier days). If that leaves no second up to now, this update is skipped.
         val jitter = (PlatformCrypto.randomBytes(1)[0].toInt() and 0xff) % 16
-        val created = maxOf(t - jitter, (lastCreatedAt[c.id] ?: 0L) + 1).coerceAtMost(t)
-        lastCreatedAt[c.id] = created
+        val floor = maxOf((lastCreatedAt[c.id] ?: 0L) + 1, c.keyDay * SECONDS_PER_DAY)
+        if (floor > t) return null
+        val created = maxOf(t - jitter, floor)
         val key = dayKey(c, CircleCrypto.day(created)) ?: return null
+        lastCreatedAt[c.id] = created
         val publisher = CircleCrypto.memberPublisher(identity.secret, c.id, c.epoch, CircleCrypto.slot(created))
         return fitted(location) { loc ->
             val body = LocationBody(myPubkey, t, c.id, c.epoch, loc, pub = publisher.publicHex, seq = seq)
@@ -1150,8 +1163,12 @@ class Engine(
 
     private suspend fun onEvent(relay: String, event: Event) {
         if (_recovery.value != null) return
+        if (mutex.withLock { event.id in seen }) return
+        // Remember an id only once the event checks out (id matches the content, signature is valid):
+        // otherwise one relay sending a corrupted copy under a real id would block the real one.
+        if (!event.isValid()) return
         val fresh = mutex.withLock { seen.add(event.id) }
-        if (!fresh || !event.isValid()) return
+        if (!fresh) return
         when (event.kind) {
             Kinds.SEALED_DIRECT -> handleDirect(event)
             Kinds.CIRCLE_UPDATE -> handleCircleUpdate(event)
@@ -1426,6 +1443,9 @@ class Engine(
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
+        // A "left" signed by our own key (another copy of this identity, or a replay) can't remove
+        // the admin: the admin hands over the role or deletes the circle instead.
+        if (body.from == myPubkey) return
         // An old "left" from before they were let back in is a replay.
         val joinedAt = circle.history.lastOrNull { it.change == MembershipChange.JOINED && it.pubkey == body.from }?.at
         if (joinedAt != null && body.ts < joinedAt - MAX_CLOCK_SKEW_SECONDS) return
@@ -1580,6 +1600,7 @@ class Engine(
         /** Orbot's default SOCKS port. */
         const val TOR_SOCKS_PORT = 9050
 
+        private const val SECONDS_PER_DAY = 86_400L
         private const val SUB_DIRECT = "qm-dm"
         private const val SUB_CIRCLES = "qm-circles"
         private const val SUB_CONTROL = "qm-ctl"
