@@ -7,7 +7,7 @@ ktor = "3.0.3"
 secp256k1 = "0.24.0"
 bouncycastle = "1.80"
 # 0.9.6 is built with Kotlin 2.4 and can't be read by Kotlin 2.2; 0.9.5 can.
-libsodium = "0.9.5"
+libsodium = "0.9.6"
 activityCompose = "1.10.0"
 coreKtx = "1.15.0"
 lifecycle = "2.8.7"
