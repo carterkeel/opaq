@@ -22,7 +22,11 @@ for attempt in 1 2; do
   adb logcat -d -v time >> logcat.txt || true
   # Screenshots the test took (light and dark), for checking screens by eye in the CI summary.
   rm -rf screens && mkdir -p screens
-  adb pull /sdcard/Android/data/app.quietmap.debug/files/screens/. screens/ >/dev/null 2>&1 || true
+  dir=/sdcard/Android/data/app.quietmap.debug/files/screens
+  for f in $(adb shell ls "$dir" 2>/dev/null | tr -d '\r'); do
+    adb exec-out cat "$dir/$f" > "screens/$f" 2>/dev/null || true
+  done
+  echo "=== Screenshots: $(ls screens | wc -l) ===" | tee -a emulator.log
   [ $status -eq 0 ] && break
 done
 exit $status
