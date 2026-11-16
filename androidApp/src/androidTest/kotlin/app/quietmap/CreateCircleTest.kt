@@ -73,6 +73,7 @@ class CreateCircleTest {
      */
     private fun typePin(label: String, pin: String = PIN) {
         repeat(5) { attempt ->
+            hideKeyboard() // the keyboard can cover the next field, so a tap on it lands on a key
             val ok = runCatching {
                 val dots = By.text("•".repeat(pin.length))
                 val before = device.findObjects(dots).size
@@ -111,6 +112,15 @@ class CreateCircleTest {
     private fun darkMode(on: Boolean) {
         device.executeShellCommand("cmd uimode night ${if (on) "yes" else "no"}")
         Thread.sleep(2_500)
+    }
+
+    /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
+    private fun hideKeyboard() {
+        if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
+            device.pressBack()
+            device.waitForIdle()
+            Thread.sleep(300)
+        }
     }
 
     private fun dismissSystemDialogs() {
@@ -163,7 +173,7 @@ class CreateCircleTest {
         shot("setup-pin")
         typePin("New PIN (4 to 8 digits)")
         typePin("New PIN again")
-        device.pressBack() // close the keyboard
+        hideKeyboard()
         waitFor("Set PIN").click()
 
         // Step 4: create a circle.
