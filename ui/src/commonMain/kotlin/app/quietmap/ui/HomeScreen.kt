@@ -236,24 +236,6 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(scrim.copy(alpha = 0.72f), scrim.copy(alpha = 0.35f), scrim.copy(alpha = 0f)))),
             )
 
-            // The same fade where the map meets the people sheet, so labels and icons there fade out
-            // rather than being cut off. It runs on under the sheet's rounded corners.
-            val sheetScrim = MaterialTheme.colorScheme.surface
-            Box(
-                Modifier
-                    .offset { IntOffset(0, (sheetY - with(density) { 44.dp.toPx() }).roundToInt()) }
-                    .fillMaxWidth()
-                    .height(72.dp)
-                    .background(
-                        Brush.verticalGradient(
-                            0f to sheetScrim.copy(alpha = 0f),
-                            0.3f to sheetScrim.copy(alpha = 0.35f),
-                            0.61f to sheetScrim.copy(alpha = 0.72f),
-                            1f to sheetScrim.copy(alpha = 0.72f),
-                        ),
-                    ),
-            )
-
             // Floating controls over the map.
             Row(
                 Modifier
@@ -360,6 +342,18 @@ fun HomeScreen(
                     )
                 }
             }
+
+            // The same fade at the bottom edge of the screen, so a person's row that runs off the
+            // screen fades out rather than being cut off. It goes away as the sheet closes to its handle.
+            val sheetScrim = MaterialTheme.colorScheme.surface
+            Box(
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(with(density) { insetBottom.toDp() } + 48.dp)
+                    .alpha(((collapsedY - sheetY) / (collapsedY - defaultY)).coerceIn(0f, 1f))
+                    .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
+            )
         }
     }
 
