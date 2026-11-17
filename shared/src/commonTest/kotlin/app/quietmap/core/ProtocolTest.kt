@@ -16,6 +16,8 @@ import app.quietmap.core.protocol.DirectMessages
 import app.quietmap.core.protocol.Envelopes
 import app.quietmap.core.protocol.InviteData
 import app.quietmap.core.protocol.InviteLinks
+import app.quietmap.core.protocol.InviteProblem
+import app.quietmap.core.protocol.JoinRefusedBody
 import app.quietmap.core.protocol.JoinRequestBody
 import app.quietmap.core.protocol.LocationBody
 import app.quietmap.core.protocol.ProfileBody
@@ -122,6 +124,51 @@ class ProtocolTest {
     }
 
     @Test
+    fun invitesAreFoundWhereverTheyAreInAPastedMessage() {
+        val jordan = KeyPair.generate()
+        val data = InviteLinks.signed(jordan, InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol", "wss://relay.damus.io"), c = "c".repeat(32), cn = "Family", s = "a".repeat(32), e = now + 3600))
+        val link = InviteLinks.encode(data)
+        val payload = link.substringAfter('#')
+        val web = InviteLinks.webLink(link)
+        listOf(
+            web,
+            link,
+            payload,
+            "  $web\n",
+            "Join my circle \"Family\" on Quietmap:\n$web\nSee you there!",
+            InviteLinks.shareText("Family", link),
+            "Open this: $web.",
+            "<$web>",
+            "($link)",
+            // The page hands Android an intent with the invite in the path, not after #.
+            "quietmap://join/$payload",
+            // A # some app percent-encoded.
+            web.replace("#", "%23"),
+            // Long words broken by a line break or an invisible character.
+            web.substring(0, web.length - 20) + "\n" + web.takeLast(20),
+            web.substring(0, web.length - 20) + "\u200B" + web.takeLast(20),
+        ).forEach { text -> assertEquals(data, InviteLinks.decode(text), text) }
+        assertNull(InviteLinks.problem(web))
+        assertTrue(InviteLinks.shareText("Family", link).endsWith("\n$web"), "the link ends the message")
+    }
+
+    @Test
+    fun brokenInviteLinksSayWhatWentWrong() {
+        val jordan = KeyPair.generate()
+        val data = InviteLinks.signed(jordan, InviteData(k = jordan.publicHex, n = "Jordan", r = listOf("wss://nos.lol"), c = "c".repeat(32), cn = "Family", s = "a".repeat(32), e = now + 3600))
+        val web = InviteLinks.webLink(InviteLinks.encode(data))
+        // Cut off at the #, as some apps do.
+        assertEquals(InviteProblem.MISSING, InviteLinks.problem(web.substringBefore('#')))
+        assertEquals(InviteProblem.MISSING, InviteLinks.problem(web.substringBefore('#') + "#"))
+        assertEquals(InviteProblem.MISSING, InviteLinks.problem("quietmap://join"))
+        // Cut short or changed.
+        assertEquals(InviteProblem.DAMAGED, InviteLinks.problem(web.dropLast(30)))
+        assertEquals(InviteProblem.DAMAGED, InviteLinks.problem(InviteLinks.encode(data.copy(cn = "Other"))))
+        assertEquals(InviteProblem.NOT_AN_INVITE, InviteLinks.problem("hello"))
+        assertNull(InviteLinks.decode(""))
+    }
+
+    @Test
     fun deviceCodeFormat() {
         val code = DeviceCode.full(KeyPair.generate().publicHex)
         assertTrue(Regex("^[0-9A-F]{4}( [0-9A-F]{4}){3}$").matches(code), code)
@@ -216,6 +263,7 @@ class ProtocolTest {
             LocationBody(me.publicHex, now, "c1", 2, sampleLocation(), pub = "cc".repeat(32), seq = 42),
             ProfileBody(me.publicHex, now, "Ana", pub = "dd".repeat(32)),
             RosterBody(me.publicHex, now, rc.copy(v = 1, day = 0, ctl = null)),
+            JoinRefusedBody(me.publicHex, now, "c1", to = "ee".repeat(32), invite = "ff".repeat(32), reason = JoinRefusedBody.USED),
         )
         bodies.forEach { assertEquals(it, Envelopes.open(Envelopes.seal(me, it))) }
     }

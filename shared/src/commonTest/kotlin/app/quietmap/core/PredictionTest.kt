@@ -66,4 +66,40 @@ class PredictionTest {
         shownAsIs(driving(precision = Precision.NEIGHBORHOOD), t0 + 10.0) // approximate locations never move
         shownAsIs(loc.copy(heading = null, points = emptyList()), t0 + 10.0)
     }
+
+    @Test
+    fun theHorizonCoversTheSlowestExpectedNextUpdate() {
+        // The next update is due at most 15% after the moving interval, then has to be sent and arrive.
+        assertTrue(Prediction.HORIZON_SECONDS >= MotionPolicy.MOVING_INTERVAL * 1.15 + 10)
+    }
+
+    @Test
+    fun aDriverIsCarriedAtTheirRealSpeedForTheWholeExpectedInterval() {
+        // #98: the estimate keeps pace with the car, so the next update needs only a small correction.
+        val loc = driving(speed = 25f)
+        val full = Prediction.HORIZON_SECONDS - 4
+        for (t in 1..full) {
+            val e = Prediction.estimate(loc, t0 + t.toDouble())
+            assertTrue(abs(meters(loc, e) - 25.0 * t) < 0.5, "$t s at 25 m/s: ${meters(loc, e)}")
+        }
+    }
+
+    @Test
+    fun noisyRecentPointsOnAStraightDriveDontSlowItDown() {
+        // GPS wobble of several metres in the recent points isn't a winding road.
+        val base = driving(speed = 25f)
+        val noisy = base.copy(points = base.points.mapIndexed { i, p -> p.copy(lat = p.lat + (if (i % 2 == 0) 1 else -1) * 0.00006) })
+        val e = Prediction.estimate(noisy, t0 + 30.0)
+        assertTrue(abs(meters(noisy, e) - 750) < 1, "30 s at 25 m/s: ${meters(noisy, e)}")
+    }
+
+    @Test
+    fun aStaleUpdateIsShownWhereItWas() {
+        val loc = driving()
+        val e = Prediction.estimate(loc, t0 + Prediction.STALE_SECONDS + 5.0)
+        assertFalse(e.predicted)
+        assertEquals(loc.lat, e.lat)
+        assertTrue(Prediction.isStale(loc, t0 + Prediction.STALE_SECONDS + 5.0))
+        assertFalse(Prediction.isStale(loc, t0 + 30.0))
+    }
 }

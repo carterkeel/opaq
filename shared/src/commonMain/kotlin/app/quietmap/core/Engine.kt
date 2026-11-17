@@ -12,6 +12,7 @@ import app.quietmap.core.model.Contact
 import app.quietmap.core.model.Invite
 import app.quietmap.core.model.LocationPrecision
 import app.quietmap.core.model.Precision
+import app.quietmap.core.model.JoinRefusal
 import app.quietmap.core.model.JoinRequest
 import app.quietmap.core.model.Member
 import app.quietmap.core.model.MemberLocation
@@ -34,12 +35,12 @@ import app.quietmap.core.nostr.RelayUrls
 import app.quietmap.core.nostr.SocksProxy
 import app.quietmap.core.protocol.Body
 import app.quietmap.core.protocol.CircleCrypto
-import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.DirectMessages
 import app.quietmap.core.protocol.EpochBody
 import app.quietmap.core.protocol.InviteData
 import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.core.protocol.Backups
+import app.quietmap.core.protocol.JoinRefusedBody
 import app.quietmap.core.protocol.JoinRequestBody
 import app.quietmap.core.protocol.LeftBody
 import app.quietmap.core.protocol.LocationBody
@@ -209,7 +210,7 @@ class Engine(
                     connectIfNeeded()
                     housekeeping()
                 }
-                delay(60_000)
+                delay(housekeepingDelayMillis(now()))
             }
         }
     }
@@ -489,10 +490,11 @@ class Engine(
     fun canInvite(circle: Circle): Boolean = !circle.stale && (circle.adminPubkey == myPubkey || myPubkey in circle.managers)
 
     /**
-     * Creates a single-use invite link, signed so none of it can be changed on the way, valid for
-     * [hours] (1 by default). Only the admin and managers can invite.
+     * Creates an invite link, signed so none of it can be changed on the way, valid for [hours]
+     * (1 by default). It works once, or for up to [Invite.MAX_USES] people if [multiUse]; whoever
+     * made it still approves every join. Only the admin and managers can invite.
      */
-    suspend fun createInvite(circleId: String, hours: Int = 1): String {
+    suspend fun createInvite(circleId: String, hours: Int = 1, multiUse: Boolean = false): String {
         checkReady()
         requireAuthorized()
         require(hours in 1..24) { "Invites last 1 to 24 hours" }
@@ -501,47 +503,52 @@ class Engine(
         require(canInvite(circle)) { "Only the circle admin and managers can invite" }
         val secret = PlatformCrypto.randomBytes(16).toHex()
         val expires = now() + hours * 3600L
-        update { it.copy(invites = it.invites + Invite(secret, circleId, expires, v = 2)) }
+        val invite = Invite(secret, circleId, expires, v = 2, maxUses = if (multiUse) Invite.MAX_USES else 1)
+        update { it.copy(invites = it.invites + invite) }
         refreshSubscriptions()
         val data = InviteData(k = myPubkey, n = s.myName, r = s.relays, c = circleId, cn = circle.name, s = secret, e = expires)
         return InviteLinks.encode(InviteLinks.signed(identity, data))
     }
 
-    /** True if [typed] is [pubkey]'s full device code (spaces and case don't matter). */
-    fun deviceCodeMatches(pubkey: String, typed: String?): Boolean {
-        val want = DeviceCode.full(pubkey).filter { it.isLetterOrDigit() }.uppercase()
-        val got = typed?.filter { it.isLetterOrDigit() }?.uppercase() ?: return false
-        return constantTimeEquals(want.encodeToByteArray(), got.encodeToByteArray())
+    /**
+     * Stops an invite working before it expires. Anyone who tries it afterwards is told it was
+     * cancelled. Requests already received stay, to approve or deny.
+     */
+    suspend fun cancelInvite(secret: String) = update { s ->
+        s.copy(invites = s.invites.map { if (it.secret == secret) it.copy(cancelled = true) else it })
     }
 
     /**
-     * Sends a join request for an invite the user has agreed to. The inviter must be verified first:
-     * the QR code was scanned from their screen in person ([scannedInPerson]), or the user typed
-     * their full device code as read out by them ([typedCode]), or they were already verified.
+     * Sends a join request for an invite the user has agreed to. The inviter is marked verified
+     * only if the QR code was scanned from their screen in person ([scannedInPerson]) or the user
+     * saw that their device code matches the one on the inviter's phone ([codesMatch]). Otherwise
+     * the join goes ahead unverified, and they can be verified later from their profile.
      * The invite's relays are used only until the join completes, unless [keepRelays].
      */
-    suspend fun acceptInvite(invite: InviteData, scannedInPerson: Boolean = false, typedCode: String? = null, keepRelays: Boolean = false) {
+    suspend fun acceptInvite(invite: InviteData, scannedInPerson: Boolean = false, codesMatch: Boolean = false, keepRelays: Boolean = false) {
         checkReady()
         require(invite.e > now()) { "This invite has expired" }
         require(invite.k != myPubkey) { "This is your own invite" }
-        val known = state.value.contacts[invite.k]?.verified == true
-        require(scannedInPerson || known || deviceCodeMatches(invite.k, typedCode)) {
-            "That code doesn't match. Ask the person who invited you to read out their device code."
-        }
         val extra = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.value.relays }.take(4)
         if (keepRelays && extra.isNotEmpty()) requireAuthorized() // changing relays needs the PIN
-        setVerified(invite.k, true)
+        if (scannedInPerson || codesMatch) setVerified(invite.k, true)
         if (keepRelays && extra.isNotEmpty()) applyRelays(state.value.relays + extra)
         val inbox = if (invite.v >= 2) InviteLinks.inbox(invite.s) else null
         update {
-            it.copy(pendingJoins = it.pendingJoins.filterNot { p -> p.circleId == invite.c } +
-                PendingJoin(invite.c, invite.cn, invite.k, invite.n, now(), inbox = inbox, relays = if (keepRelays) emptyList() else extra))
+            it.copy(
+                pendingJoins = it.pendingJoins.filterNot { p -> p.circleId == invite.c } +
+                    PendingJoin(invite.c, invite.cn, invite.k, invite.n, now(), inbox = inbox, relays = if (keepRelays) emptyList() else extra),
+                joinRefusals = it.joinRefusals.filterNot { r -> r.circleId == invite.c },
+            )
         }
         pool.setRelays(effectiveRelays())
         refreshSubscriptions()
         val body = JoinRequestBody(myPubkey, now(), invite.c, invite.s, state.value.myName)
         pool.publish(DirectMessages.seal(identity, invite.k, body, now(), inbox ?: invite.k))
     }
+
+    /** Clears the message about a join that was turned away. */
+    suspend fun dismissJoinRefusal(circleId: String) = update { s -> s.copy(joinRefusals = s.joinRefusals.filterNot { it.circleId == circleId }) }
 
     /**
      * How precisely this phone shares with a circle. Making it more precise needs the PIN (if set),
@@ -594,7 +601,12 @@ class Engine(
         publishProfile(updated)
     }
 
-    suspend fun deny(requestId: String) = update { s -> s.copy(joinRequests = s.joinRequests.filterNot { it.id == requestId }) }
+    /** Turns a join request down and tells the person who asked, so they aren't left waiting. */
+    suspend fun deny(requestId: String) {
+        val req = state.value.joinRequests.firstOrNull { it.id == requestId } ?: return
+        update { s -> s.copy(joinRequests = s.joinRequests.filterNot { it.id == requestId }) }
+        sendRefusal(req.circleId, req.pubkey, req.secret, JoinRefusedBody.DENIED)
+    }
 
     /** Removes a member and gives the circle a fresh key so they can't read anything new. */
     suspend fun removeMember(circleId: String, pubkey: String) {
@@ -1044,10 +1056,15 @@ class Engine(
      * Publishes one encrypted update to every circle this phone may publish to (see [shareStatus]).
      * Called by the platform's location service. Updates are never queued for later: one that
      * can't go out now is dropped, so nothing is sent late under a key replaced in the meantime.
+     *
+     * Returns whether the update reached at least one connected relay for at least one circle. When
+     * it didn't, the location service sends a fresh one as soon as [canPublishNow] says it would get
+     * through, instead of waiting out the whole interval (up to five minutes while still).
      */
-    suspend fun publishLocation(location: MemberLocation) {
+    suspend fun publishLocation(location: MemberLocation): Boolean {
         val s = state.value
-        if (!s.sharing || _recovery.value != null) return
+        if (!s.sharing || _recovery.value != null) return false
+        val online = relayConnected()
         val t = now()
         val location = if (s.shareBattery) location else location.copy(battery = null)
         val seq = maxOf(s.lastSeq + 1, t * 1000)
@@ -1060,14 +1077,28 @@ class Engine(
             pool.publish(event, queueIfOffline = false)
             sentTo += c.id
         }
+        if (sentTo.isEmpty()) return false
         update { st ->
             st.copy(
                 lastSeq = maxOf(st.lastSeq, seq),
                 locations = st.locations + st.circles.filter { it.id in sentTo }.associate { c -> c.id to (st.locations[c.id].orEmpty() + (myPubkey to location)) },
             )
         }
-        if (sentTo.isNotEmpty()) recordHistory(myPubkey, location)
+        recordHistory(myPubkey, location)
+        return online
     }
+
+    /** Whether an update published now would reach a relay for at least one circle. */
+    fun canPublishNow(): Boolean {
+        val s = state.value
+        if (!s.sharing || _recovery.value != null || !relayConnected()) return false
+        return s.circles.any { shareStatus(it) == ShareStatus.OK }
+    }
+
+    private fun relayConnected(): Boolean = pool.status.value.values.any { it == RelayStatus.CONNECTED }
+
+    /** The phone's network came back: reconnect to relays now rather than after the retry wait. */
+    fun networkAvailable() = pool.reconnectNow()
 
     // -----------------------------------------------------------------------------------------
     // Location history (kept only on this phone)
@@ -1279,6 +1310,7 @@ class Engine(
         val ref = inboxIndex[event.tag("p") ?: return] ?: return
         when (val body = DirectMessages.open(identity, event) ?: return) {
             is JoinRequestBody -> onJoinRequest(body, ref)
+            is JoinRefusedBody -> onJoinRefused(body)
             is RosterBody -> onRoster(body.from, body.ts, body.circle, v2Body = false)
             is Roster2Body -> onRoster(body.from, body.ts, body.circle, v2Body = true)
             is RemovedBody -> onRemoved(body)
@@ -1293,17 +1325,82 @@ class Engine(
     private suspend fun onJoinRequest(body: JoinRequestBody, ref: InboxRef) {
         val s = state.value
         val invite = s.invites.firstOrNull { it.secret == body.secret && it.circleId == body.circle } ?: return
-        if (invite.used || invite.expiresAt < now()) return
         // A v2 invite's request must arrive on that invite's own inbox.
         if (invite.v >= 2 && ref.inviteSecret != invite.secret) return
+        if (body.from == myPubkey || !Keys.isValidPublicKey(body.from)) return
         if (s.joinRequests.any { it.pubkey == body.from && it.circleId == body.circle }) return
-        val req = JoinRequest(PlatformCrypto.randomBytes(8).toHex(), body.circle, body.from, body.name.take(40), now(), secret = invite.secret.takeIf { invite.v >= 2 })
+        // Already in the circle: a repeat of a request that was approved.
+        if (s.circles.firstOrNull { it.id == invite.circleId }?.members?.any { it.pubkey == body.from } == true) return
+        // Decided inside the update, so two requests at once can't both take the last use.
+        var refusal: String? = null
         update { st ->
+            val inv = st.invites.firstOrNull { it.secret == invite.secret } ?: return@update st
+            refusal = when {
+                // They asked before and were turned down (a repeat, or trying the same link again).
+                body.from in inv.usedBy -> JoinRefusedBody.DENIED
+                inv.cancelled -> JoinRefusedBody.CANCELLED
+                inv.expiresAt < now() -> JoinRefusedBody.EXPIRED
+                inv.used || inv.usedBy.size >= inv.maxUses -> JoinRefusedBody.USED
+                else -> null
+            }
+            if (refusal != null) return@update st
+            val req = JoinRequest(PlatformCrypto.randomBytes(8).toHex(), body.circle, body.from, body.name.take(40), now(), secret = inv.secret.takeIf { inv.v >= 2 })
+            val usedBy = inv.usedBy + body.from
             st.copy(
                 joinRequests = st.joinRequests + req,
-                invites = st.invites.map { if (it.secret == invite.secret) it.copy(used = true) else it },
+                invites = st.invites.map { if (it.secret == inv.secret) it.copy(usedBy = usedBy, used = usedBy.size >= it.maxUses) else it },
             )
         }
+        refusal?.let { reason ->
+            if (refusalAllowed(body.from)) sendRefusal(invite.circleId, body.from, invite.secret.takeIf { invite.v >= 2 }, reason)
+        }
+    }
+
+    /** When each joiner was last sent a refusal, and every refusal in the past hour (memory only). */
+    private val refusedAt = mutableMapOf<String, Long>()
+    private val refusals = ArrayDeque<Long>()
+    private val refusalMutex = Mutex()
+
+    /**
+     * Replies to join requests that can't go ahead are rate-limited: one per person per
+     * [REFUSAL_EVERY_SECONDS], and [MAX_REFUSALS_PER_HOUR] in all, so someone repeating requests
+     * with a link (under one key or many) can't make this phone send a stream of messages.
+     */
+    private suspend fun refusalAllowed(pubkey: String): Boolean = refusalMutex.withLock {
+        val t = now()
+        refusedAt.entries.removeAll { t - it.value >= REFUSAL_EVERY_SECONDS }
+        while (refusals.isNotEmpty() && t - refusals.first() >= 3600) refusals.removeFirst()
+        if (pubkey in refusedAt || refusals.size >= MAX_REFUSALS_PER_HOUR) return@withLock false
+        refusedAt[pubkey] = t
+        refusals.addLast(t)
+        true
+    }
+
+    /** Tells [to] their request to join [circleId] can't go ahead, on the invite's inbox (v2) or their key (v1). */
+    private suspend fun sendRefusal(circleId: String, to: String, secret: String?, reason: String) {
+        val inbox = secret?.let { InviteLinks.inbox(it) }
+        val body = JoinRefusedBody(myPubkey, now(), circleId, to = to, invite = inbox ?: "", reason = reason)
+        pool.publish(DirectMessages.seal(identity, to, body, now(), inbox ?: to))
+    }
+
+    /** Our request to join was turned away: stop waiting and say why. */
+    private suspend fun onJoinRefused(body: JoinRefusedBody) {
+        val p = state.value.pendingJoins.firstOrNull { it.circleId == body.circle } ?: return
+        // Only the inviter we asked can turn us away, only about this join of ours, and only after
+        // we asked: a refusal meant for someone else, or an old one, can't cancel it.
+        if (body.from != p.inviterPubkey || body.to != myPubkey) return
+        if (p.inbox != null && body.invite != p.inbox) return
+        if (body.ts < p.sentAt - MAX_CLOCK_SKEW_SECONDS) return
+        val refusal = JoinRefusal(p.circleId, p.circleName, p.inviterName, body.reason, now())
+        update { s ->
+            s.copy(
+                pendingJoins = s.pendingJoins.filterNot { it.circleId == p.circleId },
+                joinRefusals = (s.joinRefusals.filterNot { it.circleId == p.circleId } + refusal).takeLast(10),
+            )
+        }
+        if (p.relays.isNotEmpty()) pool.setRelays(effectiveRelays())
+        refreshSubscriptions()
+        _notices.tryEmit(Notice("Couldn't join ${p.circleName}", refusal.message))
     }
 
     /** Rejects rosters with fields that would break key derivation later (and crash every pass). */
@@ -1495,7 +1592,8 @@ class Engine(
             }
         }
         // Open invites and joins in progress have their own inboxes.
-        s.invites.filter { it.v >= 2 && !it.used && it.expiresAt > t }.forEach { inboxes[InviteLinks.inbox(it.secret)] = InboxRef(it.circleId, null, inviteSecret = it.secret) }
+        // Used, cancelled and recently expired invites too, to tell late joiners why they can't join.
+        s.invites.filter { it.v >= 2 }.forEach { inboxes[InviteLinks.inbox(it.secret)] = InboxRef(it.circleId, null, inviteSecret = it.secret) }
         s.pendingJoins.forEach { p -> p.inbox?.let { inboxes[it] = InboxRef(p.circleId, null) } }
         // Our public key is only needed as an inbox for v1 circles, v1 invites and joins through them.
         val needIdentity = s.circles.any { it.version < 2 } || s.pendingJoins.any { it.inbox == null } || s.invites.any { it.v < 2 && !it.used && it.expiresAt > t }
@@ -1586,11 +1684,28 @@ class Engine(
         /** No update for this long means the person is shown as offline. */
         const val OFFLINE_AFTER_SECONDS = 45 * 60L
 
+        /**
+         * How long the periodic loop waits from [t]: a minute, or until just after the next hour
+         * starts if that's sooner. Location tags and publisher keys change every hour, so subscribing
+         * to the new hour's tags at once means the first updates of each hour aren't held up for up to
+         * a minute (they'd wait on the relay until the next pass subscribed to them).
+         */
+        internal fun housekeepingDelayMillis(t: Long): Long {
+            val toNextHour = 3600 - t.mod(3600L)
+            return if (toNextHour < 60) (toNextHour + 1) * 1000 else 60_000L
+        }
+
         /** One correct PIN entry covers sensitive actions for this long. */
         const val AUTH_WINDOW_SECONDS = 120L
 
         const val PIN_FREE_ATTEMPTS = 5
         const val PIN_ITERATIONS = 150_000
+
+        /** At most one reply to a join request that can't go ahead per person this often... */
+        const val REFUSAL_EVERY_SECONDS = 10 * 60L
+
+        /** ...and this many in all per hour. */
+        const val MAX_REFUSALS_PER_HOUR = 20
 
         /** How often to remind someone that they're sharing, and with whom. */
         const val CONSENT_EVERY_SECONDS = 30 * 24 * 3600L

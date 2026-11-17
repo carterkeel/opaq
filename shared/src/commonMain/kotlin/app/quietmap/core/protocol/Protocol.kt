@@ -54,6 +54,30 @@ data class LocationBody(
 @SerialName("join_req")
 data class JoinRequestBody(override val from: String, override val ts: Long, val circle: String, val secret: String, val name: String) : Body()
 
+/**
+ * The inviter's answer to a join request that can't go ahead, so the joiner isn't left waiting.
+ * [to] names the joiner and [invite] the invite's inbox ([InviteLinks.inbox]), so a refusal can't
+ * be passed on to cancel someone else's join, or a different join of the same person.
+ */
+@Serializable
+@SerialName("join_refused")
+data class JoinRefusedBody(
+    override val from: String,
+    override val ts: Long,
+    val circle: String,
+    val to: String,
+    val invite: String,
+    /** One of [USED], [EXPIRED], [DENIED], [CANCELLED]. */
+    val reason: String,
+) : Body() {
+    companion object {
+        const val USED = "used"
+        const val EXPIRED = "expired"
+        const val DENIED = "denied"
+        const val CANCELLED = "cancelled"
+    }
+}
+
 @Serializable
 data class RosterCircle(
     val id: String,
@@ -375,6 +399,14 @@ object InviteLinks {
 
     /** The tappable web form of an invite link. Both forms decode the same way. */
     fun webLink(link: String): String = WEB_PREFIX + link.trim().substringAfter('#')
+
+    /**
+     * The message the Share button sends. The link is alone on the last line with nothing after
+     * it, so chat apps that make links tappable take all of it, and if one doesn't, the whole
+     * message can still be pasted into Quietmap, which finds the invite in it.
+     */
+    fun shareText(circleName: String, link: String): String =
+        "Join my circle \"$circleName\" on Quietmap. Tap the link, or copy this whole message into Quietmap under Join a circle:\n\n${webLink(link)}"
     private val json = Json { ignoreUnknownKeys = true }
 
     fun encode(data: InviteData): String =
@@ -397,12 +429,46 @@ object InviteLinks {
     fun inbox(secretHex: String): String =
         PlatformCrypto.hmacSha256(secretHex.hexToBytes(), "qm-invite-inbox".encodeToByteArray()).toHex()
 
+    /** A real invite payload is several hundred characters; anything shorter can't be one. */
+    private const val MIN_PAYLOAD = 40
+    private const val MAX_TEXT = 20_000
+
+    private fun isPayloadChar(c: Char) = c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_'
+
+    /** Spaces, line breaks and invisible characters some apps put into long words. */
+    private fun isFiller(c: Char) = c.isWhitespace() || c == '​' || c == '‌' || c == '‍' || c == '⁠' || c == '﻿' || c == '­'
+
     /**
-     * Accepts the full link or anything containing "#<payload>". Returns null if it isn't a valid
-     * invite, including a v2 invite whose fields don't match the inviter's signature.
+     * Possible payloads in [text], most likely first: what follows the `#` (with line breaks and
+     * invisible characters some apps add to long words taken out), then every other long run of
+     * base64url characters, longest first. That covers the https and `quietmap://` links, the
+     * `quietmap://join/<payload>` form the web page hands to Android, a bare payload, and any of
+     * these inside a longer message.
      */
-    fun decode(link: String): InviteData? = try {
-        val payload = link.trim().substringAfter('#', missingDelimiterValue = link.trim())
+    private fun candidates(text: String): List<String> {
+        val t = text.take(MAX_TEXT).replace("%23", "#").replace("%2523", "#")
+        val out = mutableListOf<String>()
+        val hash = t.indexOf('#')
+        if (hash >= 0) out += t.substring(hash + 1).filterNot(::isFiller).takeWhile(::isPayloadChar)
+        Regex("[A-Za-z0-9_-]+").findAll(t).map { it.value }.sortedByDescending { it.length }.forEach { out += it }
+        return out.filter { it.length >= MIN_PAYLOAD }.distinct().take(6)
+    }
+
+    /**
+     * Finds the invite in a link or a pasted message. Returns null if there isn't a valid one,
+     * including a v2 invite whose fields don't match the inviter's signature.
+     */
+    fun decode(link: String): InviteData? = candidates(link).firstNotNullOfOrNull { decodePayload(it) }
+
+    /** Why [text] didn't decode, for a message that helps. Null if it's a valid invite. */
+    fun problem(text: String): InviteProblem? = when {
+        decode(text) != null -> null
+        candidates(text).isNotEmpty() -> InviteProblem.DAMAGED
+        text.contains("quietmap", ignoreCase = true) -> InviteProblem.MISSING
+        else -> InviteProblem.NOT_AN_INVITE
+    }
+
+    private fun decodePayload(payload: String): InviteData? = try {
         val data = json.decodeFromString(InviteData.serializer(), payload.fromBase64Url().decodeToString())
         val valid = Keys.isValidPublicKey(data.k) && data.s.length >= 32 && data.s.all { it in "0123456789abcdef" } && when (data.v) {
             // Unsigned v1 links are refused: anyone could change the relays or names in them.
@@ -413,4 +479,16 @@ object InviteLinks {
     } catch (_: Throwable) {
         null
     }
+}
+
+/** Why a text isn't a usable invite. */
+enum class InviteProblem {
+    /** No invite in it at all, e.g. a link cut off at the `#`. */
+    MISSING,
+
+    /** Something that looks like an invite, but cut short or changed after it was made. */
+    DAMAGED,
+
+    /** Not a Quietmap link at all. */
+    NOT_AN_INVITE,
 }

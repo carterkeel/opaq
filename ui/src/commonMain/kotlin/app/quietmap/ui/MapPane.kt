@@ -22,9 +22,10 @@ import app.quietmap.core.GeoPoint
 import app.quietmap.core.HistoryPoint
 import app.quietmap.core.HistorySegment
 import app.quietmap.core.LocationHistory
-import app.quietmap.core.MotionPolicy
 import app.quietmap.core.Prediction
 import app.quietmap.core.RoadSnap
+import app.quietmap.core.Roads
+import app.quietmap.core.Track
 import app.quietmap.core.model.Activity
 import app.quietmap.core.model.MemberLocation
 import kotlin.math.PI
@@ -119,12 +120,15 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
  * - People close together merge into one bubble with a count, and separate as you zoom in.
+ * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
  */
 @Composable
 fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier, darkMap: Boolean = false) {
-    val shown = rememberMovingMarkers(markers)
+    // Roads in the tiles on screen, for drawing travelling people along them. Nothing is sent anywhere.
+    var roads by remember { mutableStateOf<Roads?>(null) }
+    val shown = rememberMovingMarkers(markers, roads)
     // Profile photos, cropped to circles. Remembered per photo so the map registers each image once.
     val photos = markers.mapNotNull { m -> m.photo?.let { m.id to it } }
     val photoIcons = remember(photos) {
@@ -212,62 +216,100 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
         mapState.animateCamera(CameraUpdate(center = Position(f.lon, f.lat), zoom = STREET_ZOOM))
     }
 
-    MaplibreMap(
-        modifier = modifier,
-        state = mapState,
-        viewportInsets = PaddingValues(bottom = bottomInset),
-        interactions = Interactions,
-        overlay = {},
-    )
+    BoxWithConstraints(modifier) {
+        val view = DpRect(0.dp, 0.dp, maxWidth, maxHeight)
+        // Look up the roads again whenever the map stops moving, never per frame. The position is
+        // watched too, since a camera that's set rather than animated (opening the map) never "moves".
+        LaunchedEffect(mapState, view) {
+            snapshotFlow { mapState.isCameraMoving to mapState.cameraPosition }.collectLatest { (moving, _) ->
+                if (moving) return@collectLatest
+                // Tiles for a new view arrive over a second or two, so look again as they do.
+                var seen = -1
+                for (wait in listOf(300L, 900L, 2000L)) {
+                    delay(wait)
+                    if (mapState.cameraPosition.zoom < ROAD_ZOOM) {
+                        // Zoomed out, road shapes are simplified and minor roads missing: go straight.
+                        if (roads != null) roads = null
+                        seen = -1
+                        continue
+                    }
+                    val lines = runCatching { visibleRoads(mapState.queryRenderedFeatures(view)) }.getOrDefault(emptyList())
+                    if (lines.size == seen) continue
+                    seen = lines.size
+                    roads = if (lines.isEmpty()) null else withContext(Dispatchers.Default) { Roads(lines) }
+                }
+            }
+        }
+        MaplibreMap(
+            modifier = Modifier.fillMaxSize(),
+            state = mapState,
+            viewportInsets = PaddingValues(bottom = bottomInset),
+            interactions = Interactions,
+            overlay = {},
+        )
+    }
 }
 
-/** How long a dot takes to glide to a new update. */
-private const val GLIDE_MS = 1_000.0
-
-/** A jump bigger than this (km) is shown at once rather than as a long slide across the map. */
-private const val MAX_GLIDE_KM = 20.0
+/** Below this zoom, people aren't moved along roads (the tiles' road shapes are too coarse). */
+private const val ROAD_ZOOM = 12.0
 
 /** Map refreshes per second while dots are moving. */
 private const val FRAMES_PER_SECOND = 30
 
+/** How one person's dot is moving: the plan for their latest update, and the catch-up to it. */
+private class Motion(val key: MotionKey, val plan: Prediction.Plan, val track: Track?)
+
+/** What a [Motion] was worked out from; when any of it changes, the dot sets off on a new one. */
+private data class MotionKey(val time: Long?, val lat: Double, val lon: Double, val roads: Roads?)
+
 /**
- * The markers as they should be drawn right now (#55, #57): a new update glides from where the dot
- * was instead of jumping, and someone travelling keeps moving ahead between updates
- * ([Prediction]). Runs at [FRAMES_PER_SECOND] only while something moves, and checks once a second
- * otherwise, so an estimate that has run out settles back on the real position.
+ * The markers as they should be drawn right now (#55, #57, #92, #93, #97, #98).
+ *
+ * - Someone travelling is carried forward at their speed, along the road they're on when it's on
+ *   screen, and drawn on that road when within about 20 ft of it ([Prediction.plan]).
+ * - A new update doesn't make the dot jump: it travels from where it's drawn to the new estimate
+ *   along the recent path and the road ([Track]).
+ * - An update gone stale, or someone offline, is shown where they really were.
+ *
+ * Plans and catch-ups are worked out once per update (or when the roads on screen change); each
+ * frame only looks up a point along a line. Runs at [FRAMES_PER_SECOND] only while something
+ * moves, and checks once a second otherwise, so an update that goes stale settles back in place.
  */
 @Composable
-private fun rememberMovingMarkers(markers: List<MapMarker>): List<MapMarker> {
+private fun rememberMovingMarkers(markers: List<MapMarker>, roads: Roads?): List<MapMarker> {
     var shown by remember { mutableStateOf(markers) }
-    val drawn = remember { HashMap<String, Pair<Double, Double>>() }
-    LaunchedEffect(markers) {
-        // Each dot glides from where it's drawn now; a new marker or a huge jump starts in place.
-        class Glide(var from: Pair<Double, Double>?, var startMs: Long, var predicted: Boolean? = null)
-        val glides = markers.associate { m ->
-            val prev = drawn[m.id]
-            val far = prev == null || MotionPolicy.distanceMeters(prev.first, prev.second, m.lat, m.lon) > MAX_GLIDE_KM * 1000
-            m.id to Glide(if (far) null else prev, epochMillis())
-        }
+    // Kept across new marker lists, so a dot always leaves from where it is drawn.
+    val drawn = remember { HashMap<String, GeoPoint>() }
+    val motions = remember { HashMap<String, Motion>() }
+    LaunchedEffect(markers, roads) {
+        val ids = markers.map { it.id }.toSet()
+        drawn.keys.retainAll(ids)
+        motions.keys.retainAll(ids)
         var lastFrame = 0L
         while (true) {
             val nowMs = epochMillis()
+            val now = nowMs / 1000.0
             var moving = false
             val next = markers.map { m ->
-                val g = glides.getValue(m.id)
-                val est = m.location?.takeIf { m.kind != MapMarker.Kind.OFFLINE }?.let { Prediction.estimate(it, nowMs / 1000.0) }
-                val predicted = est?.predicted == true
-                // An estimate that ran out goes back to the real position: glide there too.
-                if (g.predicted == true && !predicted) { g.from = drawn[m.id]; g.startMs = nowMs }
-                g.predicted = predicted
-                if (est?.advancing == true) moving = true
-                val target = est?.let { it.lat to it.lon } ?: (m.lat to m.lon)
-                val t = ((nowMs - g.startMs) / GLIDE_MS).coerceIn(0.0, 1.0)
-                if (t < 1.0) moving = true
-                val eased = 1 - (1 - t) * (1 - t) * (1 - t) // ease out, no overshoot
-                val origin = g.from ?: target
-                val pos = (origin.first + (target.first - origin.first) * eased) to (origin.second + (target.second - origin.second) * eased)
+                val loc = m.location?.takeIf { m.kind != MapMarker.Kind.OFFLINE && !Prediction.isStale(it, now) }
+                val key = MotionKey(loc?.time, m.lat, m.lon, roads.takeIf { loc != null })
+                val old = motions[m.id]
+                val motion = if (old != null && old.key == key) old else {
+                    val plan = loc?.let { Prediction.plan(it, roads) } ?: Prediction.Plan.still(GeoPoint(m.lat, m.lon))
+                    val previous = old?.key?.time
+                    // The path taken since the update the dot was following.
+                    val recent = loc?.let { l ->
+                        l.points.filter { (previous == null || it.t > previous) && it.t < l.time }.map { GeoPoint(it.lat, it.lon) }
+                    }.orEmpty()
+                    val snap = if (loc?.activity == Activity.WALKING) Prediction.SNAP_METERS else Prediction.FOLLOW_METERS
+                    val track = drawn[m.id]?.let { Track.build(it, plan, now, recent, roads, snap) }
+                    Motion(key, plan, track).also { motions[m.id] = it }
+                }
+                val track = motion.track?.takeUnless { it.done(now) }
+                val pos = track?.at(now) ?: motion.plan.at(now).let { GeoPoint(it.lat, it.lon) }
+                if (track != null || motion.plan.advancing(now)) moving = true
                 drawn[m.id] = pos
-                if (pos.first == m.lat && pos.second == m.lon) m else m.copy(lat = pos.first, lon = pos.second)
+                if (pos.lat == m.lat && pos.lon == m.lon) m else m.copy(lat = pos.lat, lon = pos.lon)
             }
             if (next != shown && (nowMs - lastFrame >= 1000 / FRAMES_PER_SECOND || !moving)) {
                 shown = next

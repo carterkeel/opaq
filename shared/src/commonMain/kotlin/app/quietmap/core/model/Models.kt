@@ -40,6 +40,8 @@ data class AppState(
     val invites: List<Invite> = emptyList(),
     val joinRequests: List<JoinRequest> = emptyList(),
     val pendingJoins: List<PendingJoin> = emptyList(),
+    /** Joins the inviter turned away (link used up, expired, cancelled or denied), until dismissed. */
+    val joinRefusals: List<JoinRefusal> = emptyList(),
     /** circleId -> member pubkey -> latest location */
     val locations: Map<String, Map<String, MemberLocation>> = emptyMap(),
     val seenEventIds: List<String> = emptyList(),
@@ -199,10 +201,21 @@ data class Invite(
     val secret: String,
     val circleId: String,
     val expiresAt: Long,
+    /** No uses left: [maxUses] people have asked to join with it. */
     val used: Boolean = false,
     /** 2: signed link, join request arrives on the invite's own inbox. */
     val v: Int = 1,
-)
+    /** How many people can use the link: 1, or up to [MAX_USES] for a link meant for several. */
+    val maxUses: Int = 1,
+    /** Everyone who has asked to join with it, in order. */
+    val usedBy: List<String> = emptyList(),
+    /** Cancelled early by whoever made it. */
+    val cancelled: Boolean = false,
+) {
+    companion object {
+        const val MAX_USES = 10
+    }
+}
 
 /** Someone opened our invite link and is waiting for approval. */
 @Serializable
@@ -215,6 +228,26 @@ data class JoinRequest(
     /** v2: the invite secret, so the approval can reach the joiner's invite inbox. */
     val secret: String? = null,
 )
+
+/** Our join request was turned away. [reason] is a [app.quietmap.core.protocol.JoinRefusedBody] reason. */
+@Serializable
+data class JoinRefusal(
+    val circleId: String,
+    val circleName: String,
+    val inviterName: String,
+    val reason: String,
+    val at: Long,
+) {
+    /** What to tell the person who wanted to join. */
+    val message: String
+        get() = when (reason) {
+            "used" -> "This invite was already used. Ask for a new one."
+            "expired" -> "This invite has expired."
+            "cancelled" -> "This invite was cancelled. Ask for a new one."
+            "denied" -> "${inviterName.ifBlank { "The inviter" }} didn't let you in."
+            else -> "${inviterName.ifBlank { "The inviter" }} couldn't let you in."
+        }
+}
 
 /** We opened someone's invite link and are waiting for them to approve. */
 @Serializable
