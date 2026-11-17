@@ -204,11 +204,11 @@ class CreateCircleTest {
             typePin("PIN")
             waitFor("Continue").click()
         }
-        waitFor("Share link")
         waitFor("Used by 0 of 10 people")
         shot("invite")
-        // Cancel it early: back to "Create invite".
+        // The buttons are below the QR code. Cancel the invite early: back to "Create invite".
         device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
+        waitFor("Share link")
         waitFor("Cancel this invite").click()
         waitFor("Create invite")
         device.pressBack()
