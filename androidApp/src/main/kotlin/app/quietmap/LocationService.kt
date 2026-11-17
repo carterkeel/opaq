@@ -12,6 +12,8 @@ import android.hardware.TriggerEventListener
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Looper
@@ -21,11 +23,12 @@ import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import app.quietmap.core.MotionPolicy
 import app.quietmap.core.model.LocationSample
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Foreground service that collects location fixes and publishes encrypted updates.
@@ -44,6 +47,19 @@ class LocationService : LifecycleService(), LocationListener {
     private var significantMotion: Sensor? = null
     private var highAccuracy: Boolean? = null
     private var lastReminderAt = 0L
+
+    /** Wakes the publish loop early: a fix arrived while an update is due. */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    /** The last update reached no relay (offline, or relays still confirming the circle key). */
+    private var missed = false
+
+    private var connectivity: ConnectivityManager? = null
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            QuietmapApp.from(this@LocationService).engine.networkAvailable()
+        }
+    }
 
     private val motionListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent?) {
@@ -95,16 +111,25 @@ class LocationService : LifecycleService(), LocationListener {
                     app.notifySharingReminder()
                 }
                 adjustAccuracy()
-                if (policy.shouldPublish(now)) {
+                // An update that reached no relay is replaced as soon as one would get through, rather
+                // than at the next interval: the relays never saw the missed one.
+                if (policy.shouldPublish(now) || (missed && app.engine.canPublishNow())) {
                     val battery = batteryPercent()
                     val status = if (battery != null && battery <= 5) "low battery" else null
                     policy.snapshot(battery, status)?.let {
-                        app.engine.publishLocation(it)
+                        missed = !app.engine.publishLocation(it)
                         policy.markPublished(now)
                     }
                 }
-                delay(TICK_MS)
+                withTimeoutOrNull(TICK_MS) { wake.receive() }
             }
+        }
+
+        connectivity = getSystemService(ConnectivityManager::class.java)
+        try {
+            connectivity?.registerDefaultNetworkCallback(networkCallback)
+        } catch (_: RuntimeException) {
+            connectivity = null // too many callbacks registered, or no permission: relays still retry on their own
         }
     }
 
@@ -121,6 +146,7 @@ class LocationService : LifecycleService(), LocationListener {
     }
 
     override fun onDestroy() {
+        connectivity?.let { runCatching { it.unregisterNetworkCallback(networkCallback) } }
         locationManager.removeUpdates(this)
         significantMotion?.let { sensorManager?.cancelTriggerSensor(motionListener, it) }
         super.onDestroy()
@@ -138,6 +164,8 @@ class LocationService : LifecycleService(), LocationListener {
             ),
         )
         adjustAccuracy()
+        // Publish with this fresh fix instead of waiting for the next tick (and an older fix).
+        if (policy.shouldPublish(nowSeconds())) wake.trySend(Unit)
     }
 
     @Deprecated("Required on older Android versions")

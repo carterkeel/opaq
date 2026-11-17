@@ -66,17 +66,20 @@ class Actions(
         launchAction(after = { onCreated(id); platform.ensureSharingService() }, failed = onFailed) { id = engine.createCircle(name).id }
     }
 
-    fun createInvite(circleId: String, hours: Int = 1, onLink: (String) -> Unit) {
+    fun createInvite(circleId: String, hours: Int = 1, multiUse: Boolean = false, onLink: (String) -> Unit) {
         var link = ""
-        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId, hours) }
+        launchAction(after = { onLink(link) }) { link = engine.createInvite(circleId, hours, multiUse) }
     }
 
-    fun deviceCodeMatches(pubkey: String, typed: String): Boolean = engine.deviceCodeMatches(pubkey, typed)
+    fun cancelInvite(secret: String, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.cancelInvite(secret) }
 
-    fun acceptInvite(invite: InviteData, scannedInPerson: Boolean, typedCode: String?, keepRelays: Boolean, onDone: () -> Unit) = launchAction(after = onDone) {
-        engine.acceptInvite(invite, scannedInPerson, typedCode, keepRelays)
+    /** [codesMatch]: the user saw that the inviter's device code matches; false joins unverified. */
+    fun acceptInvite(invite: InviteData, scannedInPerson: Boolean, codesMatch: Boolean, keepRelays: Boolean, onDone: () -> Unit) = launchAction(after = onDone) {
+        engine.acceptInvite(invite, scannedInPerson, codesMatch, keepRelays)
         engine.setSetupDone()
     }
+
+    fun dismissJoinRefusal(circleId: String) = launchAction { engine.dismissJoinRefusal(circleId) }
 
     fun setCirclePrecision(circleId: String, precision: Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
     fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }

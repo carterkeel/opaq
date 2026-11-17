@@ -130,7 +130,7 @@ fun HomeScreen(
     val platform = LocalPlatform.current
 
     if (circle == null) {
-        NoCircles(state, onCreate = { showCreate = true }, onJoin = onJoin, onSettings = onSettings)
+        NoCircles(state, onCreate = { showCreate = true }, onJoin = onJoin, onSettings = onSettings, onDismissRefusal = { actions.dismissJoinRefusal(it) })
     } else {
         val now = rememberNow()
         var focus by remember { mutableStateOf<MapFocus?>(null) }
@@ -145,7 +145,7 @@ fun HomeScreen(
                     Format.isOffline(l, now) -> MapMarker.Kind.OFFLINE
                     else -> MapMarker.Kind.ONLINE
                 }
-                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l)
+                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l, photo = info.photo)
             }
         }
         fun flyTo(pubkey: String): Boolean {
@@ -331,6 +331,7 @@ fun HomeScreen(
                         hasLocationPermission = hasLocationPermission,
                         onRequestLocation = onRequestLocation,
                         onReview = { reviewing = it },
+                        onDismissRefusal = { actions.dismissJoinRefusal(it) },
                         onPerson = { pubkey ->
                             if (flyTo(pubkey)) {
                                 if (sheetY < defaultY - 2f) settle(0f, defaultY)
@@ -463,6 +464,7 @@ private fun PeopleList(
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
+    onDismissRefusal: (String) -> Unit,
     onPerson: (String) -> Unit,
     onProfile: (String) -> Unit,
 ) {
@@ -505,6 +507,9 @@ private fun PeopleList(
                 }
                 state.pendingJoins.forEach { p ->
                     Banner(visible = true, text = "Waiting for ${p.inviterName.ifBlank { "the inviter" }} to let you into ${p.circleName}.", action = null, onAction = null)
+                }
+                state.joinRefusals.forEach { r ->
+                    Banner(visible = true, text = "Couldn't join ${r.circleName}. ${r.message}", action = "OK") { onDismissRefusal(r.circleId) }
                 }
             }
         }
@@ -599,12 +604,19 @@ private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) 
 
 /** Set up, but not in any circle yet (left one, or waiting to be let in). */
 @Composable
-private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit, onSettings: () -> Unit) {
+private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit, onSettings: () -> Unit, onDismissRefusal: (String) -> Unit) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())) {
         TopBar("Quietmap") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(24.dp))
             BigIcon(AppIcons.Circles)
+            state.joinRefusals.forEach { r ->
+                InfoCard {
+                    Text("Couldn't join ${r.circleName}", style = MaterialTheme.typography.titleMedium)
+                    Caption(r.message)
+                    TextButton(onClick = { onDismissRefusal(r.circleId) }) { Text("OK") }
+                }
+            }
             if (state.pendingJoins.isNotEmpty()) {
                 state.pendingJoins.forEach { p ->
                     Text("Waiting for ${p.inviterName.ifBlank { "the inviter" }} to let you into ${p.circleName}", style = MaterialTheme.typography.titleLarge, textAlign = TextAlign.Center)

@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.quietmap.core.Engine
 import app.quietmap.core.protocol.InviteData
 import app.quietmap.core.protocol.InviteLinks
+import app.quietmap.core.protocol.InviteProblem
 import kotlinx.coroutines.CoroutineScope
 
 sealed interface Route {
@@ -39,7 +40,7 @@ sealed interface Route {
     data class Profile(val circleId: String, val pubkey: String) : Route
     data class Add(val circleId: String) : Route
     /** [scanned]: the QR code was scanned in the app, in person, which verifies the inviter. */
-    data class Join(val invite: InviteData?, val scanned: Boolean = false) : Route
+    data class Join(val invite: InviteData?, val scanned: Boolean = false, val problem: InviteProblem? = null) : Route
     data object Settings : Route
     data object EditProfile : Route
     data object JoinOptions : Route
@@ -95,8 +96,8 @@ fun QuietmapScreens(
     fun push(r: Route) { stack.add(r) }
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
-    val openLink: (String) -> Unit = { push(Route.Join(InviteLinks.decode(it))) }
-    val scan: () -> Unit = { platform.scanQrCode { text -> if (text != null) push(Route.Join(InviteLinks.decode(text), scanned = true)) } }
+    val openLink: (String) -> Unit = { push(Route.Join(InviteLinks.decode(it), problem = InviteLinks.problem(it))) }
+    val scan: () -> Unit = { platform.scanQrCode { text -> if (text != null) push(Route.Join(InviteLinks.decode(text), scanned = true, problem = InviteLinks.problem(text))) } }
 
     LaunchedEffect(incomingLink) {
         val l = incomingLink ?: return@LaunchedEffect
@@ -176,7 +177,7 @@ fun QuietmapScreens(
                                         is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop, onHistory = { push(Route.History(route.circleId, route.pubkey)) })
                                         is Route.History -> HistoryScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
                                         is Route.Add -> AddScreen(state, me, route.circleId, actions, ::pop)
-                                        is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home)
+                                        is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home, route.problem)
                                         Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)
                                         Route.Settings -> SettingsScreen(
                                             state, me, relayStatus, sharingSettings, actions, ::pop,

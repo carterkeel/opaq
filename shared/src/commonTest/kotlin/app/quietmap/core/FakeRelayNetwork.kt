@@ -119,10 +119,12 @@ class FakeRelayNetwork(private val clock: () -> Long) {
         fun offline() {
             online = false
             synced.clear()
+            _status.value = _status.value.mapValues { RelayStatus.DISCONNECTED }
         }
 
         fun reconnect() {
             online = true
+            _status.value = _status.value.mapValues { RelayStatus.CONNECTED }
             outbox.toList().also { outbox.clear() }.forEach { accept(it) }
             subs.forEach { (id, filters) -> replay(id, filters) }
         }

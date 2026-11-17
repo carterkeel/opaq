@@ -2,6 +2,7 @@ package app.quietmap
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -194,15 +195,35 @@ class CreateCircleTest {
         tapUntil("Sharing", expected = "Paused")
         tapUntil("Paused", expected = "Sharing")
 
-        // Invite screen with a QR code. Creating an invite asks for the PIN once the last entry is old.
+        // Invite screen with a QR code, as a link several people can use (#53). Creating an invite
+        // asks for the PIN once the last entry is old.
         device.findObject(By.text("Invite")).click()
+        waitFor("Let more than one person use this link").click()
         waitFor("Create invite").click()
         if (device.wait(Until.hasObject(By.text("Enter your PIN")), 5_000)) {
             typePin("PIN")
             waitFor("Continue").click()
         }
-        waitFor("Share link")
+        waitFor("Used by 0 of 10 people")
         shot("invite")
+        // The buttons are below the QR code. Cancel the invite early: back to "Create invite".
+        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
+        waitFor("Share link")
+        waitFor("Cancel this invite").click()
+        waitFor("Create invite")
+        device.pressBack()
+
+        // An invite link cut off at the # (#96): the join screen says it's incomplete.
+        waitFor("Invite")
+        context.startActivity(
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://carterkeel.github.io/quietmap/join"), context, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        )
+        device.wait(Until.findObject(By.textContains("invite link is incomplete")), 20_000) ?: run {
+            logScreen()
+            error("the join screen didn't say the link is incomplete")
+        }
+        shot("join-incomplete")
         device.pressBack()
 
         // Settings, then back to the map.

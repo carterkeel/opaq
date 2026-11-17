@@ -30,6 +30,9 @@ interface RelayTransport {
 
     fun shutdown()
 
+    /** The network came back: relays waiting to reconnect try again now instead of after their backoff. */
+    fun reconnectNow() {}
+
     /**
      * Routes relay connections through a SOCKS proxy (Tor via Orbot on Android), or directly when
      * null. Connections are re-made. If the proxy isn't running, nothing connects: it never falls

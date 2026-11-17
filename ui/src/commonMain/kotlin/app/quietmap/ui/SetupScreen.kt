@@ -227,7 +227,7 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
                 value = link,
                 onValueChange = { link = it },
                 label = { Text("Or paste an invite link") },
-                singleLine = true,
+                maxLines = 4,
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth(),
             )

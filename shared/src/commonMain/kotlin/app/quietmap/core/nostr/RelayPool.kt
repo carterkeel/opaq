@@ -1,6 +1,7 @@
 package app.quietmap.core.nostr
 
 import io.ktor.client.HttpClient
+import io.ktor.client.engine.HttpClientEngineConfig
 import io.ktor.client.engine.ProxyBuilder
 import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.client.plugins.websocket.webSocket
@@ -10,7 +11,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +19,16 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * Makes the platform's websocket engine ping relays every [intervalMillis] and drop a connection
+ * that stops answering. Ktor's own pinger (the WebSockets plugin's pingIntervalMillis) is skipped
+ * for engines with their own websocket sessions, such as OkHttp on Android, so without this a
+ * connection that died silently (network change, NAT timeout) would look connected for good and
+ * nothing would arrive on it until the app restarted.
+ */
+internal expect fun HttpClientEngineConfig.relayKeepAlive(intervalMillis: Long)
 
 /**
  * Keeps websocket connections to a set of relays, replays the current subscriptions on
@@ -33,8 +43,11 @@ class RelayPool(
     private var client = newClient(null)
 
     private fun newClient(proxy: SocksProxy?) = HttpClient {
-        install(WebSockets) { pingIntervalMillis = 30_000 }
-        if (proxy != null) engine { this.proxy = ProxyBuilder.socks(proxy.host, proxy.port) }
+        install(WebSockets) { pingIntervalMillis = PING_MILLIS }
+        engine {
+            relayKeepAlive(PING_MILLIS)
+            if (proxy != null) this.proxy = ProxyBuilder.socks(proxy.host, proxy.port)
+        }
     }
 
     private var proxy: SocksProxy? = null
@@ -104,6 +117,10 @@ class RelayPool(
         mutex.withLock { connections.values.toList() }.forEach { it.send(msg, queueIfOffline) }
     }
 
+    override fun reconnectNow() {
+        live.value.forEach { it.wake.trySend(Unit) }
+    }
+
     override fun isSynced(subscriptionId: String): Boolean = live.value.any { it.isConnected && subscriptionId in it.synced.value }
 
     override fun shutdown() {
@@ -131,6 +148,9 @@ class RelayPool(
     private inner class Connection(val url: String) {
         var job: Job? = null
         private val outbox = Channel<String>(capacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+        /** Cuts a reconnect wait short (the network came back). */
+        val wake = Channel<Unit>(Channel.CONFLATED)
         @kotlin.concurrent.Volatile
         private var connected = false
         val isConnected: Boolean get() = connected
@@ -148,6 +168,7 @@ class RelayPool(
                             connected = true
                             synced.value = emptySet()
                             backoff = 2_000L
+                            wake.tryReceive()
                             setStatus(RelayStatus.CONNECTED)
                             val subs = mutex.withLock { subscriptions }
                             subs.forEach { (id, filters) -> send(Frame.Text(ClientMessages.req(id, filters))) }
@@ -167,8 +188,9 @@ class RelayPool(
                     connected = false
                     synced.value = emptySet()
                     setStatus(RelayStatus.DISCONNECTED)
-                    delay(backoff)
-                    backoff = (backoff * 2).coerceAtMost(60_000L)
+                    // Wait before retrying, unless the network comes back in the meantime.
+                    if (withTimeoutOrNull(backoff) { wake.receive() } != null) backoff = 2_000L
+                    else backoff = (backoff * 2).coerceAtMost(60_000L)
                 }
             }
         }
@@ -192,5 +214,10 @@ class RelayPool(
         }
 
         private fun setStatus(s: RelayStatus) = _status.update { it + (url to s) }
+    }
+
+    private companion object {
+        /** A dead connection is noticed within about two of these. */
+        const val PING_MILLIS = 30_000L
     }
 }

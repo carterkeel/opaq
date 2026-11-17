@@ -16,6 +16,11 @@ import app.quietmap.core.protocol.Backups
 import app.quietmap.core.protocol.CircleCrypto
 import app.quietmap.core.protocol.DeviceCode
 import app.quietmap.core.protocol.InviteLinks
+import app.quietmap.core.protocol.JoinRequestBody
+import app.quietmap.core.protocol.JoinRefusedBody
+import app.quietmap.core.protocol.InviteData
+import app.quietmap.core.protocol.DirectMessages
+import app.quietmap.core.model.Invite
 import app.quietmap.core.protocol.LocationBody
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -440,15 +445,17 @@ class CircleSecurityTest {
         assertNull(InviteLinks.decode(InviteLinks.encode(invite.copy(r = listOf("wss://evil.example")))))
         assertNull(InviteLinks.decode(InviteLinks.encode(invite.copy(e = invite.e + 86_400))))
         // Re-signed by the attacker, it decodes, but names the attacker's key: the device code the
-        // real inviter reads out won't match it, so joining through it is refused.
+        // join screen shows is the attacker's, not the one on Ana's phone.
         val resigned = InviteLinks.decode(InviteLinks.encode(InviteLinks.signed(evil, invite)))!!
+        assertNotEquals(DeviceCode.full(a.me), DeviceCode.full(resigned.k))
         val b = Phone("Ben")
-        assertFailsWith<IllegalArgumentException> { b.engine.acceptInvite(resigned, typedCode = DeviceCode.full(a.me)) }
-        assertFailsWith<IllegalArgumentException> { b.engine.acceptInvite(invite) }
-        assertTrue(b.engine.state.value.pendingJoins.isEmpty())
-        // The right code (as read out by Ana) works.
-        b.engine.acceptInvite(invite, typedCode = DeviceCode.full(a.me).lowercase().replace(" ", ""))
+        // Joining without comparing codes leaves the inviter unverified (no green check).
+        b.engine.acceptInvite(resigned)
         assertEquals(1, b.engine.state.value.pendingJoins.size)
+        assertNotEquals(true, b.engine.state.value.contacts[evil.publicHex]?.verified)
+        // Tapping "The codes match" (or scanning in person) marks the inviter verified.
+        b.engine.acceptInvite(invite, codesMatch = true)
+        assertEquals(a.me, b.engine.state.value.pendingJoins.single().inviterPubkey)
         assertTrue(b.engine.state.value.contacts[a.me]!!.verified)
     }
 
@@ -512,6 +519,157 @@ class CircleSecurityTest {
         sync(a, b)
         assertNotNull(b.circle(c.id))
         assertEquals(setOf("wss://ben.example"), b.client.status.value.keys, "dropped once joined")
+    }
+
+    // Invites: telling joiners why they can't join (#53) -----------------------------------------
+
+    /** A join request from [who], who has the link but no phone in this test. */
+    private suspend fun forgeJoinRequest(via: Phone, invite: InviteData, who: KeyPair = KeyPair.generate()) {
+        val body = JoinRequestBody(who.publicHex, clock, invite.c, invite.s, "Someone")
+        via.client.publish(DirectMessages.seal(who, invite.k, body, clock, InviteLinks.inbox(invite.s)))
+    }
+
+    private fun Phone.sealedSent() = client.published.count { it.kind == Kinds.SEALED_DIRECT }
+
+    @Test
+    fun aUsedInviteTellsTheNextPersonInsteadOfLeavingThemWaiting() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id))!!
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, x)
+        x.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, x)
+        assertEquals(listOf(b.me), a.engine.state.value.joinRequests.map { it.pubkey })
+        assertTrue(x.engine.state.value.pendingJoins.isEmpty(), "no longer waiting")
+        val refusal = x.engine.state.value.joinRefusals.single()
+        assertEquals(JoinRefusedBody.USED, refusal.reason)
+        assertEquals("This invite was already used. Ask for a new one.", refusal.message)
+        // Ben, who used it, is still waiting and gets in.
+        assertEquals(1, b.engine.state.value.pendingJoins.size)
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b, x)
+        assertNotNull(b.circle(c.id))
+        x.engine.dismissJoinRefusal(c.id)
+        assertTrue(x.engine.state.value.joinRefusals.isEmpty())
+    }
+
+    @Test
+    fun expiredAndDeniedJoinsAreToldSo() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        // Ben asks just before the hour is up, and Ana's phone only sees it afterwards.
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id))!!
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        clock += 3700
+        sync(a, b)
+        assertTrue(a.engine.state.value.joinRequests.isEmpty())
+        assertEquals("This invite has expired.", b.engine.state.value.joinRefusals.single().message)
+        // Ana turns Xavier down.
+        x.engine.acceptInvite(InviteLinks.decode(a.engine.createInvite(c.id))!!, scannedInPerson = true)
+        sync(a, x)
+        a.engine.deny(a.engine.state.value.joinRequests.single().id)
+        sync(a, x)
+        assertTrue(x.engine.state.value.pendingJoins.isEmpty())
+        assertEquals("Ana didn't let you in.", x.engine.state.value.joinRefusals.single().message)
+        assertNull(x.circle(c.id))
+    }
+
+    @Test
+    fun refusalsAreRateLimitedPerSenderAndInAll() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id, hours = 24))!!
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, x)
+        val before = a.sealedSent()
+        repeat(5) {
+            x.engine.acceptInvite(invite, scannedInPerson = true)
+            sync(a, x)
+        }
+        assertEquals(1, a.sealedSent() - before, "one reply to someone repeating a used link")
+        clock += Engine.REFUSAL_EVERY_SECONDS
+        x.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, x)
+        assertEquals(2, a.sealedSent() - before, "and another once the wait is over")
+        // Many keys at once: no more than the hourly cap.
+        val start = a.sealedSent()
+        repeat(Engine.MAX_REFUSALS_PER_HOUR + 10) { forgeJoinRequest(x, invite) }
+        sync(a)
+        assertTrue(a.sealedSent() - start <= Engine.MAX_REFUSALS_PER_HOUR)
+        assertEquals(listOf(b.me), a.engine.state.value.joinRequests.map { it.pubkey })
+    }
+
+    @Test
+    fun onlyTheInviterCanTurnSomeoneAwayAndOnlyThem() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id, multiUse = true))!!
+        val inbox = InviteLinks.inbox(invite.s)
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b)
+        suspend fun deliver(signer: KeyPair, body: JoinRefusedBody) {
+            x.client.publish(DirectMessages.seal(signer, b.me, body, clock, inbox))
+            sync(a, b)
+        }
+        val evil = KeyPair.generate()
+        // From someone else, even naming Ana's key: the signature doesn't match.
+        deliver(evil, JoinRefusedBody(evil.publicHex, clock, c.id, to = b.me, invite = inbox, reason = JoinRefusedBody.DENIED))
+        x.client.publish(DirectMessages.seal(evil, b.me, JoinRefusedBody(a.me, clock, c.id, b.me, inbox, JoinRefusedBody.DENIED), clock, inbox))
+        sync(a, b)
+        // Ana's real refusal of someone else, passed on to Ben.
+        deliver(a.engine.identity, JoinRefusedBody(a.me, clock, c.id, to = x.me, invite = inbox, reason = JoinRefusedBody.DENIED))
+        // About another invite, or from before Ben asked.
+        deliver(a.engine.identity, JoinRefusedBody(a.me, clock, c.id, to = b.me, invite = InviteLinks.inbox("b".repeat(32)), reason = JoinRefusedBody.DENIED))
+        deliver(a.engine.identity, JoinRefusedBody(a.me, clock - 3600, c.id, to = b.me, invite = inbox, reason = JoinRefusedBody.DENIED))
+        assertEquals(1, b.engine.state.value.pendingJoins.size, "still waiting")
+        assertTrue(b.engine.state.value.joinRefusals.isEmpty())
+        a.engine.approve(a.engine.state.value.joinRequests.single().id)
+        sync(a, b)
+        assertNotNull(b.circle(c.id))
+    }
+
+    @Test
+    fun aMultiUseInviteLetsUpToTenPeopleAskAndCanBeCancelled() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val d = Phone("Dee"); val x = Phone("Xavier")
+        val c = a.engine.createCircle("Family")
+        val invite = InviteLinks.decode(a.engine.createInvite(c.id, multiUse = true))!!
+        b.engine.acceptInvite(invite, scannedInPerson = true)
+        d.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, b, d)
+        // Ana still approves each person.
+        assertEquals(setOf(b.me, d.me), a.engine.state.value.joinRequests.map { it.pubkey }.toSet())
+        assertTrue(b.circle(c.id) == null && d.circle(c.id) == null)
+        a.engine.state.value.joinRequests.toList().forEach { a.engine.approve(it.id) }
+        sync(a, b, d)
+        assertNotNull(b.circle(c.id))
+        assertNotNull(d.circle(c.id))
+        repeat(Invite.MAX_USES - 2) { forgeJoinRequest(x, invite) }
+        sync(a)
+        val saved = a.engine.state.value.invites.single()
+        assertEquals(Invite.MAX_USES, saved.usedBy.size)
+        assertTrue(saved.used)
+        x.engine.acceptInvite(invite, scannedInPerson = true)
+        sync(a, x)
+        assertEquals(JoinRefusedBody.USED, x.engine.state.value.joinRefusals.single().reason)
+        assertTrue(a.engine.state.value.joinRequests.none { it.pubkey == x.me })
+
+        // A cancelled link stops working straight away.
+        val y = Phone("Yan")
+        val second = InviteLinks.decode(a.engine.createInvite(c.id, multiUse = true))!!
+        a.engine.cancelInvite(second.s)
+        y.engine.acceptInvite(second, scannedInPerson = true)
+        sync(a, y)
+        assertTrue(a.engine.state.value.joinRequests.none { it.pubkey == y.me })
+        assertEquals("This invite was cancelled. Ask for a new one.", y.engine.state.value.joinRefusals.single().message)
+    }
+
+    @Test
+    fun olderSavedInvitesStillLoad() {
+        val old = """{"secret":"${"a".repeat(32)}","circleId":"c","expiresAt":5,"used":true,"v":2}"""
+        val invite = Json { ignoreUnknownKeys = true }.decodeFromString(Invite.serializer(), old)
+        assertEquals(1, invite.maxUses)
+        assertTrue(invite.used && invite.usedBy.isEmpty() && !invite.cancelled)
     }
 
     // QM-12 ------------------------------------------------------------------------------------

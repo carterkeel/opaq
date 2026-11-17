@@ -25,7 +25,7 @@ Location sharing needs at least two devices. Two real phones are best; one phone
 
 1. **Phone A:** enter a name (the photo and PIN steps are optional), tap **Create a circle**, allow location (choose *While using the app*), and allow notifications. You should see a "Sharing your location" notification.
 2. **Phone A:** tap **Invite**, then **Create invite**. A QR code appears, along with **Share link**.
-3. **Phone B:** in person, tap **Join a circle → Scan QR code** and point it at phone A. Remotely, tap the shared link, or paste it into **Or paste an invite link** and tap **Open invite**; then type the device code that phone A's owner reads out to you. Enter a name and tap **Ask to join**.
+3. **Phone B:** in person, tap **Join a circle → Scan QR code** and point it at phone A, enter a name and tap **Ask to join**. Remotely, tap the shared link (the page has an **Open in Quietmap** button), or paste the link or the whole message into **Or paste an invite link** and tap **Open invite**. The join screen shows phone A's device code: compare it with the code phone A's owner reads out and tap **The codes match**, or tap **Join without checking** (A then has no green check until you mark them verified from their profile).
 4. **Phone A:** a banner says B wants to join. Tap **Review** and compare the device code with phone B, then **Approve**.
 5. **Phone B:** once approved, the circle shows who's in it and asks you to tap **Start sharing**. Within a minute or two, both phones should show each other on the map and in the list.
 
@@ -37,7 +37,12 @@ Things to check after that:
 | Leave phone B still for 10 minutes | Updates slow to about every 5 minutes; status shows "Still" |
 | Turn phone B off for an hour | Phone A shows "Offline · last seen 1 h ago" after 45 minutes |
 | Phone A removes B (profile → Remove) | B's circle disappears; A no longer receives B's updates |
-| Reuse an invite link | The second person's request is ignored (single use) |
+| Reuse an invite link | The second person is told "This invite was already used. Ask for a new one." and stops waiting |
+| Turn **Let more than one person use this link** on, then join from two phones | A approves each one; the invite screen counts "Used by 2 of 10 people" |
+| Cancel an invite, then try it | "This invite was cancelled. Ask for a new one." |
+| Phone A denies a request | Phone B shows "A didn't let you in." |
+| Open a shared link cut off at the # (delete everything after it) | The page and the app's join screen both say the link is incomplete |
+| Paste the whole shared message (not just the link) into **Or paste an invite link** | The invite opens |
 | Restart phone B | Sharing resumes if "Allow all the time" was granted |
 | Settings → Relays | Green dots for connected relays; removing one still works |
 
