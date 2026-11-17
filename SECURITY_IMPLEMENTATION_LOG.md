@@ -239,8 +239,10 @@ The rest of QM-02 is under Phase 12 below.
   - an inviter already verified.
 
   The engine enforces this, not just the screen. A re-signed attacker link decodes, but it carries the attacker's key, so the real inviter's code doesn't match and the join is refused. The invite screen shows the inviter's code with instructions to read it out.
+
+  *Changed later (#95):* typing the code was replaced by a tap. The join screen shows the code from the link; "The codes match" marks the inviter verified, and "Join without checking" joins with the inviter unverified (no green check) to be verified later from their profile. A re-signed attacker link still shows the attacker's code, which won't match the one the real inviter reads out, but the engine no longer refuses an unchecked join; the circle still shares nothing until the joiner has seen who's in it and taps "Start sharing".
 - **Nothing shared until confirmed.** A circle you've just been let into starts unconfirmed: no location and no profile go to it. The home screen shows who is in it and asks "Start sharing". This applies even after a verified join.
-- **Shorter invites.** Invites last 1 hour by default (24 hours is an option), and stay single-use.
+- **Shorter invites.** Invites last 1 hour by default (24 hours is an option), and stay single-use. (Later, #53: an inviter can choose a link for up to 10 people, still approving each one, and can cancel it; refused joiners are told why.)
 - **Private inboxes.** v2 join requests and the approval go to an inbox tag derived from the invite secret, never to either person's public key.
 - **Relays from invites (QM-09).** Relays named in an invite are shown on the join screen and used only while that join is in progress. They are dropped when the join completes or expires, unless the user turns on "Keep using these relays". Only `wss://` relays are accepted, at most four.
 
