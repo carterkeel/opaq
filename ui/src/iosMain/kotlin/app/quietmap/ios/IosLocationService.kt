@@ -8,7 +8,7 @@ import kotlinx.cinterop.useContents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreLocation.CLAuthorizationStatus
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
@@ -47,12 +49,19 @@ import platform.darwin.NSObject
  * Everything here runs on the main thread, where CoreLocation delivers its callbacks.
  */
 @OptIn(ExperimentalForeignApi::class)
-class IosLocationService(private val engine: Engine, private val scope: CoroutineScope) {
+class IosLocationService(private val engine: Engine, private val scope: CoroutineScope, private val notifier: IosNotifier) {
     private val manager = CLLocationManager()
     private val delegate = Delegate()
     private val policy = MotionPolicy()
     private var publishJob: Job? = null
     private var highAccuracy: Boolean? = null
+    private var lastReminderAt = 0L
+
+    /** Wakes the publish loop early: a fix arrived while an update is due. */
+    private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    /** The last update reached no relay (offline, or relays still confirming the circle key). */
+    private var missed = false
 
     private val _authorization = MutableStateFlow(manager.authorizationStatus)
     /** Current location permission; recomposes the UI when the user changes it. */
@@ -133,16 +142,22 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         publishJob = scope.launch(Dispatchers.Main) {
             while (isActive) {
                 val now = nowSeconds()
+                if (engine.consentDue() && now - lastReminderAt > 24 * 3600) {
+                    lastReminderAt = now
+                    notifier.sharingReminder()
+                }
                 adjustAccuracy()
-                if (policy.shouldPublish(now)) {
+                // An update that reached no relay is replaced as soon as one would get through, rather
+                // than at the next interval: the relays never saw the missed one.
+                if (policy.shouldPublish(now) || (missed && engine.canPublishNow())) {
                     val battery = batteryPercent()
                     val status = if (battery != null && battery <= 5) "low battery" else null
                     policy.snapshot(battery, status)?.let { loc ->
                         policy.markPublished(now)
-                        launch(Dispatchers.Default) { runCatching { engine.publishLocation(loc) } }
+                        missed = !withContext(Dispatchers.Default) { runCatching { engine.publishLocation(loc) }.getOrDefault(false) }
                     }
                 }
-                delay(TICK_MS)
+                withTimeoutOrNull(TICK_MS) { wake.receive() }
             }
         }
     }
@@ -188,6 +203,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
             ),
         )
         adjustAccuracy()
+        // Publish with this fresh fix instead of waiting for the next tick (and an older fix).
+        if (policy.shouldPublish(nowSeconds())) wake.trySend(Unit)
     }
 
     private inner class Delegate : NSObject(), CLLocationManagerDelegateProtocol {

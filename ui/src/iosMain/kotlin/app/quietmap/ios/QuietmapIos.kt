@@ -21,21 +21,39 @@ import app.quietmap.core.Engine
 import app.quietmap.core.protocol.InviteLinks
 import app.quietmap.ui.QuietmapScreens
 import app.quietmap.ui.epochSeconds
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
 import platform.Foundation.NSLog
-import platform.Foundation.NSString
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSString
+import platform.Network.nw_path_get_status
+import platform.Network.nw_path_monitor_create
+import platform.Network.nw_path_monitor_set_queue
+import platform.Network.nw_path_monitor_set_update_handler
+import platform.Network.nw_path_monitor_start
+import platform.Network.nw_path_status_satisfied
 import platform.UIKit.UIApplication
-import platform.UIKit.UIDevice
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationProtectedDataDidBecomeAvailable
+import platform.UIKit.UIApplicationWillResignActiveNotification
+import platform.UIKit.UIColor
+import platform.UIKit.UIDevice
+import platform.UIKit.UIView
+import platform.UIKit.UIViewAutoresizingFlexibleHeight
+import platform.UIKit.UIViewAutoresizingFlexibleWidth
 import platform.UIKit.UIViewController
+import platform.UIKit.UIWindow
+import platform.UIKit.UIWindowScene
+import platform.UIKit.systemBackgroundColor
 import platform.darwin.NSObjectProtocol
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS app's Kotlin side. Swift calls three things:
@@ -44,6 +62,7 @@ import platform.darwin.NSObjectProtocol
  * - `QuietmapIos.shared.handleUrl(url:)` for `quietmap://join` links;
  * - `QuietmapIosKt.MainViewController()` for the screen.
  */
+@OptIn(ExperimentalForeignApi::class)
 object QuietmapIos {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -62,12 +81,18 @@ object QuietmapIos {
     }
 
     /** Created on first use, on the main thread, as CoreLocation requires. */
-    val location: IosLocationService by lazy { IosLocationService(engine, scope) }
+    val location: IosLocationService by lazy { IosLocationService(engine, scope, notifier) }
+
+    /** Join/leave notifications and the monthly sharing reminder. */
+    val notifier: IosNotifier by lazy { IosNotifier(engine, scope) }
 
     internal val platform: IosPlatform by lazy { IosPlatform(location) }
 
     internal val incomingLink = MutableStateFlow<String?>(null)
     private var unlockObserver: NSObjectProtocol? = null
+    private var started = false
+    private var networkUp: Boolean? = null
+    private var cover: UIView? = null
 
     /**
      * Starts relays and, if sharing is on, location updates. After a reboot iOS can relaunch the
@@ -90,7 +115,52 @@ object QuietmapIos {
             return
         }
         location.update()
+        if (started) return
+        started = true
+        watchNetwork()
+        coverInAppSwitcher()
+        notifier // follow notices from now on, even if the screen never opens (background relaunch)
     }
+
+    /** The network came back: reconnect to relays now instead of after the retry wait, as Android does. */
+    private fun watchNetwork() {
+        val monitor = nw_path_monitor_create()
+        nw_path_monitor_set_update_handler(monitor) { path ->
+            val up = nw_path_get_status(path) == nw_path_status_satisfied
+            if (up && networkUp == false) engine.networkAvailable()
+            networkUp = up
+        }
+        nw_path_monitor_set_queue(monitor, dispatch_get_main_queue())
+        nw_path_monitor_start(monitor)
+    }
+
+    /**
+     * "Hide in recent apps": covers the screen whenever Quietmap stops being the active app, so the
+     * app switcher's snapshot shows a blank page instead of the map. (iOS gives apps no way to block
+     * screenshots, unlike Android's FLAG_SECURE.)
+     */
+    private fun coverInAppSwitcher() {
+        val center = NSNotificationCenter.defaultCenter
+        center.addObserverForName(UIApplicationWillResignActiveNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            if (engine.state.value.hideInRecents && cover == null) {
+                val window = keyWindow() ?: return@addObserverForName
+                cover = UIView(frame = window.bounds).apply {
+                    backgroundColor = UIColor.systemBackgroundColor
+                    autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+                    window.addSubview(this)
+                }
+            }
+        }
+        center.addObserverForName(UIApplicationDidBecomeActiveNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            cover?.removeFromSuperview()
+            cover = null
+        }
+    }
+
+    private fun keyWindow(): UIWindow? = UIApplication.sharedApplication.connectedScenes
+        .filterIsInstance<UIWindowScene>()
+        .flatMap { scene -> scene.windows.filterIsInstance<UIWindow>() }
+        .firstOrNull { it.isKeyWindow() }
 
     /** Handles a `quietmap://join…` or shared web invite link. Returns false for links that aren't Quietmap's. */
     fun handleUrl(url: String): Boolean {
@@ -114,6 +184,11 @@ private fun IosRoot() {
     val message by platform.message.collectAsState()
     val showIndicator by location.showIndicator.collectAsState()
     val sharingSettings = remember(authorization, showIndicator) { platform.sharingSettings(location.hasAlways, showIndicator) }
+    val state by app.engine.state.collectAsState()
+    // Ask about notifications once someone can join or leave, after the location prompt (iOS shows
+    // one system prompt at a time).
+    val askNotifications = state.circles.isNotEmpty() && authorization != kCLAuthorizationStatusNotDetermined
+    LaunchedEffect(askNotifications) { if (askNotifications) app.notifier.requestPermission() }
 
     Box(Modifier.fillMaxSize()) {
         QuietmapScreens(

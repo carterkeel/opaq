@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -158,9 +159,17 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
 fun NewPinFields(onDone: (() -> Unit)? = null, onValid: (String?) -> Unit) {
     var pin by remember { mutableStateOf("") }
     var again by remember { mutableStateOf("") }
+    val focus = LocalFocusManager.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         PinField(pin, { pin = it; onValid(if (it.length >= 4 && it == again) it else null) }, "New PIN (4 to 8 digits)")
-        PinField(again, { again = it; onValid(if (pin.length >= 4 && pin == it) pin else null) }, "New PIN again", onDone = onDone ?: {})
+        PinField(again, {
+            again = it
+            val valid = pin.length >= 4 && pin == it
+            onValid(if (valid) pin else null)
+            // Both match: close the keyboard so the button underneath shows. iOS number pads have
+            // no key to submit or close them.
+            if (valid) focus.clearFocus()
+        }, "New PIN again", onDone = onDone ?: {})
         if (again.isNotEmpty() && again != pin) Caption("The PINs don't match.")
     }
 }

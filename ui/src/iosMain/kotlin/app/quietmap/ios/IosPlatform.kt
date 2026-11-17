@@ -61,6 +61,9 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     // iOS has no persistent notification; the system location arrow is the sign that sharing is on.
     override val sharingIndicatorText = "The location arrow shows at the top of the screen while you're sharing"
 
+    // iOS lets apps cover their app-switcher snapshot, but not block screenshots.
+    override val hideInRecentsDetail = "Blank Quietmap's screen in the app switcher"
+
     private val filePicker = IosFilePicker(::showMessage)
 
     override fun saveTextFile(fileName: String, text: String, onDone: (Boolean) -> Unit) {
