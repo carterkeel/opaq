@@ -29,6 +29,7 @@ import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSDataWritingAtomic
 import platform.Foundation.NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSLock
 import platform.Foundation.NSNumber
@@ -37,6 +38,7 @@ import platform.Foundation.NSURLIsExcludedFromBackupKey
 import platform.Foundation.NSUserDomainMask
 import platform.Foundation.dataWithBytes
 import platform.Foundation.dataWithContentsOfURL
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.writeToURL
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
@@ -108,7 +110,7 @@ class IosStateStore internal constructor(private val keys: KeyStore) : StateStor
     override fun setAside() {
         lock.lock()
         try {
-            val target = dir.URLByAppendingPathComponent("state.bin.unreadable-${platform.Foundation.NSDate().timeIntervalSince1970.toLong()}")!!
+            val target = dir.URLByAppendingPathComponent("state.bin.unreadable-${NSDate().timeIntervalSince1970.toLong()}")!!
             NSFileManager.defaultManager.moveItemAtURL(file, toURL = target, error = null)
         } finally {
             lock.unlock()

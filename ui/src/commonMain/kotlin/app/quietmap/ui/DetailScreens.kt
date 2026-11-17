@@ -600,7 +600,7 @@ fun SettingsScreen(
             SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
             SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
         }
-        SwitchRow("Hide in recent apps", "Blank Quietmap's screen in the app switcher and screenshots", state.hideInRecents, AppIcons.Shield) { on ->
+        SwitchRow("Hide in recent apps", LocalPlatform.current.hideInRecentsDetail, state.hideInRecents, AppIcons.Shield) { on ->
             if (on) actions.setHideInRecents(true) else gate.require { actions.setHideInRecents(false) }
         }
         SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)

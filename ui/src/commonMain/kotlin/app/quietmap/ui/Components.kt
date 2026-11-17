@@ -1,6 +1,7 @@
 package app.quietmap.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,6 +48,8 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -408,10 +411,14 @@ fun ConfirmSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
     ) {
-        Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        // Scrolls, so the buttons can be reached above the keyboard on small screens. Tapping the
+        // title or text closes the keyboard: iOS number pads have no key for that.
+        val focus = LocalFocusManager.current
+        val closeKeyboard = Modifier.pointerInput(Unit) { detectTapGestures { focus.clearFocus() } }
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             if (header != null) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { header() }
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            if (text != null) Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(title, style = MaterialTheme.typography.titleLarge, modifier = closeKeyboard)
+            if (text != null) Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = closeKeyboard)
             body?.invoke(this)
             Spacer(Modifier.heightIn(min = 4.dp))
             if (destructive) DangerButton(confirm, onConfirm) else PrimaryButton(confirm, onConfirm, enabled = confirmEnabled)
