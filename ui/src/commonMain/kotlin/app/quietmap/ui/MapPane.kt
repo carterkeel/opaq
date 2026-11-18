@@ -129,7 +129,7 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - People close together merge into one bubble with a count, and separate as you zoom in.
  * - Tapping a person's dot calls [onPersonClick] with their id; tapping a bubble zooms in on it.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
- * - [bottomInset] keeps centred points above the people sheet.
+ * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
  */
 @Composable
@@ -141,6 +141,7 @@ fun MapPane(
     modifier: Modifier = Modifier,
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
+    endInset: Dp = 0.dp,
 ) {
     val scope = rememberCoroutineScope()
     val onPerson by rememberUpdatedState(onPersonClick)
@@ -284,7 +285,7 @@ fun MapPane(
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
-            viewportInsets = PaddingValues(bottom = bottomInset),
+            viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
             interactions = Interactions,
             overlay = {},
         )

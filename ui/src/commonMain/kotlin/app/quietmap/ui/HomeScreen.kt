@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -73,6 +74,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -171,8 +173,10 @@ fun HomeScreen(
             val collapsedY = fullH - insetBottom - with(density) { 92.dp.toPx() }
             val defaultY = fullH * (2f / 3f)
             val anchors = remember(fullH, topGap, collapsedY) { listOf(topGap, defaultY, collapsedY) }
-            var sheetY by remember { mutableFloatStateOf(defaultY) }
-            if (sheetY > collapsedY || sheetY < topGap) sheetY = sheetY.coerceIn(topGap, collapsedY)
+            val landscape = maxWidth > maxHeight
+            // Back to a third of the screen whenever the phone turns: positions don't carry over.
+            var sheetY by remember(landscape) { mutableFloatStateOf(defaultY) }
+            if (!landscape && (sheetY > collapsedY || sheetY < topGap)) sheetY = sheetY.coerceIn(topGap, collapsedY)
             val scope = rememberCoroutineScope()
             var settleJob by remember { mutableStateOf<Job?>(null) }
 
@@ -196,6 +200,34 @@ fun HomeScreen(
                     }
                 }
             }
+            // Landscape: the people list is a panel at the end side, as wide as the screen is tall (about
+            // the width it has in portrait), and slides away to give the map the whole screen.
+            val rtl = layoutDirection == LayoutDirection.Rtl
+            val insetEnd = if (rtl) insetLeft else insetRight
+            val insetStart = if (rtl) insetRight else insetLeft
+            val panelW = with(density) { minOf(maxHeight, 400.dp).toPx() } + insetEnd
+            var panelOffset by remember(panelW) { mutableFloatStateOf(if (state.peoplePanelHidden) panelW else 0f) }
+            val panelShown = panelW - panelOffset
+            // Drags are in screen pixels; the panel slides towards the end edge, which is left in RTL.
+            val toEnd = if (rtl) -1f else 1f
+            fun slidePanel(hide: Boolean, velocity: Float = 0f) {
+                settleJob?.cancel()
+                actions.setPeoplePanelHidden(hide)
+                settleJob = scope.launch {
+                    animate(panelOffset, if (hide) panelW else 0f, velocity, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)) { v, _ ->
+                        panelOffset = v
+                    }
+                }
+            }
+            val panelDrag = rememberDraggableState { dx ->
+                settleJob?.cancel()
+                panelOffset = (panelOffset + dx * toEnd).coerceIn(0f, panelW)
+            }
+            fun panelDragStopped(velocity: Float) {
+                val v = velocity * toEnd
+                slidePanel(hide = if (abs(v) > 1000f) v > 0 else panelOffset > panelW / 2, velocity = v)
+            }
+
             // The list scrolls only once the sheet is fully open; before that, swipes move the sheet.
             val nested = remember(anchors) {
                 object : NestedScrollConnection {
@@ -221,7 +253,8 @@ fun HomeScreen(
                     markers = markers,
                     focusKey = circle.id,
                     focus = focus,
-                    bottomInset = with(density) { (fullH - defaultY).toDp() },
+                    bottomInset = if (landscape) 0.dp else with(density) { (fullH - defaultY).toDp() },
+                    endInset = if (landscape) with(density) { panelW.toDp() } else 0.dp,
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = { onOpenProfile(circle.id, it) },
@@ -242,6 +275,8 @@ fun HomeScreen(
                 Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(bars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                    // In landscape, stay over the map, clear of the people panel.
+                    .padding(end = if (landscape) with(density) { (panelShown - insetEnd).coerceAtLeast(0f).toDp() } else 0.dp)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -267,6 +302,102 @@ fun HomeScreen(
                 MapButton(AppIcons.Settings, "Settings", onSettings)
             }
 
+            val people: @Composable (onPerson: (String) -> Unit) -> Unit = { onPerson ->
+                PeopleList(
+                    state = state,
+                    me = me,
+                    circle = circle,
+                    now = now,
+                    shareStatus = actions.shareStatus(circle),
+                    sharingBlocked = sharingBlocked,
+                    onFixSharing = onFixSharing,
+                    onStartSharing = { gate.require { actions.confirmCircle(circle.id) } },
+                    hasLocationPermission = hasLocationPermission,
+                    onRequestLocation = onRequestLocation,
+                    onReview = { reviewing = it },
+                    onDismissRefusal = { actions.dismissJoinRefusal(it) },
+                    onPerson = onPerson,
+                    onProfile = { onOpenProfile(circle.id, it) },
+                )
+            }
+            val centerOnMe = { flyTo(me) || run { platform.showMessage("Your location isn't known yet"); true } }
+
+            if (landscape) {
+                val gap = with(density) { 16.dp.toPx() }
+                // Recenter, and a button that brings the panel back, in the map's bottom corner.
+                val hiddenFraction = (panelOffset / panelW).coerceIn(0f, 1f)
+                Row(
+                    Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset { IntOffset(-(maxOf(panelShown, insetEnd) + gap).roundToInt(), -(insetBottom + gap).roundToInt()) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (hiddenFraction > 0.01f) {
+                        Surface(
+                            onClick = { slidePanel(false) },
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.surface,
+                            shadowElevation = 3.dp,
+                            modifier = Modifier.alpha(hiddenFraction),
+                        ) {
+                            Row(Modifier.height(44.dp).padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Icon(AppIcons.People, contentDescription = "Show people")
+                                Spacer(Modifier.width(6.dp))
+                                Text("${circle.members.size}", style = MaterialTheme.typography.titleSmall)
+                            }
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    MapButton(AppIcons.MyLocation, "Center on me") { centerOnMe() }
+                }
+                Text(
+                    MAP_ATTRIBUTION,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .offset { IntOffset((gap + insetStart).roundToInt(), -(insetBottom + with(density) { 4.dp.toPx() }).roundToInt()) },
+                )
+
+                // The people panel. Drag or tap its handle to slide it away.
+                Surface(
+                    shape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    shadowElevation = 8.dp,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset { IntOffset(panelOffset.roundToInt(), 0) }
+                        .width(with(density) { panelW.toDp() })
+                        .fillMaxHeight(),
+                ) {
+                    Row(Modifier.fillMaxSize().windowInsetsPadding(bars.only(WindowInsetsSides.End + WindowInsetsSides.Vertical))) {
+                        Box(
+                            Modifier
+                                .width(22.dp)
+                                .fillMaxHeight()
+                                .draggable(panelDrag, Orientation.Horizontal, onDragStopped = { v -> panelDragStopped(v) })
+                                .clickable(onClickLabel = "Hide the people list") { slidePanel(true) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(4.dp).height(36.dp)) {}
+                        }
+                        Column(Modifier.weight(1f).padding(top = 8.dp)) {
+                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
+                            people { pubkey -> if (!flyTo(pubkey)) onOpenProfile(circle.id, pubkey) }
+                        }
+                    }
+                }
+                // With the panel away, a swipe in from the end edge brings it back.
+                if (panelOffset > 0f) {
+                    Box(
+                        Modifier
+                            .align(Alignment.TopEnd)
+                            .width(with(density) { insetEnd.toDp() } + 20.dp)
+                            .fillMaxHeight()
+                            .draggable(panelDrag, Orientation.Horizontal, onDragStopped = { v -> panelDragStopped(v) }),
+                    )
+                }
+            } else {
             // Recenter button and map credits ride just above the sheet, and fade out as it nears the top.
             val buttonSize = with(density) { 44.dp.toPx() }
             val gap = with(density) { 16.dp.toPx() }
@@ -279,7 +410,7 @@ fun HomeScreen(
                     .offset { IntOffset(-(gap + insetRight).roundToInt(), floatY.roundToInt()) }
                     .alpha(floatAlpha),
             ) {
-                MapButton(AppIcons.MyLocation, "Center on me") { flyTo(me) || run { platform.showMessage("Your location isn't known yet"); true } }
+                MapButton(AppIcons.MyLocation, "Center on me") { centerOnMe() }
             }
             Text(
                 MAP_ATTRIBUTION,
@@ -320,28 +451,13 @@ fun HomeScreen(
                         }
                         SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
                     }
-                    PeopleList(
-                        state = state,
-                        me = me,
-                        circle = circle,
-                        now = now,
-                        shareStatus = actions.shareStatus(circle),
-                        sharingBlocked = sharingBlocked,
-                        onFixSharing = onFixSharing,
-                        onStartSharing = { gate.require { actions.confirmCircle(circle.id) } },
-                        hasLocationPermission = hasLocationPermission,
-                        onRequestLocation = onRequestLocation,
-                        onReview = { reviewing = it },
-                        onDismissRefusal = { actions.dismissJoinRefusal(it) },
-                        onPerson = { pubkey ->
-                            if (flyTo(pubkey)) {
-                                if (sheetY < defaultY - 2f) settle(0f, defaultY)
-                            } else {
-                                onOpenProfile(circle.id, pubkey)
-                            }
-                        },
-                        onProfile = { onOpenProfile(circle.id, it) },
-                    )
+                    people { pubkey ->
+                        if (flyTo(pubkey)) {
+                            if (sheetY < defaultY - 2f) settle(0f, defaultY)
+                        } else {
+                            onOpenProfile(circle.id, pubkey)
+                        }
+                    }
                 }
             }
 
@@ -356,6 +472,7 @@ fun HomeScreen(
                     .alpha(((collapsedY - sheetY) / (collapsedY - defaultY)).coerceIn(0f, 1f))
                     .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
             )
+            }
         }
     }
 
