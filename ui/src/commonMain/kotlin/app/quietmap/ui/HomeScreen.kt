@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -702,6 +703,8 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
 @Composable
 private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) -> Unit, onNew: () -> Unit, onJoin: () -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+      // Scrolls when there are many circles or the phone is sideways.
+      Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Your circles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
         state.circles.forEach { c ->
             SettingsRow(
@@ -717,13 +720,15 @@ private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) 
         SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
         SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
         Spacer(Modifier.height(24.dp))
+      }
     }
 }
 
 /** Set up, but not in any circle yet (left one, or waiting to be let in). */
 @Composable
 private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit, onSettings: () -> Unit, onDismissRefusal: (String) -> Unit) {
-    Column(Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState())) {
+    Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH).verticalScroll(rememberScrollState())) {
         TopBar("Quietmap") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(24.dp))
@@ -748,5 +753,6 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
             PrimaryButton("Create a circle", onCreate)
             TonalButton("Join a circle", onJoin, Modifier.fillMaxWidth(), icon = AppIcons.ScanQr)
         }
+    }
     }
 }
