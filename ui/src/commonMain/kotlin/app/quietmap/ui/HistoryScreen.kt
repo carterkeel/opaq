@@ -1,15 +1,21 @@
 package app.quietmap.ui
 
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -78,7 +84,7 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
     // stretches there are (they can split or merge, so the index may mean a different one).
     var selected by remember(day, segments.size) { mutableStateOf<Int?>(null) }
 
-    ScreenScaffold(if (pubkey == me) "Your history" else "$name's history", onBack) {
+    val dayRow: @Composable () -> Unit = {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { day = localDayStart(day - 3600) }, enabled = day > oldest) {
                 Icon(AppIcons.ChevronLeft, contentDescription = "Previous day")
@@ -97,22 +103,12 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 Icon(AppIcons.ChevronRight, contentDescription = "Next day")
             }
         }
-
-        if (state.historyDays == 0) {
-            InfoCard(Gutter) {
-                Text("History is off", style = MaterialTheme.typography.titleSmall)
-                Caption("Turn it on in Settings, under Privacy. It's kept only on this phone.")
-            }
-            return@ScreenScaffold
-        }
-
-        val shown = points.orEmpty()
-        val focus = selected?.let { segments.getOrNull(it)?.points }
-        Box(
-            Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(300.dp)
-                .clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
-        ) {
-            if (shown.isNotEmpty()) key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxWidth().height(300.dp), darkMap = state.darkMap) }
+    }
+    val shown = points.orEmpty()
+    val focus = selected?.let { segments.getOrNull(it)?.points }
+    val mapBox: @Composable (Modifier) -> Unit = { modifier ->
+        Box(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            if (shown.isNotEmpty()) key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxSize(), darkMap = state.darkMap) }
             else Text(
                 if (points == null) "" else "No history for this day",
                 style = MaterialTheme.typography.bodyMedium,
@@ -120,7 +116,8 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 modifier = Modifier.align(Alignment.Center),
             )
         }
-
+    }
+    val list: @Composable () -> Unit = {
         segments.asReversed().forEachIndexed { reversedIndex, seg ->
             val index = segments.size - 1 - reversedIndex
             SegmentRow(seg, selected == index) { selected = if (selected == index) null else index }
@@ -130,6 +127,39 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 "Gaps are times this phone or theirs was offline. Change how long in Settings.",
             Gutter.then(Modifier.padding(top = 12.dp)),
         )
+    }
+    val off = state.historyDays == 0
+    val offCard: @Composable () -> Unit = {
+        InfoCard(Gutter) {
+            Text("History is off", style = MaterialTheme.typography.titleSmall)
+            Caption("Turn it on in Settings, under Privacy. It's kept only on this phone.")
+        }
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        TopBar(if (pubkey == me) "Your history" else "$name's history", onBack)
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val listWidth = minOf(maxHeight + 40.dp, 400.dp)
+            if (maxWidth > maxHeight && !off) {
+                // Sideways: the map fills the left, the day and its stretches scroll on the right,
+                // like the people panel on the home screen.
+                Row(Modifier.fillMaxSize()) {
+                    mapBox(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 8.dp, bottom = 16.dp))
+                    Column(Modifier.width(listWidth).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+                        dayRow()
+                        list()
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
+                    dayRow()
+                    if (off) offCard() else {
+                        mapBox(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(300.dp))
+                        list()
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -164,7 +194,8 @@ private fun SegmentRow(seg: HistorySegment, selected: Boolean, onClick: () -> Un
 @Composable
 fun HistoryDaysSheet(current: Int, onPick: (Int) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        // Scrolls when the phone is sideways and the list is taller than the screen.
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
             Text("Keep location history for", style = MaterialTheme.typography.titleLarge, modifier = Gutter)
             Caption(
                 "Where people in your circles have been, kept only on this phone, so you can look back from their profile. " +

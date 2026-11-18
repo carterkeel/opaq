@@ -13,7 +13,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -124,11 +128,14 @@ fun QuietmapScreens(
                 Box(Modifier.fillMaxSize()) {
                     val unreadable = recovery
                     if (unreadable != null) {
-                        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-                            RecoveryScreen(unreadable, actions, onRestore = { push(Route.Restore) })
+                        Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+                            Box(Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH)) {
+                                RecoveryScreen(unreadable, actions, onRestore = { push(Route.Restore) })
+                            }
                         }
                     } else if (showSetup) {
-                        Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                        Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+                          Box(Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH)) {
                             SetupScreen(
                                 state = state,
                                 me = me,
@@ -140,6 +147,7 @@ fun QuietmapScreens(
                                 onRestore = { push(Route.Restore) },
                                 onCircleCreated = selectCircle,
                             )
+                          }
                         }
                     } else {
                         HomeScreen(
@@ -172,7 +180,10 @@ fun QuietmapScreens(
                         when (val route = routes.last()) {
                             Route.Home -> Box(Modifier.fillMaxSize()) // empty: the always-composed home shows through
                             else -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                                Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+                                Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+                                  // On a wide screen (a phone turned sideways) rows and pickers keep a readable
+                                  // width, centred, like Signal. The history map uses the whole width.
+                                  Box(if (route is Route.History) Modifier.fillMaxSize() else Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH)) {
                                     when (route) {
                                         is Route.Profile -> ProfileScreen(state, me, route.circleId, route.pubkey, actions, ::pop, onHistory = { push(Route.History(route.circleId, route.pubkey)) })
                                         is Route.History -> HistoryScreen(state, me, route.circleId, route.pubkey, actions, ::pop)
@@ -194,6 +205,7 @@ fun QuietmapScreens(
                                         Route.Restore -> RestoreScreen(actions, ::pop) { selectedCircle = null; home() }
                                         Route.Home -> Unit
                                     }
+                                  }
                                 }
                             }
                         }
@@ -205,6 +217,9 @@ fun QuietmapScreens(
         }
     }
 }
+
+/** The widest a screen's content gets, so rows don't stretch across a phone turned sideways. */
+internal val MAX_CONTENT_WIDTH = 640.dp
 
 /** Moving between screens (and setup steps), like Signal: short, eased, no bounce. */
 internal val screenSlideSpec: FiniteAnimationSpec<IntOffset> = tween(durationMillis = 220, easing = FastOutSlowInEasing)
