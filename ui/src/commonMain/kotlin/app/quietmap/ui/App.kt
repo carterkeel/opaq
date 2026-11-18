@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -220,6 +221,20 @@ fun QuietmapScreens(
 
 /** The widest a screen's content gets, so rows don't stretch across a phone turned sideways. */
 internal val MAX_CONTENT_WIDTH = 640.dp
+
+/**
+ * A people panel beside the map rather than a sheet under it whenever the screen is wider than it
+ * is tall: a phone turned sideways, an unfolded foldable held flat, a tablet in landscape. Held
+ * upright, a foldable or tablet gets the same sheet as a phone.
+ */
+internal fun usesSidePanel(width: Dp, height: Dp): Boolean = width > height
+
+/**
+ * How wide that panel is: about a phone's width (the list as it is in portrait), up to 400 dp,
+ * leaving the map at least half the screen. Never taller than the screen is high, so a phone
+ * sideways keeps the width its list has upright.
+ */
+internal fun sidePanelWidth(width: Dp, height: Dp): Dp = minOf(400.dp, height, maxOf(300.dp, width * 0.45f))
 
 /** Moving between screens (and setup steps), like Signal: short, eased, no bounce. */
 internal val screenSlideSpec: FiniteAnimationSpec<IntOffset> = tween(durationMillis = 220, easing = FastOutSlowInEasing)
