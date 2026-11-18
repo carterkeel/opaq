@@ -139,8 +139,8 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
     Column(Modifier.fillMaxSize()) {
         TopBar(if (pubkey == me) "Your history" else "$name's history", onBack)
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            val listWidth = minOf(maxHeight + 40.dp, 400.dp)
-            if (maxWidth > maxHeight && !off) {
+            val listWidth = sidePanelWidth(maxWidth, maxHeight)
+            if (usesSidePanel(maxWidth, maxHeight) && !off) {
                 // Sideways: the map fills the left, the day and its stretches scroll on the right,
                 // like the people panel on the home screen.
                 Row(Modifier.fillMaxSize()) {

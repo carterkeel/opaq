@@ -174,7 +174,7 @@ fun HomeScreen(
             val collapsedY = fullH - insetBottom - with(density) { 92.dp.toPx() }
             val defaultY = fullH * (2f / 3f)
             val anchors = remember(fullH, topGap, collapsedY) { listOf(topGap, defaultY, collapsedY) }
-            val landscape = maxWidth > maxHeight
+            val landscape = usesSidePanel(maxWidth, maxHeight)
             // Back to a third of the screen whenever the phone turns: positions don't carry over.
             var sheetY by remember(landscape) { mutableFloatStateOf(defaultY) }
             if (!landscape && (sheetY > collapsedY || sheetY < topGap)) sheetY = sheetY.coerceIn(topGap, collapsedY)
@@ -201,12 +201,12 @@ fun HomeScreen(
                     }
                 }
             }
-            // Landscape: the people list is a panel at the end side, as wide as the screen is tall (about
-            // the width it has in portrait), and slides away to give the map the whole screen.
+            // Wide screens (a phone sideways, an unfolded foldable, a tablet): the people list is a panel at
+            // the end side, about a phone's width (sidePanelWidth), and slides away to give the map the whole screen.
             val rtl = layoutDirection == LayoutDirection.Rtl
             val insetEnd = if (rtl) insetLeft else insetRight
             val insetStart = if (rtl) insetRight else insetLeft
-            val panelW = with(density) { minOf(maxHeight, 400.dp).toPx() } + insetEnd
+            val panelW = with(density) { sidePanelWidth(maxWidth, maxHeight).toPx() } + insetEnd
             var panelOffset by remember(panelW) { mutableFloatStateOf(if (state.peoplePanelHidden) panelW else 0f) }
             val panelShown = panelW - panelOffset
             // Drags are in screen pixels; the panel slides towards the end edge, which is left in RTL.
