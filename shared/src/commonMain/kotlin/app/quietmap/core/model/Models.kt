@@ -31,6 +31,8 @@ data class AppState(
     val showPhotos: Boolean = true,
     /** Draw the map with the dark style. Off (the light map) unless turned on in Settings. */
     val darkMap: Boolean = false,
+    /** Landscape only: the people panel at the side of the map is slid away. */
+    val peoplePanelHidden: Boolean = false,
     /** The circle shown when the app opens. */
     val lastCircleId: String? = null,
     /** First-run setup finished (or skipped). */

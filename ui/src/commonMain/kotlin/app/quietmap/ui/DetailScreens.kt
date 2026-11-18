@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -297,7 +298,9 @@ fun EditProfileScreen(state: AppState, me: String, actions: Actions, onBack: () 
 /** The twelve default avatar colors, with your initial in each. */
 @Composable
 fun AvatarColorGrid(name: String, me: String, selected: Int, photoSet: Boolean, horizontalPadding: Dp = 24.dp, onPick: (Int) -> Unit) {
-    Column(Modifier.padding(horizontal = horizontalPadding), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    // Capped so the swatches stay about avatar-sized on a tablet rather than stretching across the screen.
+    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.padding(horizontal = horizontalPadding).widthIn(max = 420.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         AvatarColors.all.indices.chunked(6).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 row.forEach { index ->
@@ -307,7 +310,8 @@ fun AvatarColorGrid(name: String, me: String, selected: Int, photoSet: Boolean, 
                         Modifier
                             .weight(1f)
                             .aspectRatio(1f)
-                            .border(ring, MaterialTheme.colorScheme.primary, CircleShape)
+                            // A zero-width border still draws a hairline, so leave it off unless selected.
+                            .then(if (ring > 0.dp) Modifier.border(ring, MaterialTheme.colorScheme.primary, CircleShape) else Modifier)
                             .padding(if (isSelected) 5.dp else 0.dp)
                             .clip(CircleShape)
                             .clickable { onPick(index) },
@@ -318,6 +322,7 @@ fun AvatarColorGrid(name: String, me: String, selected: Int, photoSet: Boolean, 
                 }
             }
         }
+    }
     }
 }
 

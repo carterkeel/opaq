@@ -305,6 +305,8 @@ class Engine(
 
     suspend fun setDarkMap(on: Boolean) = update { it.copy(darkMap = on) }
 
+    suspend fun setPeoplePanelHidden(hidden: Boolean) = update { if (it.peoplePanelHidden == hidden) it else it.copy(peoplePanelHidden = hidden) }
+
     suspend fun setLastCircle(circleId: String) = update { if (it.lastCircleId == circleId) it else it.copy(lastCircleId = circleId) }
 
     suspend fun setSetupDone() = update { it.copy(setupDone = true) }

@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -34,8 +37,10 @@ import kotlin.math.ln
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.addJsonObject
@@ -56,6 +61,7 @@ import org.maplibre.compose.expressions.dsl.image
 import org.maplibre.compose.expressions.dsl.not
 import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.switch
+import org.maplibre.compose.interaction.ClickResult
 import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.LineLayer
@@ -67,6 +73,7 @@ import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.spatialk.geojson.LineString
 import org.maplibre.spatialk.geojson.MultiLineString
+import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 
 /**
@@ -120,12 +127,24 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
  * - People close together merge into one bubble with a count, and separate as you zoom in.
+ * - Tapping a person's dot calls [onPersonClick] with their id; tapping a bubble zooms in on it.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
- * - [bottomInset] keeps centred points above the people sheet.
+ * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
  */
 @Composable
-fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomInset: Dp, modifier: Modifier = Modifier, darkMap: Boolean = false) {
+fun MapPane(
+    markers: List<MapMarker>,
+    focusKey: Any?,
+    focus: MapFocus?,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+    darkMap: Boolean = false,
+    onPersonClick: (id: String) -> Unit = {},
+    endInset: Dp = 0.dp,
+) {
+    val scope = rememberCoroutineScope()
+    val onPerson by rememberUpdatedState(onPersonClick)
     // Roads in the tiles on screen, for drawing travelling people along them. Nothing is sent anywhere.
     var roads by remember { mutableStateOf<Roads?>(null) }
     val shown = rememberMovingMarkers(markers, roads)
@@ -136,11 +155,27 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
     }
     val photoIds = remember(photoIcons) { photoIcons.map { it.first }.toSet() }
     val geoJson = remember(shown, photoIds) { markersToGeoJson(shown, photoIds) }
+    // Set just below; the bubble handler only runs on a tap, after the map exists.
+    var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
+    val personTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
+        val id = features.firstNotNullOfOrNull { it.properties?.get("id")?.jsonPrimitive?.content }
+        if (id != null) { onPerson(id); ClickResult.Consume } else ClickResult.Pass
+    }
+    // A bubble of people close together: zoom in on it until they separate.
+    val bubbleTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
+        val at = (features.firstOrNull()?.geometry as? Point)?.coordinates
+        val map = stateRef
+        if (at != null && map != null) {
+            val zoom = (map.cameraPosition.zoom + 2).coerceAtMost(CLUSTER_MAX_ZOOM + 1.0)
+            scope.launch { map.animateCamera(CameraUpdate(center = at, zoom = zoom)) }
+            ClickResult.Consume
+        } else ClickResult.Pass
+    }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
             cluster = true
             clusterRadius = 36
-            clusterMaxZoom = 16
+            clusterMaxZoom = CLUSTER_MAX_ZOOM
         }
         val isCluster = feature.has("point_count")
         // Merged bubble for people standing close together.
@@ -152,6 +187,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             color = const(Palette.Ultramarine),
             strokeColor = const(Color.White),
             strokeWidth = const(3.dp),
+            onClick = bubbleTapped,
         )
         SymbolLayer(
             id = "people-cluster-count",
@@ -163,6 +199,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textColor = const(Color.White),
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),
+            onClick = bubbleTapped,
         )
         // One dot per person.
         CircleLayer(
@@ -173,6 +210,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             color = feature["color"].convertToColor(),
             strokeColor = const(Color.White),
             strokeWidth = const(3.dp),
+            onClick = personTapped,
         )
         SymbolLayer(
             id = "people-initial",
@@ -185,6 +223,7 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
             textColor = feature["textColor"].convertToColor(),
             textAllowOverlap = const(true),
             textIgnorePlacement = const(true),
+            onClick = personTapped,
         )
         // A profile photo fills the dot, inside its white ring, in place of the initial.
         if (photoIcons.isNotEmpty()) {
@@ -197,9 +236,12 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
                 iconOpacity = feature["photoOpacity"].asNumber(const(1f)),
                 iconAllowOverlap = const(true),
                 iconIgnorePlacement = const(true),
+                onClick = personTapped,
             )
         }
     }
+
+    SideEffect { stateRef = mapState }
 
     // Open once per circle at city level around me (or whoever has a location first).
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
@@ -243,12 +285,15 @@ fun MapPane(markers: List<MapMarker>, focusKey: Any?, focus: MapFocus?, bottomIn
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
-            viewportInsets = PaddingValues(bottom = bottomInset),
+            viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
             interactions = Interactions,
             overlay = {},
         )
     }
 }
+
+/** People close together merge into one bubble up to this zoom. */
+private const val CLUSTER_MAX_ZOOM = 16
 
 /** Below this zoom, people aren't moved along roads (the tiles' road shapes are too coarse). */
 private const val ROAD_ZOOM = 12.0
@@ -332,6 +377,7 @@ private fun markersToGeoJson(markers: List<MapMarker>, photoIds: Set<String>): S
                     putJsonArray("coordinates") { add(mk.lon); add(mk.lat) }
                 }
                 putJsonObject("properties") {
+                    put("id", mk.id)
                     val offline = mk.kind == MapMarker.Kind.OFFLINE
                     if (mk.id in photoIds) {
                         // The photo layer picks the image by id; offline people's photos are dimmed.

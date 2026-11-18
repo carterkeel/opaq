@@ -346,6 +346,14 @@ object AppIcons {
         moveTo(4f, 20f); curveTo(4f, 16f, 7.5f, 14f, 12f, 14f); curveTo(16.5f, 14f, 20f, 16f, 20f, 20f)
     }
 
+    /** Two people: the button that brings back the people panel in landscape. */
+    val People: ImageVector = stroke("People") {
+        moveTo(13f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 6f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 13f, 8f); close()
+        moveTo(3f, 20f); curveTo(3f, 16.5f, 5.8f, 14.5f, 9.5f, 14.5f); curveTo(13.2f, 14.5f, 16f, 16.5f, 16f, 20f)
+        moveTo(15.5f, 4.8f); arcTo(3.3f, 3.3f, 0f, false, true, 15.5f, 11.2f)
+        moveTo(18f, 14.8f); curveTo(19.9f, 15.5f, 21f, 17.2f, 21f, 20f)
+    }
+
     val Refresh: ImageVector = stroke("Refresh") {
         moveTo(19f, 12f); arcTo(7f, 7f, 0f, true, true, 16.9f, 7f)
         moveTo(17f, 3f); lineTo(17f, 7f); lineTo(13f, 7f)
