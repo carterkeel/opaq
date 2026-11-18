@@ -224,6 +224,7 @@ fun HomeScreen(
                     bottomInset = with(density) { (fullH - defaultY).toDp() },
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
+                    onPersonClick = { onOpenProfile(circle.id, it) },
                 )
             }
 
