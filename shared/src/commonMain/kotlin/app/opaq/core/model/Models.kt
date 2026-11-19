@@ -9,6 +9,11 @@ val DEFAULT_RELAYS = listOf(
     "wss://nostr.mom",
 )
 
+/** Values of [AppState.themeMode]. */
+const val THEME_SYSTEM = "system"
+const val THEME_LIGHT = "light"
+const val THEME_DARK = "dark"
+
 /** Everything the app persists. Stored encrypted on the device. */
 @Serializable
 data class AppState(
@@ -16,8 +21,8 @@ data class AppState(
     val myName: String = "",
     val relays: List<String> = DEFAULT_RELAYS,
     val sharing: Boolean = true,
-    /** Include battery level in location updates. Off by default; saved states keep their choice. */
-    val shareBattery: Boolean = false,
+    /** Include battery level in location updates. On for new installs; saved states keep their choice. */
+    val shareBattery: Boolean = true,
     /** Avatar color index for the default initial avatar; null means derived from the public key. */
     val myColor: Int? = null,
     /** Profile photo as a small JPEG, base64. Shared only with circle members, encrypted. */
@@ -31,6 +36,9 @@ data class AppState(
     val showPhotos: Boolean = true,
     /** Draw the map with the dark style. Off (the light map) unless turned on in Settings. */
     val darkMap: Boolean = false,
+    /** The app's colours: [THEME_SYSTEM] (follow the phone), [THEME_LIGHT] or [THEME_DARK]. A string, so
+     *  a value from a newer version can't make saved state unreadable; anything unknown follows the phone. */
+    val themeMode: String = THEME_SYSTEM,
     /** Landscape only: the people panel at the side of the map is slid away. */
     val peoplePanelHidden: Boolean = false,
     /** The circle shown when the app opens. */

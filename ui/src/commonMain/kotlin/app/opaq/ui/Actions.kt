@@ -54,6 +54,7 @@ class Actions(
     fun setShareBattery(on: Boolean) = launchAction { engine.setShareBattery(on) }
     fun setShowPhotos(on: Boolean) = launchAction { engine.setShowPhotos(on) }
     fun setDarkMap(on: Boolean) = launchAction { engine.setDarkMap(on) }
+    fun setThemeMode(mode: String) = launchAction { engine.setThemeMode(mode) }
     fun setPeoplePanelHidden(hidden: Boolean) = launchAction { engine.setPeoplePanelHidden(hidden) }
     fun setLastCircle(circleId: String) = launchAction { engine.setLastCircle(circleId) }
     fun setSetupDone() = launchAction(after = { platform.ensureSharingService() }) { engine.setSetupDone() }

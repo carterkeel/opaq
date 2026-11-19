@@ -1,6 +1,11 @@
 package app.opaq.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
+import app.opaq.core.model.THEME_DARK
+import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_SYSTEM
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -105,16 +110,28 @@ private val AppShapes = Shapes(
     extraLarge = RoundedCornerShape(28.dp),
 )
 
+/** Whether the app is showing its dark colours, which can differ from the phone's setting. */
+val LocalDarkTheme = staticCompositionLocalOf { false }
+
+/** [mode] is `AppState.themeMode`: follow the phone (the default), or always light or dark. */
 @Composable
-fun OpaqTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) Dark else Light,
-        typography = AppTypography,
-        shapes = AppShapes,
-        content = content,
-    )
+fun OpaqTheme(mode: String = THEME_SYSTEM, content: @Composable () -> Unit) {
+    val dark = when (mode) {
+        THEME_LIGHT -> false
+        THEME_DARK -> true
+        else -> isSystemInDarkTheme()
+    }
+    SystemBarsTheme(dark, followSystem = mode != THEME_LIGHT && mode != THEME_DARK)
+    CompositionLocalProvider(LocalDarkTheme provides dark) {
+        MaterialTheme(
+            colorScheme = if (dark) Dark else Light,
+            typography = AppTypography,
+            shapes = AppShapes,
+            content = content,
+        )
+    }
 }
 
 /** The "verified" green, readable in both themes. */
 @Composable
-fun verifiedGreen(): Color = if (isSystemInDarkTheme()) Palette.GreenDark else Palette.Green
+fun verifiedGreen(): Color = if (LocalDarkTheme.current) Palette.GreenDark else Palette.Green

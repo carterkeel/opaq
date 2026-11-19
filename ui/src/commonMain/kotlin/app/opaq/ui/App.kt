@@ -148,7 +148,7 @@ fun OpaqScreens(
     val consentDue = recovery == null && !showSetup && state.sharing && actions.consentDue()
 
     CompositionLocalProvider(LocalPlatform provides platform, LocalPinGate provides pinGate) {
-        OpaqTheme {
+        OpaqTheme(state.themeMode) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 // Backgrounds, the map and the people sheet reach the screen edges; each screen keeps
                 // its own content clear of the status bar, notch, home indicator and keyboard.

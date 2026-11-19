@@ -686,7 +686,7 @@ class CircleSecurityTest {
         val seen = a.locationOf(id, b.me)!!
         assertEquals(Precision.NEIGHBORHOOD, seen.precision)
         assertNull(seen.speed); assertNull(seen.heading); assertTrue(seen.points.isEmpty())
-        assertNull(seen.battery, "battery is off by default")
+        assertEquals(80, seen.battery, "battery is shared by default")
         assertTrue(kotlin.math.abs(seen.lat - exact.lat) < 0.02 && seen.lat != exact.lat)
         // More precise again needs the PIN once one is set.
         b.engine.setPin("1357")
