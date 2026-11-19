@@ -1,0 +1,120 @@
+package app.opaq.core.crypto
+
+import com.ionspin.kotlin.crypto.LibsodiumInitializer
+import com.ionspin.kotlin.crypto.pwhash.PasswordHash
+import com.ionspin.kotlin.crypto.pwhash.crypto_pwhash_argon2id_ALG_ARGON2ID13
+import com.ionspin.kotlin.crypto.stream.Stream
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.UByteVar
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.reinterpret
+import kotlinx.cinterop.usePinned
+import kotlinx.cinterop.ByteVar
+import platform.CoreCrypto.CCHmac
+import platform.CoreCrypto.CCKeyDerivationPBKDF
+import platform.CoreCrypto.kCCPBKDF2
+import platform.CoreCrypto.kCCPRFHmacAlgSHA256
+import platform.CoreCrypto.kCCSuccess
+import platform.CoreCrypto.CC_SHA256
+import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
+import platform.CoreCrypto.kCCHmacAlgSHA256
+import platform.Security.SecRandomCopyBytes
+import platform.Security.errSecSuccess
+import platform.Security.kSecRandomDefault
+
+/**
+ * iOS primitives: SHA-256 and HMAC from Apple's CommonCrypto, randomness from the Security
+ * framework, and the ChaCha20 stream cipher from libsodium (Apple only ships ChaCha20 as part
+ * of the ChaChaPoly AEAD, which NIP-44 doesn't use).
+ */
+@OptIn(ExperimentalForeignApi::class, ExperimentalUnsignedTypes::class)
+actual object PlatformCrypto {
+    actual fun sha256(data: ByteArray): ByteArray {
+        val out = ByteArray(CC_SHA256_DIGEST_LENGTH)
+        data.usePinned { input ->
+            out.usePinned { digest ->
+                CC_SHA256(input.addressOfOrNull(), data.size.convert(), digest.addressOf(0).reinterpret<UByteVar>())
+            }
+        }
+        return out
+    }
+
+    actual fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
+        val out = ByteArray(CC_SHA256_DIGEST_LENGTH)
+        key.usePinned { k ->
+            data.usePinned { d ->
+                out.usePinned { o ->
+                    CCHmac(kCCHmacAlgSHA256, k.addressOfOrNull(), key.size.convert(), d.addressOfOrNull(), data.size.convert(), o.addressOf(0))
+                }
+            }
+        }
+        return out
+    }
+
+    actual fun chacha20(key: ByteArray, nonce: ByteArray, data: ByteArray): ByteArray {
+        require(key.size == 32 && nonce.size == 12)
+        ensureSodium()
+        // crypto_stream_chacha20_ietf_xor: RFC 8439 ChaCha20, block counter starting at 0.
+        return Stream.chacha20IetfXor(data.asUByteArray(), nonce.asUByteArray(), key.asUByteArray()).asByteArray()
+    }
+
+    actual fun randomBytes(size: Int): ByteArray {
+        val out = ByteArray(size)
+        if (size == 0) return out
+        val status = out.usePinned { SecRandomCopyBytes(kSecRandomDefault, size.convert(), it.addressOf(0)) }
+        check(status == errSecSuccess) { "SecRandomCopyBytes failed: $status" }
+        return out
+    }
+
+    actual fun pbkdf2Sha256(password: String, salt: ByteArray, iterations: Int, length: Int): ByteArray {
+        val pass = password.encodeToByteArray()
+        val out = ByteArray(length)
+        val status = pass.usePinned { p ->
+            salt.usePinned { s ->
+                out.usePinned { o ->
+                    CCKeyDerivationPBKDF(
+                        kCCPBKDF2,
+                        p.addressOfOrNull()?.reinterpret<ByteVar>(),
+                        pass.size.convert(),
+                        s.addressOfOrNull()?.reinterpret<UByteVar>(),
+                        salt.size.convert(),
+                        kCCPRFHmacAlgSHA256,
+                        iterations.convert(),
+                        o.addressOf(0).reinterpret<UByteVar>(),
+                        length.convert(),
+                    )
+                }
+            }
+        }
+        check(status == kCCSuccess) { "PBKDF2 failed: $status" }
+        return out
+    }
+
+    actual fun argon2id(password: String, salt: ByteArray, memoryKiB: Int, iterations: Int, length: Int): ByteArray {
+        // The bindings pass password.length as the byte count, which is only right for ASCII.
+        require(password.all { it.code < 128 }) { "argon2id input must be ASCII" }
+        ensureSodium()
+        return PasswordHash.pwhash(
+            length,
+            password,
+            salt.asUByteArray(),
+            iterations.toULong(),
+            memoryKiB * 1024,
+            crypto_pwhash_argon2id_ALG_ARGON2ID13,
+        ).asByteArray()
+    }
+
+    private fun ensureSodium() {
+        if (LibsodiumInitializer.isInitialized()) return
+        // On native targets this runs sodium_init() synchronously before calling back.
+        LibsodiumInitializer.initializeWithCallback {}
+        check(LibsodiumInitializer.isInitialized()) { "libsodium failed to initialize" }
+    }
+}
+
+/** CommonCrypto rejects nothing for empty input, but addressOf(0) on an empty array throws. */
+@OptIn(ExperimentalForeignApi::class)
+private fun kotlinx.cinterop.Pinned<ByteArray>.addressOfOrNull() =
+    if (get().isEmpty()) null else addressOf(0)
+

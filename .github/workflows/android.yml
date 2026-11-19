@@ -37,19 +37,19 @@ jobs:
       - name: Restore the test signing key
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: ~/.quietmap-ci-key
-          key: quietmap-ci-signing-v1
+          path: ~/.opaq-ci-key
+          key: opaq-ci-signing-v1
 
       - name: Create the test signing key if there isn't one yet
         run: |
-          mkdir -p ~/.quietmap-ci-key
-          if [ ! -f ~/.quietmap-ci-key/ci.jks ]; then
-            keytool -genkeypair -keystore ~/.quietmap-ci-key/ci.jks -storetype PKCS12 \
-              -storepass quietmap-ci -keypass quietmap-ci -alias quietmap-ci \
-              -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=Quietmap test builds"
+          mkdir -p ~/.opaq-ci-key
+          if [ ! -f ~/.opaq-ci-key/ci.jks ]; then
+            keytool -genkeypair -keystore ~/.opaq-ci-key/ci.jks -storetype PKCS12 \
+              -storepass opaq-ci -keypass opaq-ci -alias opaq-ci \
+              -keyalg RSA -keysize 3072 -validity 10000 -dname "CN=Opaq test builds"
           fi
-          echo "QUIETMAP_KEYSTORE=$HOME/.quietmap-ci-key/ci.jks" >> "$GITHUB_ENV"
-          echo "QUIETMAP_KEYSTORE_PASSWORD=quietmap-ci" >> "$GITHUB_ENV"
+          echo "OPAQ_KEYSTORE=$HOME/.opaq-ci-key/ci.jks" >> "$GITHUB_ENV"
+          echo "OPAQ_KEYSTORE_PASSWORD=opaq-ci" >> "$GITHUB_ENV"
 
       - name: Unit tests (crypto and protocol)
         run: ./gradlew :shared:testAndroidHostTest --warning-mode all --stacktrace 2>&1 | tee test.log
@@ -166,5 +166,5 @@ jobs:
           git init -q -b ci-logs
           git add log.txt
           [ -d screens ] && git add screens
-          git -c user.name="quietmap-ci" -c user.email="ci@users.noreply.github.com" commit -qm "CI log for $GITHUB_SHA ($STATUS)"
+          git -c user.name="opaq-ci" -c user.email="ci@users.noreply.github.com" commit -qm "CI log for $GITHUB_SHA ($STATUS)"
           git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ci-logs

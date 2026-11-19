@@ -23,7 +23,7 @@ Authentication choice: the owner asked for an **optional PIN, offered during set
 | QM-03 missed rotation | `Engine.removeMember` / `sendRoster` (one send, no acknowledgement), `DirectMessages` (7-day expiry), `refreshSubscriptions` (old key dropped after `OVERLAP_SECONDS`) |
 | QM-04 forward secrecy | `CircleCrypto.conversationKey` (static key per epoch; the epoch changes only on removal) |
 | QM-05 overwrite by members | `CircleCrypto.publisher` / `profilePublisher` (derived from the shared circle key) |
-| QM-06 hidden notification | `QuietmapApp.ensureSharingService` (checks location permission only), `LocationService` |
+| QM-06 hidden notification | `OpaqApp.ensureSharingService` (checks location permission only), `LocationService` |
 | QM-08 invite swap | `InviteLinks`, `Engine.onJoinRequest`, `Engine.onRoster` (trusts `inviterPubkey` from the link) |
 | QM-09 ws:// relays | `Engine.setRelays`, `Engine.acceptInvite`, `RelayPool.setRelays` |
 | QM-10 backup KDF | `Backups` (PBKDF2-SHA256, 600k iterations, 8-character minimum) |
@@ -196,7 +196,7 @@ The rest of QM-02 is under Phase 12 below.
 
 **Changes (Android).**
 
-- **Checks.** `QuietmapApp.canShowSharingNotification()` checks that notifications are enabled for the app, that the Android 13+ permission is granted, and that the "Location sharing" channel isn't turned off. It looks at the actual channel, not just the permission.
+- **Checks.** `OpaqApp.canShowSharingNotification()` checks that notifications are enabled for the app, that the Android 13+ permission is granted, and that the "Location sharing" channel isn't turned off. It looks at the actual channel, not just the permission.
 - **Before starting.** `ensureSharingService` (used at app start, on resume, after boot and after app updates) won't start sharing unless the notification can show.
 - **While running.** `LocationService` checks again every 5 seconds and stops itself, without publishing, the moment the notification can't show.
 - **Telling the user.** A banner on the home screen says sharing is paused because the notification is off, with a button that asks for the permission or opens the app's notification settings. Sharing resumes once it's visible again.

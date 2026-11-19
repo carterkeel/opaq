@@ -9,14 +9,14 @@ plugins {
 
 kotlin {
     android {
-        namespace = "app.quietmap.ui"
+        namespace = "app.opaq.ui"
         compileSdk = 37
         minSdk = 26
     }
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
         // The iOS app links this one framework; it also exposes the :shared core to Swift.
         target.binaries.framework {
-            baseName = "QuietmapUI"
+            baseName = "OpaqUI"
             isStatic = true
             // DependencyHandler.project(String) gives a ProjectDependency; passing the Project
             // itself (plain project(":shared") here) is deprecated in Gradle 9.

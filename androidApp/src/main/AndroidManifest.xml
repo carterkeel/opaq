@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <application
-        android:name=".QuietmapApp"
+        android:name=".OpaqApp"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -39,8 +39,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="opaq" android:host="join" />
-                <!-- The app's scheme before it was renamed Opaq: links made then still open. -->
-                <data android:scheme="quietmap" android:host="join" />
             </intent-filter>
             <!-- Shared invite links (https). Without verified App Links these open the web page,
                  which hands the invite to the app; people can also allow "Open supported links". -->
@@ -49,7 +47,6 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" android:host="carterkeel.github.io" android:pathPrefix="/opaq/join" />
-                <data android:scheme="https" android:host="carterkeel.github.io" android:pathPrefix="/quietmap/join" />
             </intent-filter>
         </activity>
 

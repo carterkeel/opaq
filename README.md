@@ -60,6 +60,6 @@ Requires JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :androidApp:assembleDebug      # debug APK in androidApp/build/outputs/apk/debug/
 ```
 
-Every push also builds on GitHub Actions; the debug and staging APKs are attached to each run as `quietmap-debug-apk` and `quietmap-staging-apk`.
+Every push also builds on GitHub Actions; the debug and staging APKs are attached to each run as `opaq-debug-apk` and `opaq-staging-apk`.
 
 See [TESTING.md](TESTING.md) for how to test on real phones.

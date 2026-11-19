@@ -8,15 +8,15 @@
 
 /* Begin PBXBuildFile section */
 		044D494F8EA547BEA2A38430 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */; };
-		45C82F794B30597451404695 /* QuietmapApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9CF45D031CF7ACE238282A /* QuietmapApp.swift */; };
+		45C82F794B30597451404695 /* OpaqApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF9CF45D031CF7ACE238282A /* OpaqApp.swift */; };
 		9067946616CA99ED4855B961 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F543015C899423D4B01CEB2E /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		2E8D1EC758AE86E45C8AE149 /* Quietmap.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Quietmap.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2E8D1EC758AE86E45C8AE149 /* Opaq.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Opaq.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C117AD187833E2513BD2F553 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		DF9CF45D031CF7ACE238282A /* QuietmapApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietmapApp.swift; sourceTree = "<group>"; };
+		DF9CF45D031CF7ACE238282A /* OpaqApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpaqApp.swift; sourceTree = "<group>"; };
 		F543015C899423D4B01CEB2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -27,7 +27,7 @@
 				F543015C899423D4B01CEB2E /* Assets.xcassets */,
 				C117AD187833E2513BD2F553 /* Info.plist */,
 				C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */,
-				DF9CF45D031CF7ACE238282A /* QuietmapApp.swift */,
+				DF9CF45D031CF7ACE238282A /* OpaqApp.swift */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -43,7 +43,7 @@
 		94C98B8B3A2BFC1966447269 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				2E8D1EC758AE86E45C8AE149 /* Quietmap.app */,
+				2E8D1EC758AE86E45C8AE149 /* Opaq.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -51,9 +51,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		6FB98175BF352E72185D0F94 /* Quietmap */ = {
+		6FB98175BF352E72185D0F94 /* Opaq */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = C368E9465DB4CE3CDE2C8AC7 /* Build configuration list for PBXNativeTarget "Quietmap" */;
+			buildConfigurationList = C368E9465DB4CE3CDE2C8AC7 /* Build configuration list for PBXNativeTarget "Opaq" */;
 			buildPhases = (
 				41917D03A2A33FCA40E782C5 /* Build Kotlin framework */,
 				C666716FCEA7D50AE241576F /* Sources */,
@@ -63,11 +63,11 @@
 			);
 			dependencies = (
 			);
-			name = Quietmap;
+			name = Opaq;
 			packageProductDependencies = (
 			);
-			productName = Quietmap;
-			productReference = 2E8D1EC758AE86E45C8AE149 /* Quietmap.app */;
+			productName = Opaq;
+			productReference = 2E8D1EC758AE86E45C8AE149 /* Opaq.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -98,7 +98,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				6FB98175BF352E72185D0F94 /* Quietmap */,
+				6FB98175BF352E72185D0F94 /* Opaq */,
 			);
 		};
 /* End PBXProject section */
@@ -133,7 +133,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Builds :ui's QuietmapUI framework for the current SDK and architecture.\n# Xcode doesn't inherit your shell, so find JDK 17 if JAVA_HOME isn't set.\nif [ -z \"$JAVA_HOME\" ]; then\n  JAVA_HOME=\"$(/usr/libexec/java_home -v 17 2>/dev/null)\"\n  [ -z \"$JAVA_HOME\" ] && [ -d /opt/homebrew/opt/openjdk@17 ] && JAVA_HOME=/opt/homebrew/opt/openjdk@17\n  export JAVA_HOME\nfi\ncd \"$SRCROOT/..\"\n./gradlew :ui:embedAndSignAppleFrameworkForXcode\n";
+			shellScript = "# Builds :ui's OpaqUI framework for the current SDK and architecture.\n# Xcode doesn't inherit your shell, so find JDK 17 if JAVA_HOME isn't set.\nif [ -z \"$JAVA_HOME\" ]; then\n  JAVA_HOME=\"$(/usr/libexec/java_home -v 17 2>/dev/null)\"\n  [ -z \"$JAVA_HOME\" ] && [ -d /opt/homebrew/opt/openjdk@17 ] && JAVA_HOME=/opt/homebrew/opt/openjdk@17\n  export JAVA_HOME\nfi\ncd \"$SRCROOT/..\"\n./gradlew :ui:embedAndSignAppleFrameworkForXcode\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -142,7 +142,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				45C82F794B30597451404695 /* QuietmapApp.swift in Sources */,
+				45C82F794B30597451404695 /* OpaqApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -222,9 +222,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -framework QuietmapUI -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = app.quietmap;
-				PRODUCT_NAME = Quietmap;
+				OTHER_LDFLAGS = "$(inherited) -framework OpaqUI -lc++";
+				PRODUCT_BUNDLE_IDENTIFIER = app.opaq;
+				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -310,9 +310,9 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				OTHER_LDFLAGS = "$(inherited) -framework QuietmapUI -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = app.quietmap;
-				PRODUCT_NAME = Quietmap;
+				OTHER_LDFLAGS = "$(inherited) -framework OpaqUI -lc++";
+				PRODUCT_BUNDLE_IDENTIFIER = app.opaq;
+				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -321,7 +321,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C368E9465DB4CE3CDE2C8AC7 /* Build configuration list for PBXNativeTarget "Quietmap" */ = {
+		C368E9465DB4CE3CDE2C8AC7 /* Build configuration list for PBXNativeTarget "Opaq" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				2275E440538C1694151A8137 /* Debug */,

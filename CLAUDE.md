@@ -4,7 +4,7 @@ Opaq is an open-source, Life360-style location sharing app with **no accounts an
 
 This repo is **public**. Never commit secrets, real keys, keystores, personal emails or real location data. Commit as the GitHub no-reply address.
 
-**Naming.** The app was called Quietmap until November 2026; the repository is now `carterkeel/opaq`. Everything people see says Opaq. These keep the old name on purpose, because changing them would stop updates installing over the existing app or make saved data, PINs, backups or links unreadable: the Android `applicationId` and Kotlin packages `app.quietmap`, the iOS bundle id and Xcode target `Quietmap`, the Keystore alias `quietmap-state`, the iOS `Quietmap` storage folders, the backup header `quietmap-backup-v2`, crypto labels such as `quietmap-pin|`, `quietmap-circle|` and `quietmap-invite|`, the `quietmap://` scheme (still accepted), and the CI signing-key cache `quietmap-ci-signing-v1`. Code identifiers such as `QuietmapApp` and `QuietmapScreens` are internal and also unchanged.
+**Naming.** The app was called Quietmap until November 2026, and the repository is now `carterkeel/opaq`. Everything is named Opaq (app id `app.opaq`, packages, iOS bundle and target, link scheme `opaq://`), so the rename needed a fresh install. A few things keep the old name on purpose, because they're part of the data format: the encryption labels `quietmap-pin|`, `quietmap-circle|` and `quietmap-invite|` (changing them would cut phones on the new app off from anyone still on the old one, and from circles restored from an old backup), and the old backup header `quietmap-backup-v2`, which still restores. Pasted `quietmap://` links are still recognised.
 
 ## Ground rules
 
@@ -42,7 +42,7 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   commonTest/               Crypto, protocol and motion tests (run on the JVM in CI).
 
 ui/          Compose Multiplatform screens shared by Android and iOS.
-  App.kt          QuietmapScreens(): navigation. Home is always composed; other screens
+  App.kt          OpaqScreens(): navigation. Home is always composed; other screens
                   slide over it (AnimatedContent), so the map never reloads.
   HomeScreen.kt   Map + draggable people sheet (BottomSheetScaffold), circle picker, welcome.
   SetupScreen.kt  First-run walkthrough.
@@ -57,8 +57,8 @@ ui/          Compose Multiplatform screens shared by Android and iOS.
   Platform.kt     PlatformBridge (toast, clipboard, share, photo picker, QR scanner) + expects.
 
 androidApp/  Android host app.
-  QuietmapApp.kt     Application: creates the Engine, notification channel.
-  MainActivity.kt    Permissions, photo picker and QR scanner launchers, hosts QuietmapScreens.
+  OpaqApp.kt     Application: creates the Engine, notification channel.
+  MainActivity.kt    Permissions, photo picker and QR scanner launchers, hosts OpaqScreens.
   AndroidPlatform.kt PlatformBridge implementation.
   LocationService.kt Foreground service: GPS/network location, significant-motion sensor,
                      publish loop driven by MotionPolicy.
@@ -87,7 +87,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - `Engine.createInvite` makes a secret that expires in 1 h by default (24 h optional). It works once, or for up to `Invite.MAX_USES` (10) people if "Let more than one person use this link" is on; the inviter still approves every join. `Engine.cancelInvite` stops it early. Links are signed by the inviter (v2, `InviteLinks.signed`); unsigned v1 links are refused.
 - A request that can't go ahead (used up, expired, cancelled, or denied with `Engine.deny`) gets a `JoinRefusedBody` reply, so the joiner stops waiting and sees why (`AppState.joinRefusals`). The joiner accepts it only from the inviter they asked, naming them and that invite. Replies are rate-limited (one per person per 10 min, 20 an hour in all). The inviter listens on an invite's inbox until it's pruned, a day after it expires.
 - The join screen shows the inviter's device code: "The codes match" marks them verified, "Join without checking" joins unverified (verify later from their profile). Scanning the QR in the app verifies automatically. A new circle stays unconfirmed, sharing nothing, until the joiner taps "Start sharing".
-- The link is `opaq://join#<base64url JSON>` (`quietmap://` links from before the rename still open). Shared and copied links use `https://carterkeel.github.io/opaq/join#…` (the old `/quietmap/join` path is still accepted by the app) (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=quietmap;end`, the original scheme so phones that haven't updated still open it, and since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
+- The link is `opaq://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/opaq/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=opaq;end`, since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 
@@ -102,7 +102,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Profiles** (kind 30078). `ProfileBody` holds the name, avatar colour index and an optional photo (base64 JPEG, at most `CircleCrypto.MAX_PHOTO_CHARS`). It uses one tag and one publisher key per circle epoch, and is republished when the profile changes, when circle membership changes, and daily.
 
-**Backups.** `Backups` (in `protocol/Backup.kt`) exports identity, profile, settings and circles as a text file (`quietmap-backup-v2`): Argon2id (64 MiB, 3 passes, one lane, 16-byte salt) turns the passphrase into a key for NIP-44. v1 files (PBKDF2-HMAC-SHA256, 600k iterations) still restore. Restoring replaces the identity and starts with sharing paused. Others' locations and photos aren't included; they come back from relays.
+**Backups.** `Backups` (in `protocol/Backup.kt`) exports identity, profile, settings and circles as a text file (`opaq-backup-v2`; files headed `quietmap-backup-v2` from before the rename still restore): Argon2id (64 MiB, 3 passes, one lane, 16-byte salt) turns the passphrase into a key for NIP-44. v1 files (PBKDF2-HMAC-SHA256, 600k iterations) still restore. Restoring replaces the identity and starts with sharing paused. Others' locations and photos aren't included; they come back from relays.
 
 **Removing someone.** The admin makes a new key (epoch + 1) and sends it only to remaining members. The old key stays accepted for 10 minutes (`OVERLAP_SECONDS`), and the removed person gets a `RemovedBody`.
 
@@ -156,7 +156,7 @@ Two-phone manual testing is described in `TESTING.md`.
 - **Kotlin 2.4.x.** Dependencies built with a newer Kotlin may not be readable. See the libsodium comment in `libs.versions.toml`.
 - **CI runs steps with `shell: bash`** so that `| tee` doesn't hide a failing Gradle command (pipefail). Keep it.
 - **iOS targets can't build on Linux.** `kotlin.native.ignoreDisabledTargets=true` silences that. iOS `actual`s (`*.ios.kt`) are only compiled on macOS, so double-check them by hand.
-- **CI test builds share one signing key** (cached in GitHub Actions as `quietmap-ci-signing-v1`, never committed) and use the run number as `versionCode`, so a new APK installs over the previous one. Caches are per branch (branches can read `main`'s), so the first build on a new branch may get its own key until `main` has one.
+- **CI test builds share one signing key** (cached in GitHub Actions as `opaq-ci-signing-v1`, never committed) and use the run number as `versionCode`, so a new APK installs over the previous one. Caches are per branch (branches can read `main`'s), so the first build on a new branch may get its own key until `main` has one.
 - **The `staging` build uses R8.** Anything reached through JNI or reflection (secp256k1, MapLibre, kotlinx.serialization serializers, the zxing scanner) needs a rule in `androidApp/proguard-rules.pro`.
 - **Compose is much slower in debug builds.** Judge smoothness on the staging APK.
 - **maplibre-compose needs a renderer runtime on Android.** It only ships the JNI bridge; `libmaplibre-native-c.so` comes from `org.maplibre.nativeffi:maplibre-native-ffi-runtime-opengl` (in `ui` androidMain). Its version must match the `maplibre-native-ffi` version maplibre-compose pulls in. Without it the app crashes as soon as the map opens.
