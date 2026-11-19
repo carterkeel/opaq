@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "quietmap"
+rootProject.name = "opaq"
 include(":shared")
 include(":ui")
 include(":androidApp")

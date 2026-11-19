@@ -1,6 +1,6 @@
 # What others can see
 
-Quietmap has no server, and every location, name, photo and battery level is end-to-end encrypted. Only the phones in a circle can read them. But data still travels through other people's computers, and they can see some things about it (metadata). This page lists exactly what, so the privacy claims stay accurate.
+Opaq has no server, and every location, name, photo and battery level is end-to-end encrypted. Only the phones in a circle can read them. But data still travels through other people's computers, and they can see some things about it (metadata). This page lists exactly what, so the privacy claims stay accurate.
 
 ## Relays
 
@@ -33,8 +33,8 @@ Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app load
 
 ## Your phone's operating system
 
-- **Android:** while you're still, Quietmap uses the phone's network location, which on phones with Google services sends nearby Wi-Fi and cell information to Google if "Google Location Accuracy" is on. That's a system setting, outside Quietmap.
-- **Notifications:** Quietmap doesn't use Google or Apple push notifications, so neither company is told when you get an update.
+- **Android:** while you're still, Opaq uses the phone's network location, which on phones with Google services sends nearby Wi-Fi and cell information to Google if "Google Location Accuracy" is on. That's a system setting, outside Opaq.
+- **Notifications:** Opaq doesn't use Google or Apple push notifications, so neither company is told when you get an update.
 
 ## Invite links
 
@@ -44,7 +44,7 @@ An invite link contains your name, the circle's name, your relays, your public k
 
 Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time and activity (still, walking, cycling, driving), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
 
-How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Quietmap deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Quietmap can't prevent that.
+How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Opaq deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Opaq can't prevent that.
 
 ## Backups
 

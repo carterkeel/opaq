@@ -12,9 +12,9 @@
 
 # kotlinx.serialization: keep generated serializers for our models.
 -keepattributes *Annotation*, InnerClasses, Signature, EnclosingMethod
--keepclassmembers class app.quietmap.** { *** Companion; }
--keepclasseswithmembers class app.quietmap.** { kotlinx.serialization.KSerializer serializer(...); }
--keep,includedescriptorclasses class app.quietmap.**$$serializer { *; }
+-keepclassmembers class app.opaq.** { *** Companion; }
+-keepclasseswithmembers class app.opaq.** { kotlinx.serialization.KSerializer serializer(...); }
+-keep,includedescriptorclasses class app.opaq.**$$serializer { *; }
 
 # Ktor / OkHttp optional dependencies.
 -dontwarn io.ktor.**

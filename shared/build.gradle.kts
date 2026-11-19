@@ -6,7 +6,7 @@ plugins {
 
 kotlin {
     android {
-        namespace = "app.quietmap.shared"
+        namespace = "app.opaq.shared"
         compileSdk = 37
         minSdk = 26
         // JVM unit tests (commonTest + androidHostTest) run on the build machine.

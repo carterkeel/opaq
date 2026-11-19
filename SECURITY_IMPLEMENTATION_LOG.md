@@ -1,6 +1,6 @@
 # Security implementation log
 
-This records how each finding from the security audit (13 Nov 2026, code at `078b96c`) was handled: the original problem, its root cause, what changed, the tests that guard it, and what is still open. The plan behind it is "Quietmap Security Hardening — Implementation Plan".
+This records how each finding from the security audit (13 Nov 2026, code at `078b96c`) was handled: the original problem, its root cause, what changed, the tests that guard it, and what is still open. The plan behind it is "Opaq Security Hardening — Implementation Plan".
 
 Ground rules that apply to every change below:
 
@@ -23,7 +23,7 @@ Authentication choice: the owner asked for an **optional PIN, offered during set
 | QM-03 missed rotation | `Engine.removeMember` / `sendRoster` (one send, no acknowledgement), `DirectMessages` (7-day expiry), `refreshSubscriptions` (old key dropped after `OVERLAP_SECONDS`) |
 | QM-04 forward secrecy | `CircleCrypto.conversationKey` (static key per epoch; the epoch changes only on removal) |
 | QM-05 overwrite by members | `CircleCrypto.publisher` / `profilePublisher` (derived from the shared circle key) |
-| QM-06 hidden notification | `QuietmapApp.ensureSharingService` (checks location permission only), `LocationService` |
+| QM-06 hidden notification | `OpaqApp.ensureSharingService` (checks location permission only), `LocationService` |
 | QM-08 invite swap | `InviteLinks`, `Engine.onJoinRequest`, `Engine.onRoster` (trusts `inviterPubkey` from the link) |
 | QM-09 ws:// relays | `Engine.setRelays`, `Engine.acceptInvite`, `RelayPool.setRelays` |
 | QM-10 backup KDF | `Backups` (PBKDF2-SHA256, 600k iterations, 8-character minimum) |
@@ -196,7 +196,7 @@ The rest of QM-02 is under Phase 12 below.
 
 **Changes (Android).**
 
-- **Checks.** `QuietmapApp.canShowSharingNotification()` checks that notifications are enabled for the app, that the Android 13+ permission is granted, and that the "Location sharing" channel isn't turned off. It looks at the actual channel, not just the permission.
+- **Checks.** `OpaqApp.canShowSharingNotification()` checks that notifications are enabled for the app, that the Android 13+ permission is granted, and that the "Location sharing" channel isn't turned off. It looks at the actual channel, not just the permission.
 - **Before starting.** `ensureSharingService` (used at app start, on resume, after boot and after app updates) won't start sharing unless the notification can show.
 - **While running.** `LocationService` checks again every 5 seconds and stops itself, without publishing, the moment the notification can't show.
 - **Telling the user.** A banner on the home screen says sharing is paused because the notification is off, with a button that asks for the permission or opens the app's notification settings. Sharing resumes once it's visible again.
@@ -210,7 +210,7 @@ The rest of QM-02 is under Phase 12 below.
 
 **Remaining limitations.**
 
-- A determined abuser can uninstall the app's notification access and also uninstall Quietmap, or root the phone. Neither leaves Quietmap sharing invisibly.
+- A determined abuser can uninstall the app's notification access and also uninstall Opaq, or root the phone. Neither leaves Opaq sharing invisibly.
 - Android's own location indicator and background-location reminders vary by manufacturer.
 
 ## QM-14 and QM-17: membership transparency and app protection (Phase 11)

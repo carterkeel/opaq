@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "app.quietmap"
+    namespace = "app.opaq"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.quietmap"
+        applicationId = "app.opaq"
         minSdk = 26
         targetSdk = 35
         // CI builds count up, so each new APK installs over the previous one.
@@ -21,14 +21,14 @@ android {
 
     // CI signs test builds with one long-lived key (kept in the Actions cache, never in the repo),
     // so a new APK can be installed over an older one. Local builds use the normal debug key.
-    val ciKeystore = providers.environmentVariable("QUIETMAP_KEYSTORE").orNull?.let { file(it) }?.takeIf { it.exists() }
+    val ciKeystore = providers.environmentVariable("OPAQ_KEYSTORE").orNull?.let { file(it) }?.takeIf { it.exists() }
     signingConfigs {
         if (ciKeystore != null) {
             create("ci") {
                 storeFile = ciKeystore
-                storePassword = providers.environmentVariable("QUIETMAP_KEYSTORE_PASSWORD").get()
-                keyAlias = "quietmap-ci"
-                keyPassword = providers.environmentVariable("QUIETMAP_KEYSTORE_PASSWORD").get()
+                storePassword = providers.environmentVariable("OPAQ_KEYSTORE_PASSWORD").get()
+                keyAlias = "opaq-ci"
+                keyPassword = providers.environmentVariable("OPAQ_KEYSTORE_PASSWORD").get()
             }
         }
     }
