@@ -77,7 +77,7 @@ These cover NIP-44 encryption (including the spec's test vectors), event signing
 
 ## 8. iOS
 
-You need a Mac with Xcode. The iOS app lives in `iosApp/`; it hosts the same shared screens and protocol as Android.
+You need a Mac with Xcode, and a simulator or device on iOS 17 or later. The iOS app lives in `iosApp/`; it hosts the same shared screens and protocol as Android.
 
 ### Run in the simulator
 
