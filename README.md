@@ -1,4 +1,4 @@
-# Quietmap
+# Opaq
 
 Private location sharing with the people you choose. No accounts, no phone numbers, and no Quietmap server.
 
