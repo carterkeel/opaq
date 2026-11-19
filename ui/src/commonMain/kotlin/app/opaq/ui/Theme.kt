@@ -21,11 +21,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * A clean, Signal-like look: white or near-black surfaces, one ultramarine accent, soft grey
+ * A clean, Signal-like look: white or Ink (Opaq's dark navy) surfaces, one ultramarine accent, soft grey
  * containers, pill buttons, and the phone's own system font (Roboto on Android, San Francisco on
  * iOS), which is what Signal uses on each platform.
  */
 object Palette {
+    /** Opaq's dark colour (brand guidelines v1.0): text on light screens, the dark theme's background. */
+    val Ink = Color(0xFF0F172A)
     val Ultramarine = Color(0xFF2C6BED)
     val UltramarineDark = Color(0xFF8AB2FF)
     val Green = Color(0xFF0B8A3E)
@@ -41,11 +43,11 @@ private val Light = lightColorScheme(
     onPrimaryContainer = Color(0xFF16397E),
     secondary = Color(0xFF545863),
     secondaryContainer = Color(0xFFE6E9F0),
-    onSecondaryContainer = Color(0xFF1B1B1D),
+    onSecondaryContainer = Palette.Ink,
     background = Color.White,
-    onBackground = Color(0xFF1B1B1D),
+    onBackground = Palette.Ink,
     surface = Color.White,
-    onSurface = Color(0xFF1B1B1D),
+    onSurface = Palette.Ink,
     surfaceVariant = Color(0xFFF0F1F4),
     onSurfaceVariant = Color(0xFF5C5F66),
     surfaceContainerLowest = Color.White,
@@ -66,21 +68,21 @@ private val Dark = darkColorScheme(
     primaryContainer = Color(0xFF233A6B),
     onPrimaryContainer = Color(0xFFDCE5FB),
     secondary = Color(0xFFB9BCC4),
-    secondaryContainer = Color(0xFF2E3036),
+    secondaryContainer = Color(0xFF2A3447),
     onSecondaryContainer = Color(0xFFE6E7EA),
-    background = Color(0xFF121212),
+    background = Palette.Ink,
     onBackground = Color(0xFFE9E9EA),
-    surface = Color(0xFF121212),
+    surface = Palette.Ink,
     onSurface = Color(0xFFE9E9EA),
-    surfaceVariant = Color(0xFF232427),
+    surfaceVariant = Color(0xFF1E293B),
     onSurfaceVariant = Color(0xFFA9ACB3),
-    surfaceContainerLowest = Color(0xFF0D0D0D),
-    surfaceContainerLow = Color(0xFF1A1A1C),
-    surfaceContainer = Color(0xFF1F2023),
-    surfaceContainerHigh = Color(0xFF26272A),
-    surfaceContainerHighest = Color(0xFF2E2F33),
-    outline = Color(0xFF4A4D55),
-    outlineVariant = Color(0xFF2E2F33),
+    surfaceContainerLowest = Color(0xFF0A1020),
+    surfaceContainerLow = Color(0xFF141D31),
+    surfaceContainer = Color(0xFF192236),
+    surfaceContainerHigh = Color(0xFF202A3E),
+    surfaceContainerHighest = Color(0xFF283247),
+    outline = Color(0xFF475569),
+    outlineVariant = Color(0xFF283247),
     error = Color(0xFFFF8A80),
     errorContainer = Color(0xFF3B1D1D),
     onErrorContainer = Color(0xFFFFB4AB),

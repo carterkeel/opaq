@@ -2,8 +2,10 @@ package app.opaq
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
@@ -45,6 +47,41 @@ class AndroidPlatform(
     override fun ensureSharingService() = app.ensureSharingService()
 
     override val supportsTor: Boolean get() = true
+
+    /** The manifest's launcher entries (activity-alias), by app icon id. "white" is enabled by default. */
+    private val iconAliases = mapOf(
+        "white" to "IconWhite",
+        "twotone" to "IconTwoTone",
+        "oversized" to "IconOversized",
+        "rings" to "IconRings",
+    )
+
+    // Aliases are named in the code's package (app.opaq), but belong to this build's application id.
+    private fun alias(name: String) =
+        ComponentName(context.packageName, MainActivity::class.java.name.substringBeforeLast('.') + "." + name)
+
+    override val appIcon: String
+        get() {
+            val pm = context.packageManager
+            return iconAliases.entries.firstOrNull { (id, name) ->
+                when (pm.getComponentEnabledSetting(alias(name))) {
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> id == "white"
+                    else -> false
+                }
+            }?.key ?: "white"
+        }
+
+    override fun setAppIcon(id: String) {
+        val chosen = iconAliases[id] ?: return
+        if (id == appIcon) return
+        val pm = context.packageManager
+        // Turn the new entry on before the others off, so there's always one icon to open the app with.
+        pm.setComponentEnabledSetting(alias(chosen), PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP)
+        iconAliases.filterKeys { it != id }.values.forEach {
+            pm.setComponentEnabledSetting(alias(it), PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP)
+        }
+    }
 
     override fun pickProfilePhoto(onResult: (String?) -> Unit) = photoPicker(onResult)
 
