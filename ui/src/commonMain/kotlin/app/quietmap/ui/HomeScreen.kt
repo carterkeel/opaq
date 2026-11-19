@@ -124,6 +124,7 @@ fun HomeScreen(
     onFixSharing: () -> Unit = {},
 ) {
     val gate = LocalPinGate.current
+    val haptics = rememberHaptics()
     val circle = state.circles.firstOrNull { it.id == selectedCircleId }
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
@@ -295,6 +296,7 @@ fun HomeScreen(
                 Spacer(Modifier.weight(1f))
                 SharingToggle(state.sharing) {
                     val on = !state.sharing
+                    haptics.toggle(on)
                     actions.setSharing(on)
                     platform.showMessage(if (on) "Sharing your location" else "Sharing paused")
                     if (on && !hasLocationPermission) onRequestLocation()
@@ -312,7 +314,7 @@ fun HomeScreen(
                     shareStatus = actions.shareStatus(circle),
                     sharingBlocked = sharingBlocked,
                     onFixSharing = onFixSharing,
-                    onStartSharing = { gate.require { actions.confirmCircle(circle.id) } },
+                    onStartSharing = { gate.require { haptics.confirm(); actions.confirmCircle(circle.id) } },
                     hasLocationPermission = hasLocationPermission,
                     onRequestLocation = onRequestLocation,
                     onReview = { reviewing = it },
@@ -515,10 +517,10 @@ fun HomeScreen(
             confirm = "Approve",
             confirmEnabled = matches,
             dismiss = "Deny",
-            onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); actions.approve(req.id) } },
+            onConfirm = { reviewing = null; gate.require { if (!known) actions.setVerified(req.pubkey, true); haptics.confirm(); actions.approve(req.id) } },
             // Swiping the sheet away, back or tapping outside only closes it; the request stays pending.
             onDismiss = { reviewing = null },
-            onSecondary = { actions.deny(req.id); reviewing = null },
+            onSecondary = { haptics.reject(); actions.deny(req.id); reviewing = null },
             header = { Avatar(info, size = 72.dp) },
         ) {
             InfoCard {

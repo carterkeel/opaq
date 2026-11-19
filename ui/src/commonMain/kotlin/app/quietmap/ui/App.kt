@@ -104,7 +104,31 @@ fun QuietmapScreens(
     fun pop() { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
     fun home() { while (stack.size > 1) stack.removeAt(stack.lastIndex) }
     val openLink: (String) -> Unit = { push(Route.Join(InviteLinks.decode(it), problem = InviteLinks.problem(it))) }
-    val scan: () -> Unit = { platform.scanQrCode { text -> if (text != null) push(Route.Join(InviteLinks.decode(text), scanned = true, problem = InviteLinks.problem(text))) } }
+    val haptics = rememberHaptics()
+    val scan: () -> Unit = {
+        platform.scanQrCode { text ->
+            if (text != null) {
+                val invite = InviteLinks.decode(text)
+                if (invite != null) haptics.confirm() else haptics.reject()
+                push(Route.Join(invite, scanned = true, problem = InviteLinks.problem(text)))
+            }
+        }
+    }
+
+    // A tap you can feel when you're let into a circle, or when a join request is turned down,
+    // even if you've moved on to another screen while waiting. Not for what was already there
+    // when the app opened.
+    val newCircles = state.circles.filter { !it.confirmed }.map { it.id }.toSet()
+    val refusals = state.joinRefusals.map { it.circleId to it.at }.toSet()
+    var seenCircles by remember { mutableStateOf<Set<String>?>(null) }
+    var seenRefusals by remember { mutableStateOf<Set<Pair<String, Long>>?>(null) }
+    LaunchedEffect(newCircles, refusals, recovery) {
+        if (recovery != null) return@LaunchedEffect
+        seenCircles?.let { if ((newCircles - it).isNotEmpty()) haptics.confirm() }
+        seenRefusals?.let { if ((refusals - it).isNotEmpty()) haptics.reject() }
+        seenCircles = newCircles
+        seenRefusals = refusals
+    }
 
     LaunchedEffect(incomingLink) {
         val l = incomingLink ?: return@LaunchedEffect

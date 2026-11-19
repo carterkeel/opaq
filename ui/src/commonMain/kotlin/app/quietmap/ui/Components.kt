@@ -49,7 +49,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -144,9 +147,28 @@ fun SettingsRow(
 
 @Composable
 fun SwitchRow(title: String, subtitle: String?, checked: Boolean, icon: ImageVector? = null, onChange: (Boolean) -> Unit) {
-    SettingsRow(title, subtitle, icon, onClick = { onChange(!checked) }) {
-        Switch(checked = checked, onCheckedChange = onChange)
+    val haptics = rememberHaptics()
+    val change: (Boolean) -> Unit = { haptics.toggle(it); onChange(it) }
+    SettingsRow(title, subtitle, icon, onClick = { change(!checked) }) {
+        Switch(checked = checked, onCheckedChange = change)
     }
+}
+
+/**
+ * Light haptic feedback for the moments worth confirming: a toggle, a scanned invite, matching
+ * codes, approving or removing someone, being let into a circle. No sounds, and nothing for routine
+ * taps or location updates. It follows the phone's own haptics setting.
+ */
+class Haptics(private val feedback: HapticFeedback) {
+    fun confirm() = feedback.performHapticFeedback(HapticFeedbackType.Confirm)
+    fun reject() = feedback.performHapticFeedback(HapticFeedbackType.Reject)
+    fun toggle(on: Boolean) = feedback.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+}
+
+@Composable
+fun rememberHaptics(): Haptics {
+    val feedback = LocalHapticFeedback.current
+    return remember(feedback) { Haptics(feedback) }
 }
 
 // -------------------------------------------------------------------------------------------------
