@@ -247,6 +247,17 @@ class CreateCircleTest {
             device.pressBack()
             waitFor("Appearance")
         }
+        // The app's own theme, then back to following the phone.
+        waitFor("Appearance").click()
+        waitFor("Theme").click()
+        waitFor("Dark").click()
+        waitFor("Dark map")
+        shot("settings-theme-dark")
+        waitFor("Theme").click()
+        waitFor("System default").click()
+        waitFor("System default")
+        device.pressBack()
+        waitFor("Appearance")
         device.pressBack()
         waitFor("Invite")
 

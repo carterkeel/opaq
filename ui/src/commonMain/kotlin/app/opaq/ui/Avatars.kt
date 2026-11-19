@@ -6,7 +6,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -75,7 +74,7 @@ object AvatarColors {
     /** In dark mode the pastel becomes the text and a deep tint becomes the circle, like Signal. */
     @Composable
     fun themed(pair: Pair): Pair =
-        if (isSystemInDarkTheme()) Pair(pair.content.copy(alpha = 0.55f).compositeOver(Color(0xFF121212)), pair.container) else pair
+        if (LocalDarkTheme.current) Pair(pair.content.copy(alpha = 0.55f).compositeOver(Color(0xFF121212)), pair.container) else pair
 }
 
 /** Everything needed to draw someone's avatar. */

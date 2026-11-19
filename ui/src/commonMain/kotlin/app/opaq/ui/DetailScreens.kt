@@ -58,6 +58,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Invite
+import app.opaq.core.model.THEME_DARK
+import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_SYSTEM
 import app.opaq.core.nostr.RelayStatus
 import app.opaq.core.nostr.RelayUrls
 import app.opaq.core.protocol.Backups
@@ -600,6 +603,7 @@ fun SettingsSectionScreen(
     var newRelay by remember { mutableStateOf("") }
     var confirmLeave by remember { mutableStateOf<String?>(null) }
     var showHistoryDays by remember { mutableStateOf(false) }
+    var showTheme by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var showRelays by remember { mutableStateOf(false) }
     var settingPin by remember { mutableStateOf(false) }
@@ -651,6 +655,7 @@ fun SettingsSectionScreen(
             }
 
             SettingsSection.Appearance -> {
+                SettingsRow("Theme", themeLabel(state.themeMode), AppIcons.Appearance, onClick = { showTheme = true })
                 SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
                 SwitchRow("Dark map", "Darker map colours, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
             }
@@ -764,6 +769,9 @@ fun SettingsSectionScreen(
         )
     }
     if (settingPin) SetPinSheet(actions, if (state.pin == null) "Set a PIN" else "Change PIN") { settingPin = false }
+    if (showTheme) {
+        ThemeSheet(state.themeMode, onPick = { mode -> showTheme = false; actions.setThemeMode(mode) }, onDismiss = { showTheme = false })
+    }
     if (showHistoryDays) {
         HistoryDaysSheet(state.historyDays, onPick = { days ->
             showHistoryDays = false
@@ -784,6 +792,28 @@ fun SettingsSectionScreen(
             },
             onDismiss = { confirmReset = false },
         )
+    }
+}
+
+private fun themeLabel(mode: String) = when (mode) {
+    THEME_LIGHT -> "Light"
+    THEME_DARK -> "Dark"
+    else -> "System default"
+}
+
+/** Settings → Appearance → Theme: follow the phone (the default), or always light or dark. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeSheet(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text("Theme", style = MaterialTheme.typography.titleLarge, modifier = Gutter)
+            Caption("System default follows your phone's light or dark setting.", Gutter.then(Modifier.padding(top = 4.dp, bottom = 8.dp)))
+            val selected = if (current == THEME_LIGHT || current == THEME_DARK) current else THEME_SYSTEM
+            listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK).forEach { mode ->
+                SettingsRow(themeLabel(mode), null, if (mode == selected) AppIcons.Check else null, onClick = { onPick(mode) })
+            }
+        }
     }
 }
 

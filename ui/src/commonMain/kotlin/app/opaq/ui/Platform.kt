@@ -97,5 +97,12 @@ expect fun decodeImage(bytes: ByteArray): ImageBitmap?
 @Composable
 expect fun PlatformBackHandler(enabled: Boolean, onBack: () -> Unit)
 
+/**
+ * Makes the status and navigation bar icons readable on the app's own colours ([dark]), which can
+ * differ from the phone's setting. [followSystem]: the app is following the phone.
+ */
+@Composable
+expect fun SystemBarsTheme(dark: Boolean, followSystem: Boolean)
+
 /** Regions that show road speeds in mph. */
 internal val MILES_REGIONS = setOf("US", "GB", "LR", "MM")

@@ -7,6 +7,9 @@ import app.opaq.core.crypto.constantTimeEquals
 import app.opaq.core.crypto.hexToBytes
 import app.opaq.core.crypto.toHex
 import app.opaq.core.model.AppState
+import app.opaq.core.model.THEME_DARK
+import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_SYSTEM
 import app.opaq.core.model.Circle
 import app.opaq.core.model.Contact
 import app.opaq.core.model.Invite
@@ -304,6 +307,11 @@ class Engine(
     suspend fun setShowPhotos(on: Boolean) = update { it.copy(showPhotos = on) }
 
     suspend fun setDarkMap(on: Boolean) = update { it.copy(darkMap = on) }
+
+    suspend fun setThemeMode(mode: String) {
+        require(mode == THEME_SYSTEM || mode == THEME_LIGHT || mode == THEME_DARK) { "Unknown theme" }
+        update { it.copy(themeMode = mode) }
+    }
 
     suspend fun setPeoplePanelHidden(hidden: Boolean) = update { if (it.peoplePanelHidden == hidden) it else it.copy(peoplePanelHidden = hidden) }
 
