@@ -385,6 +385,13 @@ object AppIcons {
         moveTo(16f, 8f); lineTo(20f, 12f); lineTo(16f, 16f)
     }
 
+    /** A circle, half filled with a smaller half circle: Signal's appearance icon, in outline. */
+    val Appearance: ImageVector = stroke("Appearance") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(12f, 3f); lineTo(12f, 21f)
+        moveTo(12f, 7f); arcTo(5f, 5f, 0f, false, true, 12f, 17f)
+    }
+
     val Shield: ImageVector = stroke("Shield") {
         moveTo(12f, 3f); lineTo(19f, 6f); lineTo(19f, 11f); curveTo(19f, 16f, 16f, 19.5f, 12f, 21f)
         curveTo(8f, 19.5f, 5f, 16f, 5f, 11f); lineTo(5f, 6f); close()

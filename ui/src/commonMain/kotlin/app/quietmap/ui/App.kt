@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -47,6 +48,7 @@ sealed interface Route {
     /** [scanned]: the QR code was scanned in the app, in person, which verifies the inviter. */
     data class Join(val invite: InviteData?, val scanned: Boolean = false, val problem: InviteProblem? = null) : Route
     data object Settings : Route
+    data class SettingsPage(val section: SettingsSection) : Route
     data object EditProfile : Route
     data object JoinOptions : Route
     data object Backup : Route
@@ -151,6 +153,9 @@ fun QuietmapScreens(
                           }
                         }
                     } else {
+                      // While another screen is open over the map, screen readers (and the UI test)
+                      // shouldn't reach the map's buttons through it.
+                      Box(Modifier.fillMaxSize().then(if (stack.size > 1) Modifier.clearAndSetSemantics {} else Modifier)) {
                         HomeScreen(
                             state = state,
                             me = me,
@@ -166,6 +171,7 @@ fun QuietmapScreens(
                             sharingBlocked = sharingBlocked,
                             onFixSharing = onFixSharing,
                         )
+                      }
                     }
 
                     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
@@ -192,8 +198,12 @@ fun QuietmapScreens(
                                         is Route.Join -> JoinScreen(state, route.invite, route.scanned, actions, ::home, route.problem)
                                         Route.JoinOptions -> JoinOptionsScreen(::pop, scan, openLink)
                                         Route.Settings -> SettingsScreen(
-                                            state, me, relayStatus, sharingSettings, actions, ::pop,
+                                            state, me, ::pop,
                                             onEditProfile = { push(Route.EditProfile) },
+                                            onSection = { push(Route.SettingsPage(it)) },
+                                        )
+                                        is Route.SettingsPage -> SettingsSectionScreen(
+                                            route.section, state, me, relayStatus, sharingSettings, actions, ::pop,
                                             onBackup = { push(Route.Backup) },
                                             onRestore = { push(Route.Restore) },
                                             onSecurityLog = { push(Route.SecurityLog) },

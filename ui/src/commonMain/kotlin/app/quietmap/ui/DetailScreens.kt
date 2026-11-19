@@ -49,6 +49,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -523,15 +524,71 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
 // Settings
 // -------------------------------------------------------------------------------------------------
 
+/** The parts of Settings (#108). Like Signal: one row each on the first screen, each opening its own. */
+enum class SettingsSection(val title: String) {
+    Sharing("Sharing"),
+    Circles("Circles"),
+    Appearance("Appearance"),
+    Privacy("Privacy"),
+    Security("Security"),
+    Backups("Backups"),
+    Connection("Connection");
+
+    val icon: ImageVector
+        get() = when (this) {
+            Sharing -> AppIcons.LocationPin
+            Circles -> AppIcons.Circles
+            Appearance -> AppIcons.Appearance
+            Privacy -> AppIcons.Lock
+            Security -> AppIcons.Shield
+            Backups -> AppIcons.History
+            Connection -> AppIcons.Relay
+        }
+}
+
+/** Settings: your profile, then one row per section, split into two groups like Signal's. */
 @Composable
 fun SettingsScreen(
+    state: AppState,
+    me: String,
+    onBack: () -> Unit,
+    onEditProfile: () -> Unit,
+    onSection: (SettingsSection) -> Unit,
+) {
+    ScreenScaffold("Settings", onBack) {
+        Row(
+            Modifier.fillMaxWidth().clickable(onClick = onEditProfile).padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Avatar(avatarFor(state, me, me, state.myName), size = 64.dp)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(state.myName.ifBlank { "Add your name" }, style = MaterialTheme.typography.titleMedium)
+                Caption(DeviceCode.full(me))
+            }
+            Icon(AppIcons.Edit, contentDescription = "Edit profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Spacer(Modifier.height(8.dp))
+        SettingsSection.entries.forEach { section ->
+            if (section == SettingsSection.Appearance) {
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            SettingsRow(section.title, icon = section.icon, onClick = { onSection(section) })
+        }
+        Caption("Opaq · open source", Gutter.padding(top = 24.dp))
+    }
+}
+
+/** One section of Settings, on its own screen. */
+@Composable
+fun SettingsSectionScreen(
+    section: SettingsSection,
     state: AppState,
     me: String,
     relayStatus: Map<String, RelayStatus>,
     sharingSettings: List<SettingItem>,
     actions: Actions,
     onBack: () -> Unit,
-    onEditProfile: () -> Unit,
     onBackup: () -> Unit,
     onRestore: () -> Unit,
     onSecurityLog: () -> Unit,
@@ -547,142 +604,138 @@ fun SettingsScreen(
     val gate = LocalPinGate.current
     val platform = LocalPlatform.current
 
-    ScreenScaffold("Settings", onBack) {
-        // Profile row, like the top of Signal's settings.
-        Row(
-            Modifier.fillMaxWidth().clickable(onClick = onEditProfile).padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Avatar(avatarFor(state, me, me, state.myName), size = 64.dp)
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(state.myName.ifBlank { "Add your name" }, style = MaterialTheme.typography.titleMedium)
-                Caption(DeviceCode.full(me))
-            }
-            Icon(AppIcons.Edit, contentDescription = "Edit profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-
-        SectionHeader("Sharing")
-        SwitchRow("Share my location", "With everyone in your circles", state.sharing, AppIcons.LocationPin) { actions.setSharing(it) }
-        SwitchRow("Share battery level", "Shown next to your status", state.shareBattery, AppIcons.Battery) { actions.setShareBattery(it) }
-        sharingSettings.forEach { item ->
-            if (item.checked != null) {
-                SwitchRow(item.title, item.detail, item.checked, AppIcons.Info, item.onCheckedChange)
-            } else {
-                SettingsRow(item.title, item.detail, AppIcons.Info, onClick = if (item.action != null) item.onAction else null) {
-                    if (item.action != null) TextButton(onClick = item.onAction) { Text(item.action) }
-                }
-            }
-        }
-
-        SectionHeader("Display")
-        SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
-        SwitchRow("Dark map", "Darker map colours, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
-
-        SectionHeader("Circles")
-        state.circles.forEach { c ->
-            val role = when {
-                c.adminPubkey == me -> " · you're the admin"
-                me in c.managers -> " · you're a manager"
-                else -> ""
-            }
-            SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles, onClick = { onCircle(c.id) }) {
-                when {
-                    c.adminPubkey != me -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
-                    c.members.size <= 1 -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
-                    else -> TextButton(onClick = { confirmDelete = c.id }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
-                }
-            }
-        }
-        if (state.circles.any { it.adminPubkey == me && it.members.size > 1 }) {
-            Caption("To leave a circle you run, open someone's profile and make them admin first.", Gutter)
-        }
-
-        SectionHeader("Security")
-        if (state.pin == null) {
-            SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
-        } else {
-            SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
-            SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
-        }
-        SwitchRow("Hide in recent apps", LocalPlatform.current.hideInRecentsDetail, state.hideInRecents, AppIcons.Shield) { on ->
-            if (on) actions.setHideInRecents(true) else gate.require { actions.setHideInRecents(false) }
-        }
-        SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
-        SettingsRow(
-            "Get a new device code",
-            "If someone may have copied this phone's identity",
-            AppIcons.Refresh,
-            titleColor = MaterialTheme.colorScheme.error,
-            onClick = { confirmReset = true },
-        )
-
-        SectionHeader("Backup")
-        SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
-        SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
-
-        SectionHeader("Privacy")
-        SettingsRow(
-            "Location history",
-            "${Format.historyDays(state.historyDays)} · kept only on this phone",
-            AppIcons.History,
-            onClick = { showHistoryDays = true },
-        )
-        if (platform.supportsTor) {
-            SwitchRow(
-                "Connect through Tor",
-                if (state.useTor) "Relays see a Tor address, not yours. Needs Orbot running; nothing connects without it. The map still loads directly."
-                else "Hide your IP address from relays. Needs the Orbot app.",
-                state.useTor,
-                AppIcons.Shield,
-            ) { on -> if (on) actions.setUseTor(true) else gate.require { actions.setUseTor(false) } }
-        }
-        val connected = state.relays.count { relayStatus[it] == RelayStatus.CONNECTED }
-        SettingsRow("Relays", "$connected of ${state.relays.size} connected · they only see encrypted data", AppIcons.Relay, onClick = { showRelays = !showRelays })
-        AnimatedVisibility(showRelays, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Column {
-                state.relays.forEach { url ->
-                    Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(8.dp).background(
-                                when (relayStatus[url]) {
-                                    RelayStatus.CONNECTED -> verifiedGreen()
-                                    RelayStatus.CONNECTING -> Palette.Amber
-                                    else -> MaterialTheme.colorScheme.outline
-                                },
-                                CircleShape,
-                            ),
-                        )
-                        Text(url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
-                        IconButton(onClick = { gate.require { actions.setRelays(state.relays - url) } }, enabled = state.relays.size > 1) {
-                            Icon(AppIcons.Close, contentDescription = "Remove $url", modifier = Modifier.size(18.dp))
+    ScreenScaffold(section.title, onBack) {
+        when (section) {
+            SettingsSection.Sharing -> {
+                SwitchRow("Share my location", "With everyone in your circles", state.sharing, AppIcons.LocationPin) { actions.setSharing(it) }
+                SwitchRow("Share battery level", "Shown next to your status", state.shareBattery, AppIcons.Battery) { actions.setShareBattery(it) }
+                sharingSettings.forEach { item ->
+                    if (item.checked != null) {
+                        SwitchRow(item.title, item.detail, item.checked, AppIcons.Info, item.onCheckedChange)
+                    } else {
+                        SettingsRow(item.title, item.detail, AppIcons.Info, onClick = if (item.action != null) item.onAction else null) {
+                            if (item.action != null) TextButton(onClick = item.onAction) { Text(item.action) }
                         }
                     }
                 }
-                Row(Modifier.padding(start = 72.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
-                        value = newRelay,
-                        onValueChange = { newRelay = it.trim() },
-                        label = { Text("wss://relay.example") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.weight(1f),
-                    )
-                    IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = RelayUrls.isAllowed(newRelay)) {
-                        Icon(AppIcons.Add, contentDescription = "Add relay")
+                AnimatedVisibility(state.sharing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    Column {
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        SettingsRow("Stop sharing with everyone", icon = AppIcons.Leave, titleColor = MaterialTheme.colorScheme.error, onClick = { actions.setSharing(false) })
                     }
                 }
             }
-        }
-        SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Lock)
 
-        AnimatedVisibility(state.sharing, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Column {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                SettingsRow("Stop sharing with everyone", icon = AppIcons.Leave, titleColor = MaterialTheme.colorScheme.error, onClick = { actions.setSharing(false) })
+            SettingsSection.Circles -> {
+                if (state.circles.isEmpty()) Caption("You're not in any circles yet.", Gutter.padding(top = 8.dp))
+                state.circles.forEach { c ->
+                    val role = when {
+                        c.adminPubkey == me -> " · you're the admin"
+                        me in c.managers -> " · you're a manager"
+                        else -> ""
+                    }
+                    SettingsRow(c.name, "${c.members.size} ${if (c.members.size == 1) "person" else "people"} · key #${c.epoch}$role", AppIcons.Circles, onClick = { onCircle(c.id) }) {
+                        when {
+                            c.adminPubkey != me -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
+                            c.members.size <= 1 -> TextButton(onClick = { confirmLeave = c.id }) { Text("Leave") }
+                            else -> TextButton(onClick = { confirmDelete = c.id }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                        }
+                    }
+                }
+                if (state.circles.any { it.adminPubkey == me && it.members.size > 1 }) {
+                    Caption("To leave a circle you run, open someone's profile and make them admin first.", Gutter.padding(top = 8.dp))
+                }
+            }
+
+            SettingsSection.Appearance -> {
+                SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
+                SwitchRow("Dark map", "Darker map colours, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
+            }
+
+            SettingsSection.Privacy -> {
+                SettingsRow(
+                    "Location history",
+                    "${Format.historyDays(state.historyDays)} · kept only on this phone",
+                    AppIcons.History,
+                    onClick = { showHistoryDays = true },
+                )
+                SwitchRow("Hide in recent apps", platform.hideInRecentsDetail, state.hideInRecents, AppIcons.Shield) { on ->
+                    if (on) actions.setHideInRecents(true) else gate.require { actions.setHideInRecents(false) }
+                }
+            }
+
+            SettingsSection.Security -> {
+                if (state.pin == null) {
+                    SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
+                } else {
+                    SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
+                    SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
+                }
+                SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
+                SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Lock)
+                SettingsRow(
+                    "Get a new device code",
+                    "If someone may have copied this phone's identity",
+                    AppIcons.Refresh,
+                    titleColor = MaterialTheme.colorScheme.error,
+                    onClick = { confirmReset = true },
+                )
+            }
+
+            SettingsSection.Backups -> {
+                SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
+                SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
+            }
+
+            SettingsSection.Connection -> {
+                val connected = state.relays.count { relayStatus[it] == RelayStatus.CONNECTED }
+                SettingsRow("Relays", "$connected of ${state.relays.size} connected · they only see encrypted data", AppIcons.Relay, onClick = { showRelays = !showRelays })
+                AnimatedVisibility(showRelays, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    Column {
+                        state.relays.forEach { url ->
+                            Row(Modifier.fillMaxWidth().padding(start = 72.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    Modifier.size(8.dp).background(
+                                        when (relayStatus[url]) {
+                                            RelayStatus.CONNECTED -> verifiedGreen()
+                                            RelayStatus.CONNECTING -> Palette.Amber
+                                            else -> MaterialTheme.colorScheme.outline
+                                        },
+                                        CircleShape,
+                                    ),
+                                )
+                                Text(url.removePrefix("wss://"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(start = 12.dp))
+                                IconButton(onClick = { gate.require { actions.setRelays(state.relays - url) } }, enabled = state.relays.size > 1) {
+                                    Icon(AppIcons.Close, contentDescription = "Remove $url", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                        Row(Modifier.padding(start = 72.dp, end = 16.dp, top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = newRelay,
+                                onValueChange = { newRelay = it.trim() },
+                                label = { Text("wss://relay.example") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { val add = newRelay; gate.require { actions.setRelays(state.relays + add); newRelay = "" } }, enabled = RelayUrls.isAllowed(newRelay)) {
+                                Icon(AppIcons.Add, contentDescription = "Add relay")
+                            }
+                        }
+                    }
+                }
+                if (platform.supportsTor) {
+                    SwitchRow(
+                        "Connect through Tor",
+                        if (state.useTor) "Relays see a Tor address, not yours. Needs Orbot running; nothing connects without it. The map still loads directly."
+                        else "Hide your IP address from relays. Needs the Orbot app.",
+                        state.useTor,
+                        AppIcons.Shield,
+                    ) { on -> if (on) actions.setUseTor(true) else gate.require { actions.setUseTor(false) } }
+                }
             }
         }
-        Caption("Quietmap · open source", Gutter.padding(top = 16.dp))
     }
 
     confirmLeave?.let { id ->

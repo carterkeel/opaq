@@ -229,10 +229,24 @@ class CreateCircleTest {
         // Settings, then back to the map.
         waitFor("Invite")
         (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
-        waitFor("Share my location")
+        waitFor("Appearance")
         shot("settings")
-        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
-        shot("settings-lower")
+        // Each section opens on its own screen (#108). A row from each shows it opened.
+        listOf(
+            "Sharing" to "Share my location",
+            "Circles" to "Family",
+            "Appearance" to "Dark map",
+            "Privacy" to "Location history",
+            "Security" to "Security log",
+            "Backups" to "Back up to a file",
+            "Connection" to "Relays",
+        ).forEach { (section, row) ->
+            waitFor(section).click()
+            waitFor(row)
+            shot("settings-${section.lowercase()}")
+            device.pressBack()
+            waitFor("Appearance")
+        }
         device.pressBack()
         waitFor("Invite")
 
@@ -265,7 +279,7 @@ class CreateCircleTest {
             device.pressBack()
             device.pressBack()
             (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
-            waitFor("Share my location")
+            waitFor("Appearance")
             shot("dark-settings")
             device.pressBack()
             waitFor("Invite")
