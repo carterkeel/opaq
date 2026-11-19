@@ -657,7 +657,7 @@ fun SettingsSectionScreen(
             SettingsSection.Appearance -> {
                 SettingsRow("Theme", themeLabel(state.themeMode), AppIcons.Appearance, onClick = { showTheme = true })
                 SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
-                SwitchRow("Dark map", "Darker map colours, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
+                SwitchRow("Dark map", "Darker map colors, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
             }
 
             SettingsSection.Privacy -> {
@@ -811,7 +811,9 @@ private fun ThemeSheet(current: String, onPick: (String) -> Unit, onDismiss: () 
             Caption("System default follows your phone's light or dark setting.", Gutter.then(Modifier.padding(top = 4.dp, bottom = 8.dp)))
             val selected = if (current == THEME_LIGHT || current == THEME_DARK) current else THEME_SYSTEM
             listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK).forEach { mode ->
-                SettingsRow(themeLabel(mode), null, if (mode == selected) AppIcons.Check else null, onClick = { onPick(mode) })
+                SettingsRow(themeLabel(mode), onClick = { onPick(mode) }) {
+                    if (mode == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                }
             }
         }
     }

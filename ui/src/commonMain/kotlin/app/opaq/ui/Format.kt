@@ -79,7 +79,9 @@ object Format {
         if (stale) {
             parts += "Was ${activity(loc.activity).lowercase()}"
         } else {
-            parts += activity(loc.activity)
+            // UNKNOWN means the sender's phone hadn't worked out a speed yet (often its first fix),
+            // so say nothing rather than guess "Moving".
+            if (loc.activity != Activity.UNKNOWN) parts += activity(loc.activity)
             val s = loc.speed
             if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += speed(s)
         }
