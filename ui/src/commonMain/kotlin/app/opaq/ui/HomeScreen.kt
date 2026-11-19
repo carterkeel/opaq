@@ -264,12 +264,17 @@ fun HomeScreen(
             }
 
             // A soft fade behind the status bar keeps the clock, signal and battery readable over the map.
+            // The icons follow the app theme, so a dark theme over the light map (white icons on pale
+            // streets) needs a stronger fade than when the theme and the map match.
             val scrim = MaterialTheme.colorScheme.background
+            val clash = LocalDarkTheme.current && !state.darkMap
+            val top = if (clash) 0.92f else 0.72f
+            val mid = if (clash) 0.6f else 0.35f
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(with(density) { insetTop.toDp() } + 28.dp)
-                    .background(Brush.verticalGradient(listOf(scrim.copy(alpha = 0.72f), scrim.copy(alpha = 0.35f), scrim.copy(alpha = 0f)))),
+                    .height(with(density) { insetTop.toDp() } + if (clash) 36.dp else 28.dp)
+                    .background(Brush.verticalGradient(listOf(scrim.copy(alpha = top), scrim.copy(alpha = mid), scrim.copy(alpha = 0f)))),
             )
 
             // Floating controls over the map.
