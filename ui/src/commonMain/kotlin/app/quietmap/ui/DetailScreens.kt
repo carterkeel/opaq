@@ -157,7 +157,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         if (waiting != null) {
             SettingsRow(
                 "Hasn't received the circle's new key",
-                "Their phone may be off or offline. Quietmap keeps resending it for two weeks.",
+                "Their phone may be off or offline. Opaq keeps resending it for two weeks.",
                 AppIcons.Lock,
             )
         }
@@ -366,7 +366,7 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                         val invite = state.invites.firstOrNull { it.secret == secret }
                         val uses = invite?.usedBy?.size ?: 0
                         val max = invite?.maxUses ?: 1
-                        Text("Have them scan this with Quietmap", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Have them scan this with Opaq", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         // QR codes need dark modules on a light background, in both themes.
                         Surface(color = Color.White, shape = RoundedCornerShape(24.dp), shadowElevation = 2.dp) {
                             Image(
@@ -387,11 +387,11 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                         InfoCard {
                             Caption("Your device code")
                             Mono(DeviceCode.full(me), size = 17, color = MaterialTheme.colorScheme.onSurface, weight = FontWeight.Medium)
-                            Caption("If you send the link instead, read this out to them on a call. Quietmap shows them the code from the link, so they can check it's the same.")
+                            Caption("If you send the link instead, read this out to them on a call. Opaq shows them the code from the link, so they can check it's the same.")
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                             TonalButton("Share link", { platform.shareText(InviteLinks.shareText(circle.name, current), "Share invite link") }, Modifier.weight(1f), icon = AppIcons.Share)
-                            TonalButton("Copy", { platform.copyToClipboard("Quietmap invite", InviteLinks.webLink(current)) }, Modifier.weight(1f))
+                            TonalButton("Copy", { platform.copyToClipboard("Opaq invite", InviteLinks.webLink(current)) }, Modifier.weight(1f))
                         }
                         Caption("Tip: send links in an end-to-end encrypted chat. The app that carries a link can read it.")
                         if (secret != null) {
@@ -425,7 +425,7 @@ fun JoinOptionsScreen(onBack: () -> Unit, onScan: () -> Unit, onJoinLink: (Strin
             Spacer(Modifier.height(8.dp))
             BigIcon(AppIcons.ScanQr)
             Text(
-                "Ask someone in the circle to open it in Quietmap and tap Invite. Then scan their QR code, or paste the link they send you.",
+                "Ask someone in the circle to open it in Opaq and tap Invite. Then scan their QR code, or paste the link they send you.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -459,7 +459,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
                 when (problem) {
                     InviteProblem.MISSING -> "This invite link is incomplete. The invite is the long part after the #, and it's missing here: some apps cut links off there. Ask for the link again and paste their whole message here, or scan their QR code."
                     InviteProblem.DAMAGED -> "This invite link is incomplete or was changed after it was made. Ask for the link again and paste their whole message here, or scan their QR code."
-                    else -> "That isn't a Quietmap invite. Ask for a new link or QR code."
+                    else -> "That isn't an Opaq invite. Ask for a new link or QR code."
                 },
                 modifier = Gutter,
             )
@@ -817,7 +817,7 @@ fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
         ScreenScaffold("Back up", onBack) {
             Column(Gutter, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text(
-                    "A backup can recreate you on another phone, so Quietmap asks for a PIN before making one. That way someone who picks up your unlocked phone can't quietly copy you.",
+                    "A backup can recreate you on another phone, so Opaq asks for a PIN before making one. That way someone who picks up your unlocked phone can't quietly copy you.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -848,7 +848,7 @@ fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
                             working = false
                             return@exportBackup
                         }
-                        platform.saveTextFile("quietmap-backup.txt", text) { saved ->
+                        platform.saveTextFile("opaq-backup.txt", text) { saved ->
                             working = false
                             if (saved) {
                                 platform.showMessage("Backup saved. It's listed in Settings, Security log.")

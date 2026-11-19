@@ -1,6 +1,6 @@
 # Opaq
 
-Private location sharing with the people you choose. No accounts, no phone numbers, and no Quietmap server.
+Private location sharing with the people you choose. No accounts, no phone numbers, and no Opaq server.
 
 - **Identity is a key on your phone.** On first launch the app creates a secp256k1 keypair. Your *device code* (for example `7F3A 91C2 D04E 6B1A`) is a fingerprint of the public key; compare it in person to verify someone.
 - **Circles share both ways**, like Life360. The circle admin sends a signed, single-use invite link that expires in an hour (or 24 hours), and approves each person who opens it.

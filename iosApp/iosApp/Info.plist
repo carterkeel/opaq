@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Quietmap</string>
+	<string>Opaq</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -27,13 +27,14 @@
 			<string>app.quietmap.invite</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
+				<string>opaq</string>
 				<string>quietmap</string>
 			</array>
 		</dict>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<!-- Export compliance: Quietmap uses only standard, published algorithms (secp256k1 signatures,
+	<!-- Export compliance: Opaq uses only standard, published algorithms (secp256k1 signatures,
 	     NIP-44: ECDH, HKDF, ChaCha20, HMAC-SHA256; PBKDF2 for backups) from open-source libraries,
 	     and its source is public. That is exempt, so the answer is "no non-exempt encryption".
 	     Signal's iOS app answers the same way. -->
@@ -42,11 +43,11 @@
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Quietmap uses the camera only to scan invite codes. Nothing is recorded.</string>
+	<string>Opaq uses the camera only to scan invite codes. Nothing is recorded.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Quietmap shares your location, end-to-end encrypted, only with the people in your circles.</string>
+	<string>Opaq shares your location, end-to-end encrypted, only with the people in your circles.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Choose "Always" so your circles still see where you are when Quietmap is closed. You can stop sharing at any time.</string>
+	<string>Choose "Always" so your circles still see where you are when Opaq is closed. You can stop sharing at any time.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

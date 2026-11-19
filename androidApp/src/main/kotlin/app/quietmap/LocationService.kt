@@ -38,7 +38,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * goes out as soon as movement is confirmed instead of waiting out the 5-minute still interval.
  *
  * The persistent notification is required by Android, and doubles as an anti-stalkerware
- * signal: you can always see that Quietmap is sharing, and with how many people.
+ * signal: you can always see that Opaq is sharing, and with how many people.
  */
 class LocationService : LifecycleService(), LocationListener {
     private val policy = MotionPolicy()
@@ -229,7 +229,7 @@ class LocationService : LifecycleService(), LocationListener {
         }
         return NotificationCompat.Builder(this, QuietmapApp.CHANNEL_SHARING)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle("Quietmap")
+            .setContentTitle("Opaq")
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)

@@ -47,7 +47,7 @@ fun RecoveryScreen(recovery: Recovery, actions: Actions, onRestore: () -> Unit) 
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 32.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Text("Quietmap can't open your saved data", style = MaterialTheme.typography.headlineSmall)
+        Text("Opaq can't open your saved data", style = MaterialTheme.typography.headlineSmall)
         Text(recovery.reason + ".", style = MaterialTheme.typography.bodyLarge)
         Text(
             "Your data is still on this phone and hasn't been changed. Location sharing is off until this is fixed.",
@@ -71,7 +71,7 @@ fun RecoveryScreen(recovery: Recovery, actions: Actions, onRestore: () -> Unit) 
     if (confirmFresh) {
         ConfirmSheet(
             title = "Start over?",
-            text = "Quietmap gets a new device code and forgets your circles. Your old data stays on this phone, unused. To rejoin a circle you'll need a new invite.",
+            text = "Opaq gets a new device code and forgets your circles. Your old data stays on this phone, unused. To rejoin a circle you'll need a new invite.",
             confirm = "Start over",
             destructive = true,
             onConfirm = { confirmFresh = false; actions.startFresh() },
@@ -188,7 +188,7 @@ fun SetPinSheet(actions: Actions, title: String, onDismiss: () -> Unit) {
     }
     ConfirmSheet(
         title = title,
-        text = "Quietmap asks for it before backups, invites, approving or removing people, relay changes and security settings. Never to open the app or see where people are.",
+        text = "Opaq asks for it before backups, invites, approving or removing people, relay changes and security settings. Never to open the app or see where people are.",
         confirm = "Save PIN",
         onConfirm = save,
         onDismiss = onDismiss,

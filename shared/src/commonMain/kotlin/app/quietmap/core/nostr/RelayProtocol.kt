@@ -14,7 +14,7 @@ import kotlinx.serialization.json.putJsonArray
 
 internal val NostrJson = Json { ignoreUnknownKeys = true }
 
-/** A REQ filter. Only the fields Quietmap needs. */
+/** A REQ filter. Only the fields Opaq needs. */
 data class Filter(
     val kinds: List<Int>,
     val tagD: List<String> = emptyList(),

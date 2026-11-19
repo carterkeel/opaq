@@ -173,7 +173,7 @@ private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () ->
     BigIcon(AppIcons.Lock)
     StepTitle(
         "Add a PIN?",
-        "Optional. Quietmap asks for it before backups, invites, approving or removing people, and security changes. Never to open the app or see where people are.",
+        "Optional. Opaq asks for it before backups, invites, approving or removing people, and security changes. Never to open the app or see where people are.",
     )
     if (state.pin != null) {
         Text("PIN set", style = MaterialTheme.typography.titleMedium)
@@ -242,7 +242,7 @@ private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Un
     BigIcon(AppIcons.LocationPin)
     StepTitle(
         "Share your location",
-        "Quietmap needs location access to show you to your circle. Your location is encrypted on this phone before it goes anywhere.",
+        "Opaq needs location access to show you to your circle. Your location is encrypted on this phone before it goes anywhere.",
     )
     InfoCard {
         Text("You're always in control", style = MaterialTheme.typography.titleSmall)

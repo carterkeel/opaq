@@ -22,7 +22,7 @@
         android:roundIcon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Quietmap">
+        android:theme="@style/Theme.Opaq">
 
         <activity
             android:name=".MainActivity"
@@ -38,6 +38,8 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="opaq" android:host="join" />
+                <!-- The app's scheme before it was renamed Opaq: links made then still open. -->
                 <data android:scheme="quietmap" android:host="join" />
             </intent-filter>
             <!-- Shared invite links (https). Without verified App Links these open the web page,
@@ -46,6 +48,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="carterkeel.github.io" android:pathPrefix="/opaq/join" />
                 <data android:scheme="https" android:host="carterkeel.github.io" android:pathPrefix="/quietmap/join" />
             </intent-filter>
         </activity>

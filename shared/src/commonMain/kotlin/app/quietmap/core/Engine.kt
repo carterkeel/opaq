@@ -92,7 +92,7 @@ interface StateStore {
 data class Recovery(val reason: String, val retryable: Boolean)
 
 /**
- * The whole Quietmap protocol: identity, circles, invites, key rotation and location exchange.
+ * The whole Opaq protocol: identity, circles, invites, key rotation and location exchange.
  * Platform code only supplies storage, a clock, and location fixes.
  */
 class Engine(
@@ -195,7 +195,7 @@ class Engine(
         StoredState.Unreadable(t.message ?: "Secure storage isn't available", retryable = true)
     }
 
-    private fun checkReady() = check(_recovery.value == null) { "Quietmap can't read its saved data yet" }
+    private fun checkReady() = check(_recovery.value == null) { "Opaq can't read its saved data yet" }
 
     private fun decode(data: String): AppState? = runCatching { json.decodeFromString(AppState.serializer(), data) }.getOrNull()
 

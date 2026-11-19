@@ -59,7 +59,7 @@ import platform.darwin.dispatch_get_main_queue
  * The iOS app's Kotlin side. Swift calls three things:
  * - `QuietmapIos.shared.start()` from `application(_:didFinishLaunchingWithOptions:)`, including
  *   background relaunches by significant-change monitoring;
- * - `QuietmapIos.shared.handleUrl(url:)` for `quietmap://join` links;
+ * - `QuietmapIos.shared.handleUrl(url:)` for `opaq://join` (and older `quietmap://join`) links;
  * - `QuietmapIosKt.MainViewController()` for the screen.
  */
 @OptIn(ExperimentalForeignApi::class)
@@ -72,7 +72,7 @@ object QuietmapIos {
             scope = scope,
             now = ::epochSeconds,
             // A Kotlin String passed through C varargs isn't bridged to NSString and crashes; cast it.
-            log = { NSLog("Quietmap: %@", it as NSString) },
+            log = { NSLog("Opaq: %@", it as NSString) },
             deviceName = UIDevice.currentDevice.model,
             // Time since boot: changing the date can't shorten a PIN lockout.
             elapsed = { NSProcessInfo.processInfo.systemUptime.toLong() },
@@ -135,7 +135,7 @@ object QuietmapIos {
     }
 
     /**
-     * "Hide in recent apps": covers the screen whenever Quietmap stops being the active app, so the
+     * "Hide in recent apps": covers the screen whenever Opaq stops being the active app, so the
      * app switcher's snapshot shows a blank page instead of the map. (iOS gives apps no way to block
      * screenshots, unlike Android's FLAG_SECURE.)
      */
@@ -162,9 +162,11 @@ object QuietmapIos {
         .flatMap { scene -> scene.windows.filterIsInstance<UIWindow>() }
         .firstOrNull { it.isKeyWindow() }
 
-    /** Handles a `quietmap://join…` or shared web invite link. Returns false for links that aren't Quietmap's. */
+    /** Handles an `opaq://join…` (or older `quietmap://join…`) or shared web invite link. Returns false for links that aren't Opaq's. */
     fun handleUrl(url: String): Boolean {
-        if (!url.startsWith("quietmap://") && !url.startsWith(InviteLinks.WEB_PREFIX)) return false
+        val ours = InviteLinks.SCHEMES.any { url.startsWith("$it://") } ||
+            url.startsWith(InviteLinks.WEB_PREFIX) || url.startsWith(InviteLinks.OLD_WEB_PREFIX)
+        if (!ours) return false
         incomingLink.value = url
         return true
     }

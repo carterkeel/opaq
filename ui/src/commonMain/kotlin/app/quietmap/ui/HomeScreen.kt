@@ -617,7 +617,7 @@ private fun PeopleList(
                 val waiting = circle.pendingAcks.count { now - it.firstSentAt > 600 && circle.members.any { m -> m.pubkey == it.pubkey } }
                 Banner(
                     visible = waiting > 0,
-                    text = if (waiting == 1) "1 person hasn't received the circle's new key yet. Quietmap keeps trying." else "$waiting people haven't received the circle's new key yet. Quietmap keeps trying.",
+                    text = if (waiting == 1) "1 person hasn't received the circle's new key yet. Opaq keeps trying." else "$waiting people haven't received the circle's new key yet. Opaq keeps trying.",
                     action = null,
                     onAction = null,
                 )
@@ -729,7 +729,7 @@ private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) 
 private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit, onSettings: () -> Unit, onDismissRefusal: (String) -> Unit) {
     Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
     Column(Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH).verticalScroll(rememberScrollState())) {
-        TopBar("Quietmap") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
+        TopBar("Opaq") { IconButton(onClick = onSettings) { Icon(AppIcons.Settings, contentDescription = "Settings") } }
         Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(16.dp)) {
             Spacer(Modifier.height(24.dp))
             BigIcon(AppIcons.Circles)

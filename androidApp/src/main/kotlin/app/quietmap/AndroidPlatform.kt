@@ -67,7 +67,7 @@ class AndroidPlatform(
                 requestBackgroundLocation()
             },
             SettingItem(
-                "Battery saver for Quietmap",
+                "Battery saver for Opaq",
                 if (ignoringBattery) "Off. Updates stay reliable." else "On, so some phones pause updates. Tap Turn off, then choose “Allow”.",
                 if (ignoringBattery) null else "Turn off",
             ) {

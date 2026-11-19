@@ -62,7 +62,7 @@ class IosNotifier(private val engine: Engine, scope: CoroutineScope) {
         center.addNotificationRequest(UNNotificationRequest.requestWithIdentifier(NSUUID().UUIDString, content, null), null)
     }
 
-    /** Shows them while Quietmap is open too, as Android does. */
+    /** Shows them while Opaq is open too, as Android does. */
     private class Delegate : NSObject(), UNUserNotificationCenterDelegateProtocol {
         override fun userNotificationCenter(
             center: UNUserNotificationCenter,

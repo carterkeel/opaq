@@ -91,7 +91,7 @@ class EngineTest {
         val a = engine()
         val c = a.createCircle("Family")
         assertTrue(a.canInvite(c))
-        assertTrue(a.createInvite(c.id).startsWith("quietmap://join#"))
+        assertTrue(a.createInvite(c.id).startsWith("opaq://join#"))
         val stranger = Member("f".repeat(64), "Nobody")
         assertFailsWith<IllegalArgumentException> { a.setManager(c.id, stranger.pubkey, true) }
     }

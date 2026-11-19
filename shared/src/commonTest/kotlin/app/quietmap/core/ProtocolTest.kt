@@ -113,14 +113,14 @@ class ProtocolTest {
         assertNull(InviteLinks.decode(InviteLinks.encode(InviteLinks.signed(jordan, unsigned).copy(v = 1, x = null))), "no downgrading a v2 link")
         val data = InviteLinks.signed(jordan, unsigned)
         val link = InviteLinks.encode(data)
-        assertTrue(link.startsWith("quietmap://join#"))
+        assertTrue(link.startsWith("opaq://join#"))
         assertEquals(data, InviteLinks.decode(link))
         assertEquals(data, InviteLinks.decode("Join my circle: $link"))
         assertNull(InviteLinks.decode("quietmap://join#garbage"))
         val web = InviteLinks.webLink(link)
-        assertTrue(web.startsWith("https://carterkeel.github.io/quietmap/join#"))
+        assertTrue(web.startsWith("https://carterkeel.github.io/opaq/join#"))
         assertEquals(link.substringAfter('#'), web.substringAfter('#'), "the invite stays after #, so the web host never gets it")
-        assertEquals(data, InviteLinks.decode("Join my circle \"Family\" on Quietmap: $web"))
+        assertEquals(data, InviteLinks.decode("Join my circle \"Family\" on Opaq: $web"))
     }
 
     @Test
@@ -135,13 +135,15 @@ class ProtocolTest {
             link,
             payload,
             "  $web\n",
-            "Join my circle \"Family\" on Quietmap:\n$web\nSee you there!",
+            "Join my circle \"Family\" on Opaq:\n$web\nSee you there!",
             InviteLinks.shareText("Family", link),
             "Open this: $web.",
             "<$web>",
             "($link)",
             // The page hands Android an intent with the invite in the path, not after #.
             "quietmap://join/$payload",
+            "opaq://join/$payload",
+            "https://carterkeel.github.io/quietmap/join#$payload",
             // A # some app percent-encoded.
             web.replace("#", "%23"),
             // Long words broken by a line break or an invisible character.
@@ -161,6 +163,7 @@ class ProtocolTest {
         assertEquals(InviteProblem.MISSING, InviteLinks.problem(web.substringBefore('#')))
         assertEquals(InviteProblem.MISSING, InviteLinks.problem(web.substringBefore('#') + "#"))
         assertEquals(InviteProblem.MISSING, InviteLinks.problem("quietmap://join"))
+        assertEquals(InviteProblem.MISSING, InviteLinks.problem("opaq://join"))
         // Cut short or changed.
         assertEquals(InviteProblem.DAMAGED, InviteLinks.problem(web.dropLast(30)))
         assertEquals(InviteProblem.DAMAGED, InviteLinks.problem(InviteLinks.encode(data.copy(cn = "Other"))))

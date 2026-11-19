@@ -62,7 +62,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     override val sharingIndicatorText = "The location arrow shows at the top of the screen while you're sharing"
 
     // iOS lets apps cover their app-switcher snapshot, but not block screenshots.
-    override val hideInRecentsDetail = "Blank Quietmap's screen in the app switcher"
+    override val hideInRecentsDetail = "Blank Opaq's screen in the app switcher"
 
     private val filePicker = IosFilePicker(::showMessage)
 
@@ -84,7 +84,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
         SettingItem(
             "Allow all the time",
             if (hasAlways) "Granted. Sharing continues in the background and after a restart."
-            else "Needed to keep sharing while Quietmap is in the background. Choose Location → Always.",
+            else "Needed to keep sharing while Opaq is in the background. Choose Location → Always.",
             if (hasAlways) null else "Open",
         ) {
             NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let {
@@ -94,8 +94,8 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
         SettingItem(
             "Show blue location pill",
             when {
-                showIndicator -> "Shows at the top of the screen while Quietmap shares in the background"
-                hasAlways -> "Hidden. Outside Quietmap, nothing at the top of the screen shows that you're sharing."
+                showIndicator -> "Shows at the top of the screen while Opaq shares in the background"
+                hasAlways -> "Hidden. Outside Opaq, nothing at the top of the screen shows that you're sharing."
                 else -> "iOS keeps showing it until location access is set to Always"
             },
             action = null,

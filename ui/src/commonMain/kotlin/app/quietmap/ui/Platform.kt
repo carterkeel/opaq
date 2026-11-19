@@ -42,7 +42,7 @@ interface PlatformBridge {
 
     /** What "Hide in recent apps" does on this phone. */
     val hideInRecentsDetail: String
-        get() = "Blank Quietmap's screen in the app switcher and screenshots"
+        get() = "Blank Opaq's screen in the app switcher and screenshots"
 
     /** Whether relays can be routed through Tor here (Android with Orbot). */
     val supportsTor: Boolean get() = false

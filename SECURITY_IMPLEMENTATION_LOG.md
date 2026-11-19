@@ -1,6 +1,6 @@
 # Security implementation log
 
-This records how each finding from the security audit (13 Nov 2026, code at `078b96c`) was handled: the original problem, its root cause, what changed, the tests that guard it, and what is still open. The plan behind it is "Quietmap Security Hardening — Implementation Plan".
+This records how each finding from the security audit (13 Nov 2026, code at `078b96c`) was handled: the original problem, its root cause, what changed, the tests that guard it, and what is still open. The plan behind it is "Opaq Security Hardening — Implementation Plan".
 
 Ground rules that apply to every change below:
 
@@ -210,7 +210,7 @@ The rest of QM-02 is under Phase 12 below.
 
 **Remaining limitations.**
 
-- A determined abuser can uninstall the app's notification access and also uninstall Quietmap, or root the phone. Neither leaves Quietmap sharing invisibly.
+- A determined abuser can uninstall the app's notification access and also uninstall Opaq, or root the phone. Neither leaves Opaq sharing invisibly.
 - Android's own location indicator and background-location reminders vary by manufacturer.
 
 ## QM-14 and QM-17: membership transparency and app protection (Phase 11)

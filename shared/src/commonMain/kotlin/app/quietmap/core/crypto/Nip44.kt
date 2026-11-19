@@ -12,7 +12,7 @@ object Nip44 {
     fun conversationKey(secret: ByteArray, theirXOnly: ByteArray): ByteArray =
         Hkdf.extract(SALT, Keys.sharedX(secret, theirXOnly))
 
-    /** Conversation key for a symmetric group secret (Quietmap circles). */
+    /** Conversation key for a symmetric group secret (Opaq circles). */
     fun conversationKeyFromSecret(groupSecret: ByteArray, context: String): ByteArray =
         Hkdf.extract(SALT, groupSecret + context.encodeToByteArray())
 

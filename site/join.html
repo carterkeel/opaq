@@ -8,7 +8,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Quietmap invite</title>
+<title>Opaq invite</title>
 <style>
   :root {
     --bg: #ffffff; --surface: #f6f6f9; --text: #1b1b1f; --muted: #5e5e66; --accent: #2c6bed; --on-accent: #ffffff; --line: #e4e4ea;
@@ -47,23 +47,23 @@
 
   <section id="invite" hidden>
     <h1 id="title">You're invited to a circle</h1>
-    <p id="detail">Open the invite in Quietmap to ask to join.</p>
-    <a class="btn primary" id="open" href="quietmap://join">Open in Quietmap</a>
+    <p id="detail">Open the invite in Opaq to ask to join.</p>
+    <a class="btn primary" id="open" href="quietmap://join">Open in Opaq</a>
     <button class="btn tonal" id="copy" type="button">Copy invite</button>
     <div id="manual" hidden>
       <p style="font-size:14px;margin-top:16px">Couldn't copy it here. Press and hold the text below, choose Select all, then Copy.</p>
       <textarea id="manual-text" readonly rows="5" style="width:100%;font:13px/1.4 ui-monospace,monospace;border-radius:12px;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:12px;word-break:break-all"></textarea>
     </div>
     <div class="card">
-      <strong>Nothing is shared yet.</strong> Quietmap shows the person's device code so you can check it with them, then they approve you. Your location is only shared once you tap "Start sharing".
+      <strong>Nothing is shared yet.</strong> Opaq shows the person's device code so you can check it with them, then they approve you. Your location is only shared once you tap "Start sharing".
     </div>
-    <p style="font-size:14px">Don't have Quietmap? Ask the person who invited you how to get it, then come back to this link. If the button doesn't open the app, copy the invite and paste it into Quietmap under Join a circle.</p>
+    <p style="font-size:14px">Don't have Opaq? Ask the person who invited you how to get it, then come back to this link. If the button doesn't open the app, copy the invite and paste it into Opaq under Join a circle.</p>
   </section>
 
   <section id="none" hidden>
     <h1>This invite link is incomplete</h1>
     <p>The invite is the long part of the link after the #, and it's missing here. Some apps cut links off at the #.</p>
-    <p>Ask the person who invited you to send it again. If it still doesn't open, copy their whole message, open Quietmap, tap Join a circle and paste it there. Or ask them to show you the QR code.</p>
+    <p>Ask the person who invited you to send it again. If it still doesn't open, copy their whole message, open Opaq, tap Join a circle and paste it there. Or ask them to show you the QR code.</p>
   </section>
 </main>
 <script>
@@ -96,6 +96,8 @@
     document.getElementById("detail").textContent = "This invite has expired. Ask for a new one.";
   }
 
+  // The hand-off uses the app's original quietmap:// scheme on purpose: every version opens it,
+  // including phones that haven't updated to Opaq yet (which also accepts opaq://). Nobody sees it.
   // Android browsers may drop or misread the part after # when handing a quietmap:// link to an
   // app, so on Android the invite goes in the path of an intent: link instead. Either way it
   // stays on this phone: neither form is ever loaded from a server.
@@ -105,7 +107,7 @@
     : "quietmap://join#" + payload;
   document.getElementById("open").href = appLink;
 
-  // Copy the whole web link (it pastes into Quietmap or a chat), cleaned of anything extra.
+  // Copy the whole web link (it pastes into Opaq or a chat), cleaned of anything extra.
   var webLink = location.origin + location.pathname + "#" + payload;
   var copy = document.getElementById("copy");
   var done = function () { copy.textContent = "Copied"; setTimeout(function () { copy.textContent = "Copy invite"; }, 2000); };

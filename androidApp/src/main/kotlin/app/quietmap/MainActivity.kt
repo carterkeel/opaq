@@ -75,7 +75,7 @@ class MainActivity : ComponentActivity() {
                 null
             }
             bytes.size > MAX_BACKUP_BYTES -> {
-                Toast.makeText(this, "That file is too big to be a Quietmap backup", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "That file is too big to be an Opaq backup", Toast.LENGTH_LONG).show()
                 null
             }
             else -> bytes.decodeToString()
@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
                 scanner.launch(
                     ScanOptions()
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("Scan a Quietmap invite")
+                        .setPrompt("Scan an Opaq invite")
                         .setBeepEnabled(false)
                         .setOrientationLocked(true),
                 )
@@ -224,7 +224,7 @@ private fun Root(incomingLink: MutableStateFlow<String?>, platform: AndroidPlatf
         sharingSettings = sharingSettings,
         incomingLink = link,
         onLinkHandled = { incomingLink.value = null },
-        sharingBlocked = if (blocked) "Sharing is paused because Quietmap's notification is turned off. It has to be visible so you always know your location is being shared." else null,
+        sharingBlocked = if (blocked) "Sharing is paused because Opaq's notification is turned off. It has to be visible so you always know your location is being shared." else null,
         onFixSharing = fixNotifications,
     )
 }

@@ -388,14 +388,20 @@ data class InviteData(
 )
 
 object InviteLinks {
-    const val SCHEME_PREFIX = "quietmap://join#"
+    const val SCHEME_PREFIX = "opaq://join#"
+
+    /** The app's link schemes. `quietmap` was its name before Opaq; links made then still open. */
+    val SCHEMES = listOf("opaq", "quietmap")
 
     /**
      * Shared links use a web address, since chat apps only make http(s) links tappable (#56). The
      * static page there hands the invite to the app. Everything after `#` stays on the phone:
      * browsers never send it to the web host.
      */
-    const val WEB_PREFIX = "https://carterkeel.github.io/quietmap/join#"
+    const val WEB_PREFIX = "https://carterkeel.github.io/opaq/join#"
+
+    /** Where shared links pointed before the repository was renamed to opaq. */
+    const val OLD_WEB_PREFIX = "https://carterkeel.github.io/quietmap/join#"
 
     /** The tappable web form of an invite link. Both forms decode the same way. */
     fun webLink(link: String): String = WEB_PREFIX + link.trim().substringAfter('#')
@@ -403,10 +409,10 @@ object InviteLinks {
     /**
      * The message the Share button sends. The link is alone on the last line with nothing after
      * it, so chat apps that make links tappable take all of it, and if one doesn't, the whole
-     * message can still be pasted into Quietmap, which finds the invite in it.
+     * message can still be pasted into Opaq, which finds the invite in it.
      */
     fun shareText(circleName: String, link: String): String =
-        "Join my circle \"$circleName\" on Quietmap. Tap the link, or copy this whole message into Quietmap under Join a circle:\n\n${webLink(link)}"
+        "Join my circle \"$circleName\" on Opaq. Tap the link, or copy this whole message into Opaq under Join a circle:\n\n${webLink(link)}"
     private val json = Json { ignoreUnknownKeys = true }
 
     fun encode(data: InviteData): String =
@@ -441,8 +447,8 @@ object InviteLinks {
     /**
      * Possible payloads in [text], most likely first: what follows the `#` (with line breaks and
      * invisible characters some apps add to long words taken out), then every other long run of
-     * base64url characters, longest first. That covers the https and `quietmap://` links, the
-     * `quietmap://join/<payload>` form the web page hands to Android, a bare payload, and any of
+     * base64url characters, longest first. That covers the https and `opaq://` (or older `quietmap://`)
+     * links, the `opaq://join/<payload>` form the web page hands to Android, a bare payload, and any of
      * these inside a longer message.
      */
     private fun candidates(text: String): List<String> {
@@ -464,7 +470,7 @@ object InviteLinks {
     fun problem(text: String): InviteProblem? = when {
         decode(text) != null -> null
         candidates(text).isNotEmpty() -> InviteProblem.DAMAGED
-        text.contains("quietmap", ignoreCase = true) -> InviteProblem.MISSING
+        SCHEMES.any { text.contains(it, ignoreCase = true) } -> InviteProblem.MISSING
         else -> InviteProblem.NOT_AN_INVITE
     }
 
@@ -489,6 +495,6 @@ enum class InviteProblem {
     /** Something that looks like an invite, but cut short or changed after it was made. */
     DAMAGED,
 
-    /** Not a Quietmap link at all. */
+    /** Not an Opaq link at all. */
     NOT_AN_INVITE,
 }

@@ -75,6 +75,7 @@ class IosStateStore internal constructor(private val keys: KeyStore) : StateStor
     private val dir: NSURL = run {
         val fm = NSFileManager.defaultManager
         val support = fm.URLsForDirectory(NSApplicationSupportDirectory, NSUserDomainMask).first() as NSURL
+        // Named before the app became Opaq. Kept, or an update would lose the saved identity and circles.
         val dir = support.URLByAppendingPathComponent("Quietmap", isDirectory = true)!!
         fm.createDirectoryAtURL(dir, withIntermediateDirectories = true, attributes = null, error = null)
         dir.setResourceValue(NSNumber(bool = true), forKey = NSURLIsExcludedFromBackupKey, error = null)

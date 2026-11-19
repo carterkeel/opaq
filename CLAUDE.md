@@ -1,8 +1,10 @@
-# Quietmap: notes for Claude (and humans)
+# Opaq: notes for Claude (and humans)
 
-Quietmap is an open-source, Life360-style location sharing app with **no accounts and no server of its own**. Phones exchange end-to-end encrypted updates through public [Nostr](https://nostr.com) relays. Android ships first; iOS reuses the shared Kotlin code.
+Opaq is an open-source, Life360-style location sharing app with **no accounts and no server of its own**. Phones exchange end-to-end encrypted updates through public [Nostr](https://nostr.com) relays. Android ships first; iOS reuses the shared Kotlin code.
 
 This repo is **public**. Never commit secrets, real keys, keystores, personal emails or real location data. Commit as the GitHub no-reply address.
+
+**Naming.** The app was called Quietmap until November 2026; the repository is now `carterkeel/opaq`. Everything people see says Opaq. These keep the old name on purpose, because changing them would stop updates installing over the existing app or make saved data, PINs, backups or links unreadable: the Android `applicationId` and Kotlin packages `app.quietmap`, the iOS bundle id and Xcode target `Quietmap`, the Keystore alias `quietmap-state`, the iOS `Quietmap` storage folders, the backup header `quietmap-backup-v2`, crypto labels such as `quietmap-pin|`, `quietmap-circle|` and `quietmap-invite|`, the `quietmap://` scheme (still accepted), and the CI signing-key cache `quietmap-ci-signing-v1`. Code identifiers such as `QuietmapApp` and `QuietmapScreens` are internal and also unchanged.
 
 ## Ground rules
 
@@ -15,7 +17,7 @@ These are product decisions, not style preferences. Don't weaken them without th
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
   - Updates go out at only two steady rates (~30 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
   - Activity, speed, battery, names and photos travel only inside the encryption.
-- **Never log locations, keys or message contents.** `Log.d("Quietmap", …)` is for relay status only.
+- **Never log locations, keys or message contents.** `Log.d("Opaq", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
 - **Consent and anti-stalkerware.** Joining needs an explicit tap, the admin approves every join, and Android shows a persistent "Sharing with N people" notification. Keep all of these.
 
@@ -85,7 +87,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - `Engine.createInvite` makes a secret that expires in 1 h by default (24 h optional). It works once, or for up to `Invite.MAX_USES` (10) people if "Let more than one person use this link" is on; the inviter still approves every join. `Engine.cancelInvite` stops it early. Links are signed by the inviter (v2, `InviteLinks.signed`); unsigned v1 links are refused.
 - A request that can't go ahead (used up, expired, cancelled, or denied with `Engine.deny`) gets a `JoinRefusedBody` reply, so the joiner stops waiting and sees why (`AppState.joinRefusals`). The joiner accepts it only from the inviter they asked, naming them and that invite. Replies are rate-limited (one per person per 10 min, 20 an hour in all). The inviter listens on an invite's inbox until it's pruned, a day after it expires.
 - The join screen shows the inviter's device code: "The codes match" marks them verified, "Join without checking" joins unverified (verify later from their profile). Scanning the QR in the app verifies automatically. A new circle stays unconfirmed, sharing nothing, until the joiner taps "Start sharing".
-- The link is `quietmap://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/quietmap/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=quietmap;end`, since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
+- The link is `opaq://join#<base64url JSON>` (`quietmap://` links from before the rename still open). Shared and copied links use `https://carterkeel.github.io/opaq/join#…` (the old `/quietmap/join` path is still accepted by the app) (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=quietmap;end`, the original scheme so phones that haven't updated still open it, and since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 
@@ -138,11 +140,11 @@ Requires JDK 17 and the Android SDK.
 ./gradlew :androidApp:assembleStaging        # R8-optimised, debug-signed: judge performance here
 ```
 
-**CI** (`.github/workflows/android.yml`) runs the tests and both APK builds on every push. It uploads `quietmap-debug-apk` and `quietmap-staging-apk`, and writes a plain-text summary of each run to the **`ci-logs` branch** (`log.txt`, force-pushed, latest run only). Claude sessions without Maven access read build errors from that branch:
+**CI** (`.github/workflows/android.yml`) runs the tests and both APK builds on every push. It uploads `opaq-debug-apk` and `opaq-staging-apk`, and writes a plain-text summary of each run to the **`ci-logs` branch** (`log.txt`, force-pushed, latest run only). Claude sessions without Maven access read build errors from that branch:
 
 ```
-gh api repos/carterkeel/quietmap/commits/ci-logs --jq .commit.message
-gh api repos/carterkeel/quietmap/contents/log.txt?ref=ci-logs --jq .content | base64 -d
+gh api repos/carterkeel/opaq/commits/ci-logs --jq .commit.message
+gh api repos/carterkeel/opaq/contents/log.txt?ref=ci-logs --jq .content | base64 -d
 ```
 
 Two-phone manual testing is described in `TESTING.md`.

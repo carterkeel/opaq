@@ -36,7 +36,7 @@ class QuietmapApp : Application() {
             store = SecureStore(this),
             scope = scope,
             now = { System.currentTimeMillis() / 1000 },
-            log = { Log.d("Quietmap", it) },
+            log = { Log.d("Opaq", it) },
             deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
             elapsed = { SystemClock.elapsedRealtime() / 1000 },
             historyFiles = FileHistory(this),
@@ -46,7 +46,7 @@ class QuietmapApp : Application() {
     private val _sharingBlocked = MutableStateFlow(false)
 
     /**
-     * True while sharing is on but Quietmap's sharing notification can't be shown (notifications or
+     * True while sharing is on but Opaq's sharing notification can't be shown (notifications or
      * the "Location sharing" channel turned off). Sharing doesn't run then: nobody may be tracked
      * without a visible sign on their phone.
      */
@@ -59,7 +59,7 @@ class QuietmapApp : Application() {
         val nm = getSystemService(NotificationManager::class.java)!!
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_SHARING, "Location sharing", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Shown while Quietmap shares your location with your circles. Sharing stops if this is turned off."
+                description = "Shown while Opaq shares your location with your circles. Sharing stops if this is turned off."
             },
         )
         nm.createNotificationChannel(
@@ -104,7 +104,7 @@ class QuietmapApp : Application() {
             try {
                 ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java))
             } catch (t: Throwable) {
-                Log.w("Quietmap", "could not start sharing service: ${t.message}")
+                Log.w("Opaq", "could not start sharing service: ${t.message}")
             }
         } else if (!visible) {
             stopService(Intent(this, LocationService::class.java))

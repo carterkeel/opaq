@@ -113,14 +113,14 @@ object Backups {
     /** Throws [IllegalArgumentException] with a readable message if the file or passphrase is wrong. */
     fun decrypt(text: String, passphrase: String): BackupData {
         val lines = text.trim().lines().map { it.trim() }.filter { it.isNotEmpty() }
-        require(lines.size == 3 && (lines[0] == HEADER || lines[0] == HEADER_V1)) { "That isn't a Quietmap backup file" }
+        require(lines.size == 3 && (lines[0] == HEADER || lines[0] == HEADER_V1)) { "That isn't an Opaq backup file" }
         val key = if (lines[0] == HEADER_V1) {
             val salt = try { lines[1].fromBase64Url() } catch (_: Throwable) { throw IllegalArgumentException("The backup file is damaged") }
             PlatformCrypto.pbkdf2Sha256(passphrase, salt, ITERATIONS_V1, 32)
         } else {
             val kdf = try { json.decodeFromString(BackupKdf.serializer(), lines[1]) } catch (_: Throwable) { throw IllegalArgumentException("The backup file is damaged") }
             // Bounds stop a crafted file from asking for absurd memory or time.
-            require(kdf.kdf == "argon2id" && kdf.m in 8_192..262_144 && kdf.t in 1..10) { "This backup uses settings Quietmap doesn't support" }
+            require(kdf.kdf == "argon2id" && kdf.m in 8_192..262_144 && kdf.t in 1..10) { "This backup uses settings Opaq doesn't support" }
             val salt = try { kdf.salt.fromBase64Url() } catch (_: Throwable) { throw IllegalArgumentException("The backup file is damaged") }
             // Exactly 16 bytes: libsodium (iOS) only reads 16, so a longer salt would give a different key.
             require(salt.size == 16) { "The backup file is damaged" }

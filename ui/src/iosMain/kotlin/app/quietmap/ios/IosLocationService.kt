@@ -39,7 +39,7 @@ import platform.darwin.NSObject
  * The iOS counterpart of Android's LocationService: collects fixes and publishes encrypted
  * updates on the same moving/still rhythm.
  *
- * iOS suspends apps freely; Quietmap stays running only while location updates are on. So
+ * iOS suspends apps freely; Opaq stays running only while location updates are on. So
  * updates stay on the whole time sharing is on (GPS while moving, coarse while still) with
  * automatic pausing off. iOS shows the blue location indicator while this runs, the
  * counterpart of Android's persistent notification; people can hide it in Settings

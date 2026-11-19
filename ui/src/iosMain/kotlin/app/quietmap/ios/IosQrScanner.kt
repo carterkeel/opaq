@@ -95,7 +95,7 @@ internal class IosQrScanner(private val showMessage: (String) -> Unit) {
             }
 
             val hint = UILabel().apply {
-                text = "Point the camera at a Quietmap invite code"
+                text = "Point the camera at an Opaq invite code"
                 textColor = UIColor.whiteColor
                 font = UIFont.systemFontOfSize(17.0)
                 textAlignment = NSTextAlignmentCenter
