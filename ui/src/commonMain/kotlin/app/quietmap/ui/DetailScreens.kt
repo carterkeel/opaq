@@ -128,6 +128,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
     val gate = LocalPinGate.current
+    val haptics = rememberHaptics()
 
     ScreenScaffold("", onBack) {
         val subtitle = when {
@@ -211,7 +212,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             text = "They'll stop seeing ${circle.name}, and the circle gets a new key so they can't read anything new.",
             confirm = "Remove",
             destructive = true,
-            onConfirm = { confirmRemove = false; gate.require { actions.removeMember(circleId, pubkey); onBack() } },
+            onConfirm = { confirmRemove = false; gate.require { haptics.confirm(); actions.removeMember(circleId, pubkey); onBack() } },
             onDismiss = { confirmRemove = false },
         )
     }
@@ -451,6 +452,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
     var name by remember(state.myName) { mutableStateOf(state.myName) }
     var keepRelays by remember { mutableStateOf(false) }
     val gate = LocalPinGate.current
+    val haptics = rememberHaptics()
     ScreenScaffold("Join a circle", onDone) {
         val now = epochSeconds()
         when {
@@ -471,6 +473,7 @@ fun JoinScreen(state: AppState, invite: InviteData?, scanned: Boolean, actions: 
                 val checked = scanned || alreadyVerified
                 val newRelays = invite.r.mapNotNull { RelayUrls.clean(it) }.filter { it !in state.relays }.take(4)
                 val join: (Boolean) -> Unit = { codesMatch ->
+                    if (codesMatch) haptics.confirm()
                     actions.setName(name)
                     val send = { actions.acceptInvite(invite, scanned, codesMatch, keepRelays, onDone) }
                     if (keepRelays) gate.require(send) else send()
