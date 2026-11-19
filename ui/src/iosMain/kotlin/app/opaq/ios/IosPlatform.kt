@@ -65,7 +65,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     override val hideInRecentsDetail = "Blank Opaq's screen in the app switcher"
 
     /** Alternate icon sets in Assets.xcassets, by app icon id. Dark A on white is the main AppIcon. */
-    private val alternateIcons = mapOf("twotone" to "AppIcon-TwoTone", "oversized" to "AppIcon-Oversized", "rings" to "AppIcon-Rings")
+    private val alternateIcons = mapOf("twotone" to "AppIcon-TwoTone", "oversized" to "AppIcon-Oversized")
 
     override val appIcon: String?
         get() {

@@ -53,7 +53,6 @@ class AndroidPlatform(
         "white" to "IconWhite",
         "twotone" to "IconTwoTone",
         "oversized" to "IconOversized",
-        "rings" to "IconRings",
     )
 
     // Aliases are named in the code's package (app.opaq), but belong to this build's application id.

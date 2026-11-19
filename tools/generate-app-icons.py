@@ -33,19 +33,16 @@ def placement(x, y, size):
     s = size / 68
     return s, x + 6 * s, y - 7.5 * s
 
-# id, label, background, rings, placement, layers [(path, colour)]
+# id, label, background, placement, layers [(path, colour)]
 VARIANTS = [
-    ("white", "Dark on white", WHITE, False, placement(18, 16, 64),
+    ("white", "Dark on white", WHITE, placement(18, 16, 64),
      [(rect(13, 40, 30, 30), INDIGO), (A_SERIF, INK), (CROSSBAR, INK), (KEYHOLE, INK)]),
-    ("twotone", "Two-tone", INK, False, placement(18, 16, 64),
+    ("twotone", "Two-tone", INK, placement(18, 16, 64),
      [(rect(13, 40, 30, 30), INDIGO), (A_SERIF, WHITE), (CROSSBAR, WHITE), (KEYHOLE, WHITE)]),
     # The body runs off the bottom with the legs (the brand file stops it out of view, at 42 tall).
-    ("oversized", "Oversized A", INDIGO, False, placement(4, 14, 92),
+    ("oversized", "Oversized A", INDIGO, placement(4, 14, 92),
      [(rect(13, 40, 30, 50), INK), (A_OVERSIZED, WHITE), (CROSSBAR, WHITE), (KEYHOLE, WHITE)]),
-    ("rings", "Signal rings", INK, True, placement(18, 16, 64),
-     [(rect(13, 40, 30, 30), INDIGO), (A_SERIF, WHITE), (CROSSBAR, WHITE), (KEYHOLE, WHITE)]),
 ]
-RINGS = [(circle(50, 56, 46), 0.18), (circle(50, 56, 34), 0.32)]
 
 def f(v): return f"{v:.4f}".rstrip("0").rstrip(".")
 def write(path, text):
@@ -58,13 +55,10 @@ NS = 'xmlns:android="http://schemas.android.com/apk/res/android"'
 
 # Adaptive icons: 108 dp canvas, of which the middle 72 dp shows. The 100-unit square masters
 # map onto those 72 dp, so the art sits where the brand files put it.
-for vid, label, bg, rings, (s, tx, ty), layers in VARIANTS:
+for vid, label, bg, (s, tx, ty), layers in VARIANTS:
     out = [f'<?xml version="1.0" encoding="utf-8"?>\n{HEADER}<vector {NS}\n    android:width="108dp" android:height="108dp"\n'
            f'    android:viewportWidth="108" android:viewportHeight="108">\n'
            f'    <group android:translateX="18" android:translateY="18" android:scaleX="0.72" android:scaleY="0.72">\n']
-    if rings:
-        for d, a in RINGS:
-            out.append(f'        <path android:pathData="{d}" android:strokeColor="{INDIGO}" android:strokeAlpha="{a}" android:strokeWidth="3" />\n')
     out.append(f'        <group android:translateX="{f(tx)}" android:translateY="{f(ty)}" android:scaleX="{f(s)}" android:scaleY="{f(s)}">\n')
     for d, c in layers:
         out.append(f'            <path android:fillColor="{c}" android:pathData="{d}" />\n')
@@ -131,15 +125,12 @@ for vid, *_ in VARIANTS:
     name = "TwoTone" if vid == "twotone" else vid.capitalize()
     k.append(f"    AppIconChoice.{name} -> {vid}Art\n")
 k.append("}\n")
-for vid, label, bg, rings, (s, tx, ty), layers in VARIANTS:
+for vid, label, bg, (s, tx, ty), layers in VARIANTS:
     k.append(f'''
 private val {vid}Art: ImageVector by lazy {{
     ImageVector.Builder("{label}", 48.dp, 48.dp, 100f, 100f).apply {{
         addPath(addPathNodes("{rect(0, 0, 100, 100)}"), fill = SolidColor({kcolor(bg)}))
 ''')
-    if rings:
-        for d, a in RINGS:
-            k.append(f'        addPath(addPathNodes("{d}"), stroke = SolidColor({kcolor(INDIGO)}), strokeAlpha = {a}f, strokeLineWidth = 3f)\n')
     k.append(f'        addGroup(scaleX = {f(s)}f, scaleY = {f(s)}f, translationX = {f(tx)}f, translationY = {f(ty)}f)\n')
     for d, c in layers:
         k.append(f'        addPath(addPathNodes("{d}"), fill = SolidColor({kcolor(c)}))\n')

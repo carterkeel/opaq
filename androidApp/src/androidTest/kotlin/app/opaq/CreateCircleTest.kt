@@ -258,7 +258,7 @@ class CreateCircleTest {
         waitFor("System default")
         // The launcher icon: switch to another and back, without the app closing.
         waitFor("App icon").click()
-        waitFor("Signal rings")
+        waitFor("Oversized A")
         shot("settings-app-icon")
         waitFor("Two-tone").click()
         waitFor("Two-tone")

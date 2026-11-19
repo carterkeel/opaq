@@ -847,7 +847,7 @@ fun AppIconPreview(choice: AppIconChoice, size: Dp) {
     )
 }
 
-/** Settings → Appearance → App icon: the four approved icons. */
+/** Settings → Appearance → App icon: the approved icons. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AppIconSheet(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
