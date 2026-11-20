@@ -7,7 +7,7 @@ Private location sharing with the people you choose. No accounts, no phone numbe
 - **Everything is end-to-end encrypted** on the device before it leaves. Updates travel through public [Nostr](https://nostr.com) relays, which only ever see ciphertext.
 - **Open source.** Anyone can check what the app sends.
 
-Runs on Android and iOS (iPhone and iPad) from one shared Kotlin Multiplatform codebase. Still in early development.
+Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multiplatform codebase. Still in early development.
 
 <p align="center">
   <img src="docs/screenshots/phone.png" alt="Map with the people list on a phone" height="420">

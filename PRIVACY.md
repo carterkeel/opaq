@@ -34,6 +34,7 @@ Map tiles come from [OpenFreeMap](https://openfreemap.org). Opening the app load
 ## Your phone's operating system
 
 - **Android:** while you're still, Opaq uses the phone's network location, which on phones with Google services sends nearby Wi-Fi and cell information to Google if "Google Location Accuracy" is on. That's a system setting, outside Opaq.
+- **iOS motion:** with the Motion & Fitness permission, Opaq reads the phone's own guess at whether you're walking, cycling or in a vehicle, only to notice sooner that you've started moving. iOS works this out on the phone. Opaq doesn't store it or send it anywhere; your circle sees only the activity worked out from location, as before. Opaq also asks iOS to watch a small area around where you stopped, which is handled on the phone like any other geofence.
 - **Notifications:** Opaq doesn't use Google or Apple push notifications, so neither company is told when you get an update.
 
 ## Invite links

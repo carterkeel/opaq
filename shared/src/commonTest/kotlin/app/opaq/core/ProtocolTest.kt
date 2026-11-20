@@ -246,6 +246,97 @@ class ProtocolTest {
     }
 
     @Test
+    fun stopIsReportedWhenFixesStopComing() {
+        // Driving, then parked: the phone sends no more fixes (iOS distance filter, idle GPS).
+        val p = MotionPolicy()
+        var t = now
+        p.add(sample(t, 41.000, 15f))
+        p.add(sample(t + 5, 41.001, 15f))
+        t += 5
+        assertEquals(Activity.DRIVING, p.activity())
+        p.markPublished(t)
+
+        p.refresh(t + 30)
+        assertEquals(Activity.DRIVING, p.activity(), "a short gap between fixes isn't a stop")
+        p.refresh(t + MotionPolicy.QUIET_SECONDS)
+        assertEquals(Activity.STILL, p.activity(), "no fix for a minute means stopped")
+        assertTrue(p.shouldPublish(t + MotionPolicy.QUIET_SECONDS), "the stop goes out straight away")
+        val loc = p.snapshot(null, now = t + MotionPolicy.QUIET_SECONDS)!!
+        assertEquals(Activity.STILL, loc.activity)
+        assertEquals(0f, loc.speed)
+        assertEquals(t + MotionPolicy.QUIET_SECONDS, loc.time)
+    }
+
+    @Test
+    fun stillUpdatesCarryTheSendTimeNotTheLastFix() {
+        // Standing still for an hour with no new fixes: each update must look fresh, not "1 h ago"
+        // (which would show the person as offline after 45 minutes).
+        val p = MotionPolicy()
+        p.add(sample(now, 41.0, 0f))
+        p.markPublished(now)
+        p.refresh(now + 3600)
+        val loc = p.snapshot(80, now = now + 3600)!!
+        assertEquals(now + 3600, loc.time)
+        assertEquals(41.0, loc.lat)
+
+        // A moving update keeps the fix's own time, since the position is only true for that moment.
+        val m = MotionPolicy()
+        m.add(sample(now, 41.000, 15f))
+        m.add(sample(now + 5, 41.001, 15f))
+        assertEquals(now + 5, m.snapshot(null, now = now + 8)!!.time)
+    }
+
+    @Test
+    fun cachedFixFromBeforeSharingIsNotShared() {
+        // The OS hands over its last known position from an hour ago, maybe somewhere else.
+        val p = MotionPolicy()
+        p.add(sample(now - 3600, 41.0, 0f), receivedAt = now, ageSeconds = 3600)
+        assertEquals(null, p.latest)
+        assertFalse(p.shouldPublish(now))
+        // A fresh fix is used as normal.
+        p.add(sample(now - 2, 42.0, 0f), receivedAt = now, ageSeconds = 2)
+        assertEquals(42.0, p.latest?.lat)
+        assertTrue(p.shouldPublish(now))
+    }
+
+    @Test
+    fun phoneClockSetWrongDoesNotBreakMotion() {
+        // Fixes carry GPS time; this phone's clock is 10 minutes fast. Fresh fixes must still be
+        // used, driving must stay driving, and still updates stay on the fixes' clock.
+        val skew = 600L
+        val p = MotionPolicy()
+        p.add(sample(now, 41.000, 15f), receivedAt = now + skew, ageSeconds = 0)
+        p.add(sample(now + 5, 41.001, 15f), receivedAt = now + 5 + skew, ageSeconds = 0)
+        p.refresh(now + 10 + skew)
+        assertEquals(Activity.DRIVING, p.activity(), "a 10-minute clock error isn't a 10-minute gap")
+
+        // Parked: zero-speed fixes once the driving ones have left the 30 s speed window.
+        p.add(sample(now + 40, 41.001, 0f), receivedAt = now + 40 + skew, ageSeconds = 0)
+        p.add(sample(now + 45, 41.001, 0f), receivedAt = now + 45 + skew, ageSeconds = 0)
+        assertEquals(Activity.STILL, p.activity())
+        assertEquals(now + 45 + 300, p.snapshot(null, now = now + 45 + skew + 300)!!.time)
+    }
+
+    @Test
+    fun oneBadSpeedReadingIsNotMovement() {
+        // Standing still; one GPS fix reports 20 m/s by mistake.
+        val p = MotionPolicy()
+        p.add(sample(now, 41.0, 0f))
+        assertEquals(Activity.STILL, p.activity())
+        p.add(sample(now + 40, 41.0, 20f))
+        assertEquals(Activity.STILL, p.activity(), "a lone reading doesn't start a drive")
+        p.add(sample(now + 45, 41.0, 0f))
+        assertEquals(Activity.STILL, p.activity(), "one spike next to a still reading isn't a drive")
+
+        // A first fix that says moving waits for the next one instead of guessing.
+        val q = MotionPolicy()
+        q.add(sample(now, 41.0, 15f))
+        assertEquals(Activity.UNKNOWN, q.activity())
+        q.add(sample(now + 5, 41.001, 15f))
+        assertEquals(Activity.DRIVING, q.activity())
+    }
+
+    @Test
     fun coarseFixJitterIsNotMovement() {
         val p = MotionPolicy()
         // Network fixes wobbling 40 m with 60 m accuracy: still, not walking.

@@ -43,6 +43,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Opaq uses the camera only to scan invite codes. Nothing is recorded.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Opaq uses motion to notice when you start walking or driving, so your circle sees it sooner. Motion data stays on this phone.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Opaq shares your location, end-to-end encrypted, only with the people in your circles.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
