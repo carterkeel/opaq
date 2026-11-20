@@ -103,6 +103,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var onConfirmed: ((Boolean) -> Unit)? = null
+
+    /** The lock screen's "confirm it's you" screen (Android 8 and 9; later versions use a prompt). */
+    private val confirmScreen = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val callback = onConfirmed ?: return@registerForActivityResult
+        onConfirmed = null
+        callback(result.resultCode == RESULT_OK)
+    }
+
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         val callback = onScan ?: return@registerForActivityResult
         onScan = null
@@ -137,6 +146,10 @@ class MainActivity : ComponentActivity() {
             },
             requestBackgroundLocation = {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+            },
+            confirmScreen = { intent, cb ->
+                onConfirmed = cb
+                confirmScreen.launch(intent)
             },
         )
     }

@@ -9,6 +9,7 @@ import platform.LocalAuthentication.LABiometryTypeFaceID
 import platform.LocalAuthentication.LABiometryTypeOpticID
 import platform.LocalAuthentication.LABiometryTypeTouchID
 import platform.LocalAuthentication.LAContext
+import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthentication
 import platform.LocalAuthentication.LAPolicyDeviceOwnerAuthenticationWithBiometrics
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -59,6 +60,19 @@ class IosBiometrics {
     }
 
     fun forget() = defaults.removeObjectForKey(STATE_KEY)
+
+    /**
+     * The phone's own unlock: Face ID or Touch ID, or the passcode. Only for setting the first Opaq
+     * PIN; Opaq's own biometric unlock above never accepts the passcode.
+     */
+    fun confirmOwner(reason: String, onResult: (BiometricResult) -> Unit) {
+        val context = LAContext()
+        // No passcode set: nothing to check.
+        if (!context.canEvaluatePolicy(LAPolicyDeviceOwnerAuthentication, null)) return onResult(BiometricResult.UNAVAILABLE)
+        context.evaluatePolicy(LAPolicyDeviceOwnerAuthentication, reason) { ok, _ ->
+            dispatch_async(dispatch_get_main_queue()) { onResult(if (ok) BiometricResult.OK else BiometricResult.CANCELLED) }
+        }
+    }
 
     private fun evaluate(context: LAContext, reason: String, done: (Boolean) -> Unit) {
         context.localizedFallbackTitle = "Use PIN"

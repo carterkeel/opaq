@@ -85,6 +85,7 @@ class EngineTest {
         val before = b.myPubkey
         assertFailsWith<IllegalArgumentException> { b.importBackup(backup, "wrong passphrase") }
         assertEquals(before, b.myPubkey, "a failed import changes nothing")
+        a.unlock("2468") // each backup needs the PIN entered just now
         assertFailsWith<IllegalArgumentException> { a.exportBackup("short") }
         assertFailsWith<IllegalArgumentException> { b.importBackup("not a backup", "whatever123") }
     }
