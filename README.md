@@ -63,3 +63,9 @@ Requires JDK 17 and the Android SDK (Android Studio installs both).
 Every push also builds on GitHub Actions; the debug and staging APKs are attached to each run as `opaq-debug-apk` and `opaq-staging-apk`.
 
 See [TESTING.md](TESTING.md) for how to test on real phones.
+
+## Licence
+
+Opaq's code is released under the [MIT licence](LICENSE). Copyright © 2026 Carter Keel.
+
+The licence covers the code. The Opaq name and logo aren't part of it, so a fork should use its own name and icon.
