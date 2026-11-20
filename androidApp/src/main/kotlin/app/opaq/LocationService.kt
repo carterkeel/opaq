@@ -124,7 +124,8 @@ class LocationService : LifecycleService(), LocationListener {
                         policy.markPublished(now)
                     }
                 }
-                withTimeoutOrNull(TICK_MS) { wake.receive() }
+                // Every 2 s while moving; while still, only when the next update is due (at most 30 s).
+                withTimeoutOrNull(policy.nextCheckMillis(nowSeconds())) { wake.receive() }
             }
         }
 
@@ -258,7 +259,5 @@ class LocationService : LifecycleService(), LocationListener {
         private const val ACTION_STOP = "app.opaq.STOP"
         const val ACTION_REFRESH = "app.opaq.REFRESH"
 
-        // Often enough that a 10 s moving update goes out close to when it's due.
-        private const val TICK_MS = 2_000L
     }
 }

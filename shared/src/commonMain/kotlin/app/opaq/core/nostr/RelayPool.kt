@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.TimeSource
 
 /**
  * Makes the platform's websocket engine ping relays every [intervalMillis] and drop a connection
@@ -69,6 +70,11 @@ class RelayPool(
     }
 
     private val mutex = Mutex()
+    private val started = TimeSource.Monotonic.markNow()
+
+    /** Milliseconds on a clock that only goes forward, for how long to leave a relay alone. */
+    private fun nowMillis(): Long = started.elapsedNow().inWholeMilliseconds
+
     private val connections = mutableMapOf<String, Connection>()
 
     /** Snapshot of [connections] that can be read without the lock. */
@@ -106,7 +112,9 @@ class RelayPool(
             subs.forEach { (id, filters) ->
                 if (old[id] != filters) {
                     c.synced.update { it - id }
-                    c.send(ClientMessages.req(id, filters))
+                    // A relay that just closed this subscription would close it again; it's asked
+                    // again on the next change once the hold is over, or on reconnecting.
+                    if (c.mayRequest(id)) c.send(ClientMessages.req(id, filters))
                 }
             }
         }
@@ -114,7 +122,7 @@ class RelayPool(
 
     override suspend fun publish(event: Event, queueIfOffline: Boolean) {
         val msg = ClientMessages.event(event)
-        mutex.withLock { connections.values.toList() }.forEach { it.send(msg, queueIfOffline) }
+        mutex.withLock { connections.values.toList() }.forEach { if (it.mayPublish()) it.send(msg, queueIfOffline) }
     }
 
     override fun reconnectNow() {
@@ -158,6 +166,17 @@ class RelayPool(
         /** Subscriptions this relay has finished replaying (EOSE) on the current connection. */
         val synced = MutableStateFlow<Set<String>>(emptySet())
 
+        /** Subscriptions this relay closed, and until when ([nowMillis]) not to ask for them again. */
+        private val heldSubs = MutableStateFlow<Map<String, Long>>(emptyMap())
+
+        /** Until when not to send this relay events, after it said we're rate-limited or banned. */
+        @kotlin.concurrent.Volatile
+        private var publishHeldUntil = 0L
+
+        fun mayRequest(id: String): Boolean = (heldSubs.value[id] ?: 0L) <= nowMillis()
+
+        fun mayPublish(): Boolean = publishHeldUntil <= nowMillis()
+
         fun start() {
             job = scope.launch {
                 var backoff = 2_000L
@@ -171,7 +190,7 @@ class RelayPool(
                             wake.tryReceive()
                             setStatus(RelayStatus.CONNECTED)
                             val subs = mutex.withLock { subscriptions }
-                            subs.forEach { (id, filters) -> send(Frame.Text(ClientMessages.req(id, filters))) }
+                            subs.forEach { (id, filters) -> if (mayRequest(id)) send(Frame.Text(ClientMessages.req(id, filters))) }
                             val writer = launch { for (m in outbox) send(Frame.Text(m)) }
                             try {
                                 for (frame in incoming) {
@@ -190,7 +209,9 @@ class RelayPool(
                     setStatus(RelayStatus.DISCONNECTED)
                     // Wait before retrying, unless the network comes back in the meantime.
                     if (withTimeoutOrNull(backoff) { wake.receive() } != null) backoff = 2_000L
-                    else backoff = (backoff * 2).coerceAtMost(60_000L)
+                    // Up to 5 minutes: a relay that's down or blocks this network isn't worth waking
+                    // the phone for every minute. A network change still retries at once.
+                    else backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MILLIS)
                 }
             }
         }
@@ -202,12 +223,20 @@ class RelayPool(
         private suspend fun handle(text: String) {
             when (val msg = RelayMessage.parse(text)) {
                 is RelayMessage.EventMsg -> onEvent(url, msg.event)
-                is RelayMessage.Ok -> if (!msg.accepted) log("relay $url rejected ${msg.eventId.take(8)}: ${msg.message}")
+                is RelayMessage.Ok -> if (!msg.accepted) {
+                    log("relay $url rejected ${msg.eventId.take(8)}: ${msg.message}")
+                    RelayReplies.publishHoldMillis(msg.message)?.let { hold ->
+                        publishHeldUntil = nowMillis() + hold
+                        log("relay $url: not sending it updates for ${hold / 60_000} min")
+                    }
+                }
                 is RelayMessage.Notice -> log("relay $url notice: ${msg.message}")
                 is RelayMessage.Eose -> synced.update { it + msg.subscriptionId }
                 is RelayMessage.Closed -> {
                     synced.update { it - msg.subscriptionId }
-                    log("relay $url closed ${msg.subscriptionId}: ${msg.message}")
+                    val hold = RelayReplies.subscriptionHoldMillis(msg.message)
+                    heldSubs.update { it + (msg.subscriptionId to nowMillis() + hold) }
+                    log("relay $url closed ${msg.subscriptionId}: ${msg.message} (not asking again for ${hold / 60_000} min)")
                 }
                 else -> Unit
             }
@@ -217,7 +246,13 @@ class RelayPool(
     }
 
     private companion object {
-        /** A dead connection is noticed within about two of these. */
-        const val PING_MILLIS = 30_000L
+        /**
+         * A dead connection is noticed within about two of these. Every ping wakes the phone's radio,
+         * once per relay, so not too often: a minute keeps connections through home routers and
+         * mobile networks, which drop idle ones after a few minutes at the soonest.
+         */
+        const val PING_MILLIS = 60_000L
+
+        const val MAX_BACKOFF_MILLIS = 5 * 60_000L
     }
 }
