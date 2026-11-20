@@ -135,11 +135,11 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                 .distinctUntilChanged()
                 .collect { update() }
         }
-        // Joined a circle, or someone new arrived: send our location now instead of at the next
+        // Joined a circle, someone new arrived, or a circle paused or resumed: send our location now instead of at the next
         // interval (up to 5 minutes away while still), as Android's service does.
         scope.launch(Dispatchers.Main) {
             engine.state
-                .map { s -> s.circles.map { c -> c.id to c.members.size } }
+                .map { s -> s.circles.map { c -> Triple(c.id, c.members.size, c.paused) } }
                 .distinctUntilChanged()
                 .collect { policy.publishSoon() }
         }
@@ -165,6 +165,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
 
     private fun start() {
         if (publishJob?.isActive == true) return
+        // Sharing (re)started: send the first update as soon as there's a fix, not up to 5 minutes later.
+        policy.publishSoon()
         // Second step of the permission flow: iOS shows the "Always" prompt at most once.
         if (authorization.value == kCLAuthorizationStatusAuthorizedWhenInUse) manager.requestAlwaysAuthorization()
         if (canRunInBackground) {

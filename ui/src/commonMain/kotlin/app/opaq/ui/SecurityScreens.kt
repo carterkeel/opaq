@@ -245,6 +245,18 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
         pubkey?.let { p -> circle.members.firstOrNull { it.pubkey == p }?.let { avatarFor(state, p, me, it.name).name } } ?: fallback
     val gate = LocalPinGate.current
     ScreenScaffold(circle.name, onBack) {
+        if (circle.confirmed) {
+            SwitchRow(
+                "Share my location",
+                when {
+                    !circle.paused -> "${circle.name} sees where you are"
+                    circle.pausedUntil > 0 -> "Paused until ${formatClock(circle.pausedUntil)}. You still see everyone here"
+                    else -> "Paused. You still see everyone here"
+                },
+                !circle.paused,
+                AppIcons.LocationPin,
+            ) { on -> actions.setCirclePaused(circle.id, !on) }
+        }
         SectionHeader("What ${circle.name} sees")
         listOf(
             Precision.EXACT to "Where you are, to within a few metres",

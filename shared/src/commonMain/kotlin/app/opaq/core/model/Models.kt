@@ -40,6 +40,8 @@ data class AppState(
     /** How many of [ADDED_DEFAULT_RELAYS] this state has already been given. */
     val relayDefaultsVersion: Int = 0,
     val sharing: Boolean = true,
+    /** When a timed "pause all sharing" ends (unix seconds), turning [sharing] back on; 0 = no timer. */
+    val sharingResumeAt: Long = 0,
     /** Include battery level in location updates. On for new installs; saved states keep their choice. */
     val shareBattery: Boolean = true,
     /** Avatar color index for the default initial avatar; null means derived from the public key. */
@@ -160,6 +162,10 @@ data class Circle(
      * seen who is in it and tapped Start sharing.
      */
     val confirmed: Boolean = true,
+    /** This phone has paused sharing its location with this circle. Everyone in it still shows on the map. */
+    val paused: Boolean = false,
+    /** When a timed pause ends (unix seconds); 0 = until resumed by hand. */
+    val pausedUntil: Long = 0,
 )
 
 @Serializable
@@ -309,7 +315,15 @@ data class MemberLocation(
     val status: String? = null,
     /** Set when the sender shares an approximate location; null means exact. */
     val precision: Precision? = null,
-)
+) {
+    companion object {
+        /**
+         * [status] of the last update someone sends before pausing, so the circle shows "Sharing paused"
+         * instead of them slowly going offline. Older versions show it as "Offline (paused)".
+         */
+        const val PAUSED = "paused"
+    }
+}
 
 @Serializable
 enum class Activity { STILL, WALKING, CYCLING, DRIVING, UNKNOWN }

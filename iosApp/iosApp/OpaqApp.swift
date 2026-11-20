@@ -21,6 +21,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         OpaqIos.shared.start()
+        // Lets Shortcuts and Siri offer the circle actions ("Pause Family in Opaq") with the circles
+        // this phone has now. Done again whenever the app comes to the front, after circles change.
+        OpaqAppShortcuts.updateAppShortcutParameters()
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            OpaqAppShortcuts.updateAppShortcutParameters()
+        }
         return true
     }
 }
