@@ -6,6 +6,7 @@ import app.opaq.core.crypto.PlatformCrypto
 import app.opaq.core.crypto.constantTimeEquals
 import app.opaq.core.crypto.hexToBytes
 import app.opaq.core.crypto.toHex
+import app.opaq.core.model.ADDED_DEFAULT_RELAYS
 import app.opaq.core.model.AppState
 import app.opaq.core.model.THEME_DARK
 import app.opaq.core.model.THEME_LIGHT
@@ -29,6 +30,7 @@ import app.opaq.core.model.SecurityEventType
 import app.opaq.core.model.OldControl
 import app.opaq.core.model.PendingAck
 import app.opaq.core.model.PendingJoin
+import app.opaq.core.model.withNewDefaultRelays
 import app.opaq.core.nostr.Event
 import app.opaq.core.nostr.Filter
 import app.opaq.core.nostr.Kinds
@@ -182,7 +184,7 @@ class Engine(
         val initial = when {
             loaded != null -> loaded
             // Only a true first launch gets a new identity, and only that is saved.
-            _recovery.value == null -> AppState(identitySecretHex = KeyPair.generate().secret.toHex())
+            _recovery.value == null -> newState()
             // Placeholder while recovering: never saved, never connected.
             else -> AppState(identitySecretHex = KeyPair.generate().secret.toHex(), relays = emptyList(), sharing = false, setupDone = true)
         }
@@ -201,7 +203,10 @@ class Engine(
 
     private fun checkReady() = check(_recovery.value == null) { "Opaq can't read its saved data yet" }
 
-    private fun decode(data: String): AppState? = runCatching { json.decodeFromString(AppState.serializer(), data) }.getOrNull()
+    /** A new install's state: a new identity and the current default relays. */
+    private fun newState() = AppState(identitySecretHex = KeyPair.generate().secret.toHex(), relayDefaultsVersion = ADDED_DEFAULT_RELAYS.size)
+
+    private fun decode(data: String): AppState? = runCatching { json.decodeFromString(AppState.serializer(), data) }.getOrNull()?.withNewDefaultRelays()
 
     val myPubkey: String get() = identity.publicHex
 
@@ -269,7 +274,7 @@ class Engine(
     suspend fun startFresh() {
         if (_recovery.value == null) return
         store.setAside()
-        val fresh = AppState(identitySecretHex = KeyPair.generate().secret.toHex())
+        val fresh = newState()
         mutex.withLock {
             identity = KeyPair(fresh.identitySecretHex.hexToBytes())
             seen.clear()
@@ -1340,8 +1345,18 @@ class Engine(
         if (invite.v >= 2 && ref.inviteSecret != invite.secret) return
         if (body.from == myPubkey || !Keys.isValidPublicKey(body.from)) return
         if (s.joinRequests.any { it.pubkey == body.from && it.circleId == body.circle }) return
-        // Already in the circle: a repeat of a request that was approved.
-        if (s.circles.firstOrNull { it.id == invite.circleId }?.members?.any { it.pubkey == body.from } == true) return
+        val existing = s.circles.firstOrNull { it.id == invite.circleId }
+        if (existing?.members?.any { it.pubkey == body.from } == true) {
+            // Already in the circle. A repeat of the request we approved changes nothing, but a newer
+            // one means their phone lost the circle: send them the roster again on this invite's inbox.
+            val joinedAt = existing.history.lastOrNull { it.change == MembershipChange.JOINED && it.pubkey == body.from }?.at ?: 0
+            val recent = existing.pendingAcks.firstOrNull { it.pubkey == body.from && it.epoch == existing.epoch }
+            if (body.ts > joinedAt && canInvite(existing) && (recent == null || now() - recent.lastSentAt >= 600)) {
+                val inbox = if (invite.v >= 2) InviteLinks.inbox(invite.secret) else body.from
+                sendRoster(existing, listOf(body.from), extraInboxes = mapOf(body.from to listOf(inbox)))
+            }
+            return
+        }
         // Decided inside the update, so two requests at once can't both take the last use.
         var refusal: String? = null
         update { st ->
@@ -1544,6 +1559,11 @@ class Engine(
         // v2 notices name their recipient and end an epoch newer than ours: one sent to someone
         // else, or an old one from before we were let back in, is ignored.
         if (circle.version >= 2 && (body.to != myPubkey || (body.epoch ?: Int.MIN_VALUE) <= circle.epoch)) return
+        // A notice older than the admin's roster we hold belongs to an earlier membership (both
+        // carry the admin's clock). Rejoining doesn't change the key, so one left on the relays
+        // from a removal (the admin answers a roster request from someone who's out with
+        // epoch + 1) would otherwise throw us out again.
+        if (body.ts < circle.adminRosterTs) return
         forgetCircle(circle.id)
     }
 

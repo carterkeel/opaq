@@ -90,6 +90,28 @@ class EngineTest {
     }
 
     @Test
+    fun savedStatesGetNewDefaultRelaysOnce() = runTest {
+        val store = MemoryStore()
+        val a = engine(store)
+        // A state saved before offchain.pub was a default.
+        val old = listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom")
+        a.setRelays(old)
+        store.data = store.data!!.replace("\"relayDefaultsVersion\":1", "\"relayDefaultsVersion\":0")
+        assertTrue("\"relayDefaultsVersion\":0" in store.data!!)
+        val b = engine(store)
+        assertEquals(old + "wss://offchain.pub", b.state.value.relays)
+        // Removing it sticks: it isn't added back on the next launch.
+        b.setRelays(old)
+        assertEquals(old, engine(store).state.value.relays)
+        // New installs have it from the start, and removing it there sticks too.
+        val freshStore = MemoryStore()
+        val c = engine(freshStore)
+        assertTrue("wss://offchain.pub" in c.state.value.relays)
+        c.setRelays(old)
+        assertEquals(old, engine(freshStore).state.value.relays)
+    }
+
+    @Test
     fun stateSurvivesRestartWithNewFields() = runTest {
         val store = MemoryStore()
         val a = engine(store)

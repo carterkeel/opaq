@@ -29,6 +29,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -457,6 +460,45 @@ class CircleSecurityTest {
         b.engine.acceptInvite(invite, codesMatch = true)
         assertEquals(a.me, b.engine.state.value.pendingJoins.single().inviterPubkey)
         assertTrue(b.engine.state.value.contacts[a.me]!!.verified)
+    }
+
+    @Test
+    fun aMemberWhosePhoneLostTheCircleGetsItBackFromANewInvite() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val c = circleWith(a, b)
+        // Ben's phone loses the circle (as an old removal notice used to do); Ana still lists him.
+        val saved = Json.parseToJsonElement((b.engine.state.value).let { kotlinx.serialization.json.Json { encodeDefaults = true }.encodeToString(AppState.serializer(), it) }).jsonObject
+        val lost = JsonObject(saved + ("circles" to JsonArray(emptyList())))
+        val b2 = Phone("Ben", MemoryStore(lost.toString()))
+        assertEquals(b.me, b2.me)
+        assertNull(b2.circle(c))
+        clock += 120
+        b2.engine.acceptInvite(InviteLinks.decode(a.engine.createInvite(c))!!, codesMatch = true)
+        sync(a, b2)
+        assertTrue(a.engine.state.value.joinRequests.isEmpty(), "no request to approve: he's already in")
+        assertNotNull(b2.circle(c), "the admin sent him the roster again")
+    }
+
+    /** The iPad case (Nov 2026): removed, then let back in at the same epoch, it was thrown out again. */
+    @Test
+    fun someoneWhoWasRemovedCanRejoinWithANewInvite() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben"); val d = Phone("Dee")
+        val c = circleWith(a, b, d)
+        a.engine.removeMember(c, b.me)
+        sync(a, b, d)
+        assertNull(b.circle(c), "removed")
+        clock += 120
+        b.engine.acceptInvite(InviteLinks.decode(a.engine.createInvite(c))!!, codesMatch = true)
+        sync(a, b, d)
+        a.engine.approve(a.engine.state.value.joinRequests.single { it.pubkey == b.me }.id)
+        sync(a, b, d)
+        assertTrue(a.circle(c)!!.members.any { it.pubkey == b.me }, "the admin let Ben back in")
+        assertNotNull(b.circle(c), "Ben got the roster and an old removal notice didn't undo it")
+        // A real removal after rejoining still works.
+        clock += 60
+        a.engine.removeMember(c, b.me)
+        sync(a, b, d)
+        assertNull(b.circle(c))
     }
 
     @Test

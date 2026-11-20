@@ -25,6 +25,8 @@ data class BackupData(
     val myColor: Int? = null,
     val myPhoto: String? = null,
     val relays: List<String>,
+    /** [AppState.relayDefaultsVersion]; missing in older backups, whose relay lists then get the newer defaults. */
+    val relayDefaultsVersion: Int = 0,
     val shareBattery: Boolean = false,
     val showPhotos: Boolean = true,
     val circles: List<Circle>,
@@ -70,6 +72,7 @@ object Backups {
         myColor = s.myColor,
         myPhoto = s.myPhoto,
         relays = s.relays,
+        relayDefaultsVersion = s.relayDefaultsVersion,
         shareBattery = s.shareBattery,
         showPhotos = s.showPhotos,
         // Only current keys: replaced keys and control keys of earlier epochs never go into a backup.
@@ -88,6 +91,7 @@ object Backups {
         myColor = b.myColor,
         myPhoto = b.myPhoto,
         relays = b.relays,
+        relayDefaultsVersion = b.relayDefaultsVersion,
         sharing = false,
         shareBattery = b.shareBattery,
         showPhotos = b.showPhotos,

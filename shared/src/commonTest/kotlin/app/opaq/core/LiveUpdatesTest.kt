@@ -128,6 +128,7 @@ class LiveUpdatesTest {
         assertEquals(saves, b.store.saves, "a dropped update doesn't rewrite the saved state")
 
         // Signal is back, but the relay hasn't confirmed the circle key yet (v2 member).
+        clock += 30 // the next update, as the location service would send it
         b.client.reconnect()
         assertFalse(b.engine.canPublishNow(), "waits for the relay to finish replaying")
         net.flush()
@@ -146,6 +147,10 @@ class LiveUpdatesTest {
         assertFalse(a.engine.publishLocation(loc(30.0)), "the admin's circle is fine, but no relay is connected")
         net.flush()
         assertNull(b.locationOf(id, a.me))
+        // The clock moves on, as between real updates: each one needs a created_at newer than the last
+        // (the offline one used a second up to 15 s back), so a second update in the same second can
+        // be skipped.
+        clock += 30
         a.client.reconnect()
         net.flush()
         assertTrue(a.engine.canPublishNow())
