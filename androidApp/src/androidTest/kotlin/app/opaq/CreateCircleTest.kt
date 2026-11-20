@@ -180,9 +180,11 @@ class CreateCircleTest {
         waitFor("Create a circle").click()
         waitFor("Create").click()
 
-        // Step 5: location (already granted by the test rule).
-        waitFor("Open the map")
+        // Step 5: location (already granted by the test rule). Background location and the battery
+        // saver aren't, so their prompts (#131) show too, and may push the button below the screen.
+        waitFor("Keep sharing when Opaq is closed")
         shot("setup-location")
+        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
         waitFor("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.

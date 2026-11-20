@@ -89,8 +89,8 @@ class PredictionTest {
         // GPS wobble of several metres in the recent points isn't a winding road.
         val base = driving(speed = 25f)
         val noisy = base.copy(points = base.points.mapIndexed { i, p -> p.copy(lat = p.lat + (if (i % 2 == 0) 1 else -1) * 0.00006) })
-        val e = Prediction.estimate(noisy, t0 + 30.0)
-        assertTrue(abs(meters(noisy, e) - 750) < 1, "30 s at 25 m/s: ${meters(noisy, e)}")
+        val e = Prediction.estimate(noisy, t0 + 20.0)
+        assertTrue(abs(meters(noisy, e) - 500) < 1, "20 s at 25 m/s: ${meters(noisy, e)}")
     }
 
     @Test

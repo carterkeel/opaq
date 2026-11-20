@@ -83,6 +83,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.opaq.core.MotionPolicy
 import app.opaq.core.ShareStatus
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Circle
@@ -328,7 +329,18 @@ fun HomeScreen(
                     onProfile = { onOpenProfile(circle.id, it) },
                 )
             }
-            val centerOnMe = { flyTo(me) || run { platform.showMessage("Your location isn't known yet"); true } }
+            // The locate button also checks where you are (#115): the phone takes a fresh GPS fix and
+            // sends it if the shared one was off, and the map follows you there when it arrives.
+            var followMeUntil by remember { mutableLongStateOf(0L) }
+            val myLoc = locs[me]
+            LaunchedEffect(myLoc?.lat, myLoc?.lon) {
+                if (myLoc != null && epochSeconds() < followMeUntil) flyTo(me)
+            }
+            val centerOnMe = {
+                platform.refreshMyLocation()
+                followMeUntil = epochSeconds() + MotionPolicy.REFRESH_SECONDS + 10
+                flyTo(me) || run { platform.showMessage("Finding your location"); true }
+            }
 
             if (landscape) {
                 val gap = with(density) { 16.dp.toPx() }

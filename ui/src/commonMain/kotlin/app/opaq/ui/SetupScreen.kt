@@ -69,6 +69,7 @@ fun SetupScreen(
     onScan: () -> Unit,
     onRestore: () -> Unit,
     onCircleCreated: (String) -> Unit,
+    backgroundSettings: List<SettingItem> = emptyList(),
 ) {
     val platform = LocalPlatform.current
     var step by remember { mutableStateOf(if (state.circles.isNotEmpty()) SetupStep.Location else SetupStep.Name) }
@@ -120,7 +121,7 @@ fun SetupScreen(
                         onJoinLink = onJoinLink,
                         onScan = onScan,
                     )
-                    SetupStep.Location -> LocationStep(hasLocationPermission, onRequestLocation, onDone = { actions.setSetupDone() })
+                    SetupStep.Location -> LocationStep(hasLocationPermission, onRequestLocation, backgroundSettings, onDone = { actions.setSetupDone() })
                 }
             }
         }
@@ -237,7 +238,7 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
 }
 
 @Composable
-private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Unit, onDone: () -> Unit) {
+private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Unit, background: List<SettingItem>, onDone: () -> Unit) {
     Spacer(Modifier.height(8.dp))
     BigIcon(AppIcons.LocationPin)
     StepTitle(
@@ -247,6 +248,25 @@ private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Un
     InfoCard {
         Text("You're always in control", style = MaterialTheme.typography.titleSmall)
         Caption("${LocalPlatform.current.sharingIndicatorText}, and you can pause sharing with one tap on the map.")
+    }
+    // Once location is allowed, the phone settings that keep sharing going in the background (#131):
+    // on Android, "Allow all the time" and no battery saver. Each row goes away once it's done.
+    val todo = background.filter { it.action != null }
+    AnimatedVisibility(hasPermission && todo.isNotEmpty(), enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Keep sharing when Opaq is closed", style = MaterialTheme.typography.titleSmall)
+            todo.forEach { item ->
+                InfoCard {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Column(Modifier.weight(1f)) {
+                            Text(item.title, style = MaterialTheme.typography.titleSmall)
+                            Caption(item.detail)
+                        }
+                        TonalButton(item.action ?: "", item.onAction)
+                    }
+                }
+            }
+        }
     }
     Spacer(Modifier.height(24.dp))
     if (hasPermission) {

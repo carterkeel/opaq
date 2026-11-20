@@ -46,6 +46,8 @@ class AndroidPlatform(
 
     override fun ensureSharingService() = app.ensureSharingService()
 
+    override fun refreshMyLocation() = app.refreshMyLocation()
+
     override val supportsTor: Boolean get() = true
 
     /** The manifest's launcher entries (activity-alias), by app icon id. "white" is enabled by default. */

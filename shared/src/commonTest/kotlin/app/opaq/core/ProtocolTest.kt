@@ -222,9 +222,9 @@ class ProtocolTest {
         assertEquals(Activity.DRIVING, p.activity())
         assertTrue(p.shouldPublish(t))
         p.markPublished(t)
-        assertFalse(p.shouldPublish(t + 10), "no flood right after publishing")
-        assertFalse(p.shouldPublish(t + 20), "never faster than the moving rate")
-        assertTrue(p.shouldPublish(t + 35), "about every half minute while moving")
+        assertFalse(p.shouldPublish(t + 3), "no flood right after publishing")
+        assertFalse(p.shouldPublish(t + 7), "never faster than the moving rate, less its jitter")
+        assertTrue(p.shouldPublish(t + 12), "about every 10 seconds while moving")
 
         // Parks: the stop is reported promptly instead of showing "Driving" for minutes.
         p.markPublished(t + 70)
@@ -234,6 +234,35 @@ class ProtocolTest {
         t += 5
         assertEquals(Activity.STILL, p.activity())
         assertTrue(p.shouldPublish(t))
+    }
+
+    @Test
+    fun theLocateButtonSendsAFreshFixOnlyWhenTheSharedOneWasOff() {
+        // #115: still, last shared from a rough fix. The locate button asks for GPS; a fix 200 m
+        // away goes out at once, instead of in up to five minutes.
+        val p = MotionPolicy()
+        val t = now
+        p.add(LocationSample(41.0, 16.0, 80f, null, null, t))
+        p.markPublished(t)
+        assertFalse(p.shouldPublish(t + 20))
+        p.requestRefresh(t + 20)
+        assertTrue(p.wantsHighAccuracy(t + 20), "switches to GPS for the fresh fix")
+        p.add(LocationSample(41.0018, 16.0, 8f, 0f, null, t + 24))
+        assertTrue(p.shouldPublish(t + 24), "the corrected position is sent straight away")
+        p.markPublished(t + 24)
+
+        // Tapped again, and GPS agrees with what was shared: nothing extra goes out.
+        p.requestRefresh(t + 60)
+        p.add(LocationSample(41.00181, 16.0, 6f, 0f, null, t + 63))
+        assertFalse(p.shouldPublish(t + 63))
+
+        // A rough fix doesn't settle it; nor does an accurate one 35 m off that arrives after the
+        // wait is over (a jump that small isn't movement either, so nothing goes out).
+        p.requestRefresh(t + 100)
+        p.add(LocationSample(41.00181, 16.0, 120f, null, null, t + 102))
+        assertFalse(p.shouldPublish(t + 102))
+        p.add(LocationSample(41.00213, 16.0, 5f, 0f, null, t + 100 + MotionPolicy.REFRESH_SECONDS + 1))
+        assertFalse(p.shouldPublish(t + 100 + MotionPolicy.REFRESH_SECONDS + 1))
     }
 
     @Test

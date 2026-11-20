@@ -22,6 +22,12 @@ interface PlatformBridge {
     fun ensureSharingService()
 
     /**
+     * The locate button: take a fresh GPS fix and, if it shows the shared position was off, send it
+     * now (MotionPolicy.requestRefresh). Does nothing while sharing is off.
+     */
+    fun refreshMyLocation() {}
+
+    /**
      * Lets the user pick a photo, then crops it square and shrinks it to a small JPEG
      * (under [app.opaq.core.protocol.CircleCrypto.MAX_PHOTO_CHARS] once base64-encoded).
      * Calls [onResult] with the base64 JPEG, or null if cancelled or unsupported.

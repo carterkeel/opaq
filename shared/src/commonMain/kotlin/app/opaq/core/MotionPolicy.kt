@@ -33,6 +33,10 @@ class MotionPolicy {
 
     private var lastPublishAt: Long? = null
     private var lastPublishedMoving: Boolean? = null
+    private var lastPublished: LocationSample? = null
+
+    /** Until when a fresh fix is wanted for the locate button ([requestRefresh]). */
+    private var refreshUntil: Long? = null
     private var jitter = 1.0
 
     /** When the newest fix arrived, on this phone's clock (a fix's own time can come from GPS). */
@@ -53,6 +57,30 @@ class MotionPolicy {
         val cutoff = sample.time - BUFFER_SECONDS
         while (buffer.isNotEmpty() && buffer.first().time < cutoff) buffer.removeFirst()
         activity = classify(estimateSpeed(), activity)
+        checkRefresh(sample, receivedAt)
+    }
+
+    /**
+     * The locate button: get a fresh GPS fix (as for a [motionHint]) to check the shared position.
+     * If the first accurate fix within [REFRESH_SECONDS] is more than [REFRESH_METERS] (or its own
+     * error) from what was last shared, it goes out straight away instead of at the next interval,
+     * which can be up to five minutes away while still. If the shared position was right, nothing
+     * extra is sent, so the relays rarely see an update off the steady rates.
+     */
+    fun requestRefresh(now: Long) {
+        motionHint(now)
+        refreshUntil = now + REFRESH_SECONDS
+    }
+
+    private fun checkRefresh(sample: LocationSample, receivedAt: Long) {
+        val until = refreshUntil ?: return
+        if (receivedAt > until) { refreshUntil = null; return }
+        if (sample.accuracy > GOOD_ACCURACY) return
+        refreshUntil = null
+        val shared = lastPublished
+        val off = shared == null ||
+            distanceMeters(shared.lat, shared.lon, sample.lat, sample.lon) > max(REFRESH_METERS, sample.accuracy.toDouble())
+        if (off) publishSoon()
     }
 
     /**
@@ -102,6 +130,7 @@ class MotionPolicy {
     fun markPublished(now: Long) {
         lastPublishAt = now
         lastPublishedMoving = isMoving(now)
+        lastPublished = buffer.lastOrNull()
         val r = (PlatformCrypto.randomBytes(1)[0].toInt() and 0xff) / 255.0 // 0..1
         jitter = 0.85 + 0.3 * r
     }
@@ -161,9 +190,13 @@ class MotionPolicy {
     }
 
     companion object {
-        const val MOVING_INTERVAL = 30L
+        const val MOVING_INTERVAL = 10L
         const val STILL_INTERVAL = 300L
-        private const val MIN_GAP_SECONDS = 20L
+        private const val MIN_GAP_SECONDS = 10L
+
+        /** How long the locate button waits for an accurate fix, and how far off the shared one may be. */
+        const val REFRESH_SECONDS = 30L
+        const val REFRESH_METERS = 25.0
         private const val HINT_SECONDS = 120L
         private const val BUFFER_SECONDS = 5 * 60L
         private const val SPEED_WINDOW = 30L

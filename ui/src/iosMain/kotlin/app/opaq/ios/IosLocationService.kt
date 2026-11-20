@@ -226,6 +226,14 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         }
     }
 
+    /** The locate button: GPS now, and the fix goes out at once if the shared one was off. */
+    fun refreshNow() {
+        if (publishJob?.isActive != true) return
+        policy.requestRefresh(nowSeconds())
+        adjustAccuracy()
+        wake.trySend(Unit)
+    }
+
     /** Started moving (motion chips, or left the geofence): switch to GPS now and let fixes say how fast. */
     private fun onMovementHint() {
         if (publishJob?.isActive != true) return
@@ -302,7 +310,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     }
 
     private companion object {
-        const val TICK_MS = 5_000L
+        // Often enough that a 10 s moving update goes out close to when it's due.
+        const val TICK_MS = 2_000L
         const val SHOW_INDICATOR_KEY = "showLocationIndicator"
         const val MONITOR_NAME = "opaq"
         const val STILL_REGION = "still"

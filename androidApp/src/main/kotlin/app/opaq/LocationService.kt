@@ -138,6 +138,12 @@ class LocationService : LifecycleService(), LocationListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if (intent?.action == ACTION_REFRESH) {
+            // The locate button: GPS now, and the fix goes out at once if the shared one was off.
+            policy.requestRefresh(nowSeconds())
+            adjustAccuracy()
+            wake.trySend(Unit)
+        }
         if (intent?.action == ACTION_STOP) {
             // On the app's scope, not the service's: stopSelf() below cancels the service's scope,
             // which could otherwise drop this before sharing is actually turned off.
@@ -250,6 +256,9 @@ class LocationService : LifecycleService(), LocationListener {
     companion object {
         private const val NOTIFICATION_ID = 1
         private const val ACTION_STOP = "app.opaq.STOP"
-        private const val TICK_MS = 5_000L
+        const val ACTION_REFRESH = "app.opaq.REFRESH"
+
+        // Often enough that a 10 s moving update goes out close to when it's due.
+        private const val TICK_MS = 2_000L
     }
 }

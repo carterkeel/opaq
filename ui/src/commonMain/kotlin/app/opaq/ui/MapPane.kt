@@ -66,6 +66,7 @@ import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.SymbolLayer
+import org.maplibre.compose.map.CameraConstraints
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.rememberMapState
 import org.maplibre.compose.sources.GeoJsonData
@@ -286,6 +287,7 @@ fun MapPane(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
             viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
+            cameraConstraints = worldFills(maxHeight),
             interactions = Interactions,
             overlay = {},
         )
@@ -451,8 +453,19 @@ fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus
                 }
             }
         }
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, interactions = Interactions, overlay = {})
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, cameraConstraints = worldFills(maxHeight), interactions = Interactions, overlay = {})
     }
+}
+
+/**
+ * Don't zoom out so far that the world is shorter than the map: below Antarctica (and above the
+ * Arctic) there's only the style's plain background, a light band that shows even in dark mode.
+ * At zoom z the world is 512·2^z dp tall, so the smallest zoom that fills [height] is log2(height / 512).
+ */
+@Composable
+private fun worldFills(height: Dp): CameraConstraints = remember(height) {
+    val fill = ln(height.value / 512.0) / ln(2.0) + 0.02
+    CameraConstraints { minZoom = fill.coerceAtLeast(0.0) }
 }
 
 /** Road classes in OpenMapTiles' transportation layer that people travel along (not rail or ferries). */

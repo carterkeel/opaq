@@ -47,6 +47,8 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
 
     override fun ensureSharingService() = location.update()
 
+    override fun refreshMyLocation() = location.refreshNow()
+
     private val photoPicker = IosPhotoPicker()
 
     override fun pickProfilePhoto(onResult: (String?) -> Unit) {
