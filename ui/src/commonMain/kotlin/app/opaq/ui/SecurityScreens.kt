@@ -17,6 +17,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -117,14 +118,48 @@ fun PinField(value: String, onChange: (String) -> Unit, label: String, modifier:
     )
 }
 
-/** Asks for the PIN when [PinGate.require] is waiting, then runs the action. */
+private fun lockedMessage(until: Long) = "Too many wrong tries. Wait ${(until - epochSeconds()).coerceAtLeast(1)} seconds and try again."
+
+/**
+ * Asks for the PIN when [PinGate.require] is waiting, then runs the action. With face or fingerprint
+ * unlock on, asks for that first; the PIN can always be typed instead.
+ */
 @Composable
-fun PinPrompt(gate: PinGate, actions: Actions) {
+fun PinPrompt(gate: PinGate, state: AppState, actions: Actions) {
     val action = gate.pending ?: return
+    val platform = LocalPlatform.current
+    val biometricName = platform.biometricName.takeIf { state.pin?.biometrics == true }
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     // One check at a time: taps and the keyboard's Done are ignored until the answer is back.
     var checking by remember { mutableStateOf(false) }
+    val tryBiometrics: () -> Unit = tryBiometrics@{
+        val name = biometricName ?: return@tryBiometrics
+        if (checking) return@tryBiometrics
+        checking = true
+        platform.checkBiometrics("Confirm it's you") { result ->
+            when (result) {
+                BiometricResult.OK -> actions.unlockWithBiometrics { unlocked ->
+                    checking = false
+                    when (unlocked) {
+                        PinResult.Ok -> {
+                            gate.pending = null
+                            action()
+                        }
+                        is PinResult.Locked -> error = lockedMessage(unlocked.until)
+                        is PinResult.Wrong -> Unit
+                    }
+                }
+                BiometricResult.CHANGED -> {
+                    checking = false
+                    actions.setBiometrics(false)
+                    error = "A face or fingerprint was added to this phone or removed, so $name is off for Opaq until you turn it on again. Enter your PIN."
+                }
+                else -> checking = false
+            }
+        }
+    }
+    LaunchedEffect(action) { tryBiometrics() }
     val submit: () -> Unit = submit@{
         if (pin.length < 4 || checking) return@submit
         checking = true
@@ -137,7 +172,7 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
                     action()
                 }
                 is PinResult.Wrong -> error = if (result.attemptsLeft > 0) "That's not your PIN. ${result.attemptsLeft} more tries before a short wait." else "That's not your PIN."
-                is PinResult.Locked -> error = "Too many wrong tries. Wait ${(result.until - epochSeconds()).coerceAtLeast(1)} seconds and try again."
+                is PinResult.Locked -> error = lockedMessage(result.until)
             }
         }
     }
@@ -150,6 +185,7 @@ fun PinPrompt(gate: PinGate, actions: Actions) {
         confirmEnabled = !checking,
     ) {
         PinField(pin, { pin = it; error = null }, "PIN", onDone = submit)
+        if (biometricName != null) TextButton(onClick = tryBiometrics, enabled = !checking) { Text("Use $biometricName") }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium) }
     }
 }
@@ -171,6 +207,34 @@ fun NewPinFields(onDone: (() -> Unit)? = null, onValid: (String?) -> Unit) {
             if (valid) focus.clearFocus()
         }, "New PIN again", onDone = onDone ?: {})
         if (again.isNotEmpty() && again != pin) Caption("The PINs don't match.")
+    }
+}
+
+/**
+ * "Use Face ID" (or Touch ID, or fingerprint): shown once a PIN is set, on phones with face or
+ * fingerprint unlock. Turning it on needs the PIN, then a face or finger, so it's known to work.
+ */
+@Composable
+fun BiometricSwitch(state: AppState, actions: Actions) {
+    val platform = LocalPlatform.current
+    val gate = LocalPinGate.current
+    val lock = state.pin ?: return
+    val name = platform.biometricName ?: return
+    SwitchRow("Use $name", "Instead of typing your PIN. The PIN always works too.", lock.biometrics, AppIcons.Lock) { on ->
+        if (on) {
+            gate.require {
+                platform.enrollBiometrics("Turn on $name for Opaq") { result ->
+                    when (result) {
+                        BiometricResult.OK -> actions.setBiometrics(true) { platform.showMessage("$name turned on") }
+                        BiometricResult.UNAVAILABLE -> platform.showMessage("$name isn't set up on this phone")
+                        else -> Unit
+                    }
+                }
+            }
+        } else {
+            platform.forgetBiometrics()
+            actions.setBiometrics(false)
+        }
     }
 }
 
@@ -223,6 +287,8 @@ fun SecurityLogScreen(state: AppState, onBack: () -> Unit) {
                 SecurityEventType.PIN_REMOVED -> "PIN removed"
                 SecurityEventType.PIN_LOCKED -> "Wrong PIN entered too many times"
                 SecurityEventType.IDENTITY_RESET -> "New device code"
+                SecurityEventType.BIOMETRICS_ON -> "Face or fingerprint unlock turned on"
+                SecurityEventType.BIOMETRICS_OFF -> "Face or fingerprint unlock turned off"
             }
             SettingsRow(title, listOfNotNull(Format.ago(now - e.at), e.device?.let { "on $it" }).joinToString(" "), AppIcons.Shield)
         }

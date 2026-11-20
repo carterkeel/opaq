@@ -688,7 +688,8 @@ fun SettingsSectionScreen(
                     SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
                 } else {
                     SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
-                    SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { actions.removePin() } })
+                    SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { platform.forgetBiometrics(); actions.removePin() } })
+                    BiometricSwitch(state, actions)
                 }
                 SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
                 SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Lock)

@@ -246,7 +246,7 @@ fun OpaqScreens(
                             }
                         }
                     }
-                    PinPrompt(pinGate, actions)
+                    PinPrompt(pinGate, state, actions)
                     if (consentDue && !consentShown) ConsentSheet(state, me, actions) { consentShown = true }
                 }
             }

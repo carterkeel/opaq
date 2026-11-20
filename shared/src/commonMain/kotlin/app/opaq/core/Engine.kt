@@ -495,9 +495,37 @@ class Engine(
         val had = state.value.pin != null
         if (had) requireAuthorized()
         val salt = PlatformCrypto.randomBytes(16)
-        val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS)
+        // Changing the PIN keeps biometric unlock as it was.
+        val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS, biometrics = state.value.pin?.biometrics == true)
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+    }
+
+    /**
+     * Lets Face ID, Touch ID or a fingerprint stand in for the PIN. Turning it on needs a PIN set and
+     * entered; turning it off never does (the phone turns it off when its enrolled faces or fingers
+     * change).
+     */
+    suspend fun setBiometrics(on: Boolean) = pinMutex.withLock {
+        val lock = state.value.pin ?: run {
+            check(!on) { "Set a PIN first" }
+            return@withLock
+        }
+        if (on) requireAuthorized()
+        if (lock.biometrics == on) return@withLock
+        update { it.copy(pin = lock.copy(biometrics = on), securityLog = it.logged(if (on) SecurityEventType.BIOMETRICS_ON else SecurityEventType.BIOMETRICS_OFF)) }
+    }
+
+    /**
+     * Call once the phone has confirmed the owner's face or fingerprint: counts as entering the PIN.
+     * Refused when biometric unlock is off, and waits out a PIN lockout like the PIN does.
+     */
+    suspend fun unlockWithBiometrics(): PinResult = pinMutex.withLock {
+        val lock = state.value.pin ?: return@withLock PinResult.Ok
+        check(lock.biometrics) { "Biometric unlock is off" }
+        lockedUntil(lock)?.let { return@withLock PinResult.Locked(it) }
+        authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+        PinResult.Ok
     }
 
     suspend fun removePin() {

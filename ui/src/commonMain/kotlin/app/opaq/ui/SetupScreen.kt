@@ -169,6 +169,7 @@ private fun ColumnScope.PhotoStep(state: AppState, me: String, actions: Actions,
 
 @Composable
 private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () -> Unit) {
+    val platform = LocalPlatform.current
     var chosen by remember { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     BigIcon(AppIcons.Lock)
@@ -178,6 +179,7 @@ private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () ->
     )
     if (state.pin != null) {
         Text("PIN set", style = MaterialTheme.typography.titleMedium)
+        BiometricSwitch(state, actions)
         PrimaryButton("Continue", onNext)
         return
     }
@@ -186,7 +188,8 @@ private fun ColumnScope.PinStep(state: AppState, actions: Actions, onNext: () ->
         val pin = chosen ?: return@save
         if (saving) return@save
         saving = true
-        actions.setPin(pin, onFailed = { saving = false }, onDone = { saving = false; onNext() })
+        // With face or fingerprint unlock on this phone, stay to offer it (the "PIN set" view above).
+        actions.setPin(pin, onFailed = { saving = false }, onDone = { saving = false; if (platform.biometricName == null) onNext() })
     }
     NewPinFields(onDone = save) { chosen = it }
     PrimaryButton("Set PIN", save, enabled = chosen != null && !saving)

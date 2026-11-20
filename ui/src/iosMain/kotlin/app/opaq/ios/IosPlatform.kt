@@ -1,5 +1,6 @@
 package app.opaq.ios
 
+import app.opaq.ui.BiometricResult
 import app.opaq.ui.PlatformBridge
 import app.opaq.ui.SettingItem
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +49,13 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     override fun ensureSharingService() = location.update()
 
     override fun refreshMyLocation() = location.refreshNow()
+
+    private val biometrics = IosBiometrics()
+
+    override val biometricName: String? get() = biometrics.name
+    override fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = biometrics.enroll(reason, onResult)
+    override fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = biometrics.check(reason, onResult)
+    override fun forgetBiometrics() = biometrics.forget()
 
     private val photoPicker = IosPhotoPicker()
 
