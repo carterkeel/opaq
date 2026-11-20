@@ -841,12 +841,20 @@ private fun ThemeSheet(current: String, onPick: (String) -> Unit, onDismiss: () 
 @Composable
 fun AppIconPreview(choice: AppIconChoice, size: Dp) {
     val shape = RoundedCornerShape(size * 0.225f)
+    val dark = LocalDarkTheme.current
     Image(
         appIconArt(choice),
         contentDescription = null,
         modifier = Modifier.size(size).clip(shape)
-            // The white icon needs an edge to stand out on a light screen.
-            .then(if (choice == AppIconChoice.White) Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape) else Modifier),
+            // A tile the same shade as the screen needs an edge: the white icon on light screens,
+            // the Ink two-tone icon on dark ones (Dark's background is Ink itself).
+            .then(
+                when {
+                    choice == AppIconChoice.White && !dark -> Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape)
+                    choice == AppIconChoice.TwoTone && dark -> Modifier.border(1.dp, MaterialTheme.colorScheme.outline, shape)
+                    else -> Modifier
+                },
+            ),
     )
 }
 
