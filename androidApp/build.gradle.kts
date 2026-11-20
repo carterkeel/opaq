@@ -10,7 +10,9 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.opaq"
+        // The id the app is listed under on Google Play (the App Store uses the same one). The code
+        // stays in the app.opaq package; only the installed id changes.
+        applicationId = "me.opaq.app"
         minSdk = 26
         targetSdk = 35
         // CI builds count up, so each new APK installs over the previous one.

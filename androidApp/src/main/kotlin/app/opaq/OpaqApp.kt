@@ -56,7 +56,7 @@ class OpaqApp : Application() {
     /**
      * Debug builds only: the relay in `files/test-relay` (one address per line) instead of the saved
      * relays, for testing against a relay on this machine (tools/test-relay.sh):
-     *   adb shell run-as app.opaq.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'
+     *   adb shell run-as me.opaq.app.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'
      * Delete the file (or leave it empty) and restart the app to go back to the saved relays.
      */
     private fun testRelays(): List<String>? {
