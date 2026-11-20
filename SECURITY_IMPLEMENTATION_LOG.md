@@ -39,7 +39,7 @@ The audit still applied to `main` at `078b96c` when this work started: every loc
 
 - **Storage.** Android: AES-GCM with an Android Keystore key (`SecureStore`). iOS: libsodium secretbox with a Keychain key, `AfterFirstUnlockThisDeviceOnly` (`IosStateStore`).
 - **Crypto.** `PlatformCrypto` is `expect`/`actual`: BouncyCastle + javax on Android, CommonCrypto + libsodium on iOS. The iOS `actual`s compile only on macOS, so CI (Linux) never builds them.
-- **Sharing indicator.** Android uses a foreground-service notification. iOS uses the system's blue location indicator (`showsBackgroundLocationIndicator`).
+- **Sharing indicator.** Android uses a foreground-service notification. iOS can show the system's blue location pill (`showsBackgroundLocationIndicator`), off by default since November 2026 and turned on in Settings → Sharing. With it off and Always access, nothing outside the app shows that sharing is on.
 
 ### Protocol versions before this work
 
