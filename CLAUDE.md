@@ -72,9 +72,14 @@ site/        Static GitHub Pages site (pages.yml), no build step:
              index.html   the public website (three.js from cdnjs, fonts from Google Fonts; a CSP meta tag
                           allows only those). The demo map draws sf-map.json: downtown San Francisco
                           from OpenStreetMap (© OSM contributors, ODbL, credited on the page).
+             report.html  "Report a problem" form, posted with fetch to Web3Forms (api.web3forms.com),
+                          which emails it to the owner. Its access key is in the page on purpose: Web3Forms
+                          keys are public by design (limit it to the domain in the Web3Forms dashboard).
+                          This is the website only; the app never contacts Web3Forms.
              join.html    hands https invite links to the app. Invite links point at
                           opaq.me/join (the Pages custom domain). Older links use
                           carterkeel.github.io/opaq/join, which Pages redirects there, keeping the # part.
+docs/readme/ README images: brand wordmarks, the banner and framed screenshots from the CI emulator run.
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 
