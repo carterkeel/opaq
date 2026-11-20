@@ -1,22 +1,58 @@
-# Opaq
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/readme/wordmark-dark.svg">
+    <img src="docs/readme/wordmark-light.svg" alt="Opaq" height="52">
+  </picture>
+</p>
 
-Private location sharing with the people you choose. No accounts, no phone numbers, and no Opaq server.
+<p align="center">
+  <strong>Private location sharing with the people you choose.</strong><br>
+  No accounts, no phone numbers, and no Opaq server.
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/badge/licence-MIT-6366F1?style=flat-square"></a>
+  <img alt="Android 8.0 and up" src="https://img.shields.io/badge/Android-8.0%2B-0F172A?style=flat-square">
+  <img alt="iOS 17 and up" src="https://img.shields.io/badge/iOS-17%2B-0F172A?style=flat-square">
+  <img alt="Kotlin Multiplatform" src="https://img.shields.io/badge/Kotlin-Multiplatform-0F172A?style=flat-square">
+</p>
+
+<p align="center">
+  <a href="https://opaq.me"><strong>opaq.me</strong></a>&emsp;
+  <a href="PRIVACY.md">Privacy details</a>&emsp;
+  <a href="TESTING.md">Testing</a>&emsp;
+  <a href="https://opaq.me/report">Report a problem</a>
+</p>
+
+<p align="center">
+  <img src="docs/readme/hero.png" alt="Opaq on three phones: the map with your circle, the same map in the dark theme, and a day of location history" width="100%">
+</p>
+
+## Why Opaq
 
 - **Identity is a key on your phone.** On first launch the app creates a secp256k1 keypair. Your *device code* (for example `7F3A 91C2 D04E 6B1A`) is a fingerprint of the public key; compare it in person to verify someone.
-- **Circles share both ways**, like Life360. The circle admin sends a signed, single-use invite link that expires in an hour (or 24 hours), and approves each person who opens it.
+- **Circles share both ways**, like Life360. The circle admin sends a signed invite link that expires in an hour (or 24 hours), and approves each person who opens it.
 - **Everything is end-to-end encrypted** on the device before it leaves. Updates travel through public [Nostr](https://nostr.com) relays, which only ever see ciphertext.
 - **Open source.** Anyone can check what the app sends.
 
 Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multiplatform codebase. Still in early development.
 
-<p align="center">
-  <img src="docs/screenshots/phone.png" alt="Map with the people list on a phone" height="420">
-  &nbsp;
-  <img src="docs/screenshots/foldable.png" alt="Unfolded foldable held sideways, with the people list in a side panel" height="420">
-</p>
-<p align="center">
-  <img src="docs/screenshots/tablet.png" alt="iPad in landscape, map with a side panel" width="640">
-</p>
+## A look around
+
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/readme/screen-home.png" alt="The map with your circle and the people sheet" width="220"><br><sub><b>Your circle on the map</b><br>Everyone as a dot, with what they're doing</sub></td>
+    <td align="center" width="33%"><img src="docs/readme/screen-dark-home.png" alt="The map in the dark theme" width="220"><br><sub><b>Light and dark</b><br>Follows your phone, or pick a theme</sub></td>
+    <td align="center" width="33%"><img src="docs/readme/screen-profile.png" alt="A profile with status, history and device code" width="220"><br><sub><b>Profiles</b><br>Status, history and the device code to compare</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/readme/screen-history.png" alt="A day of location history on the map" width="220"><br><sub><b>Location history</b><br>Kept encrypted on the phone, never uploaded</sub></td>
+    <td align="center"><img src="docs/readme/screen-invite.png" alt="An invite QR code with the inviter's device code" width="220"><br><sub><b>Invites</b><br>A QR code or a link, and every join is approved</sub></td>
+    <td align="center"><img src="docs/readme/screen-settings-app-icon.png" alt="The app icon picker in settings" width="220"><br><sub><b>Your icon</b><br>Dark on white, Two-tone or Oversized A</sub></td>
+  </tr>
+</table>
+
+<sub>Screenshots come from the automated emulator test, so they show test data.</sub>
 
 ## Features
 
@@ -48,7 +84,8 @@ shared/       Kotlin Multiplatform core: crypto, Nostr, circles, invites, motion
 ui/           Compose Multiplatform screens and map, shared by Android and iOS
 androidApp/   Android app: foreground location service, Keystore storage, permissions
 iosApp/       Xcode project for the iPhone and iPad app (iOS code lives in ui/src/iosMain)
-site/         The website and the page that hands https invite links to the app (GitHub Pages)
+site/         opaq.me on GitHub Pages: the website, the invite link page and the report form
+docs/readme/  Images for this README (screenshots come from the CI emulator run, with test data)
 ```
 
 ## Building
@@ -60,7 +97,7 @@ Requires JDK 17 and the Android SDK (Android Studio installs both).
 ./gradlew :androidApp:assembleDebug      # debug APK in androidApp/build/outputs/apk/debug/
 ```
 
-Every push also builds on GitHub Actions; the debug and staging APKs are attached to each run as `opaq-debug-apk` and `opaq-staging-apk`.
+Every push runs the tests and compiles the app on GitHub Actions. Merges to `main` also build the debug and staging APKs, attached to the run as `opaq-debug-apk` and `opaq-staging-apk`, and run a smoke test on an emulator. To get APKs from another branch, run the workflow by hand from the Actions tab.
 
 See [TESTING.md](TESTING.md) for how to test on real phones.
 
