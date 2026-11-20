@@ -170,7 +170,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -framework OpaqUI -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = app.opaq;
+				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app;
 				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -317,7 +317,7 @@
 					"@executable_path/Frameworks",
 				);
 				OTHER_LDFLAGS = "$(inherited) -framework OpaqUI -lc++";
-				PRODUCT_BUNDLE_IDENTIFIER = app.opaq;
+				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app;
 				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

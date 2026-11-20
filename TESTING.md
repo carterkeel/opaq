@@ -11,7 +11,7 @@ Sections 1–7 cover Android. iOS is in [section 8](#8-ios); the two-phone test 
 
 **From source:** install [Android Studio](https://developer.android.com/studio), open the repo folder, and press Run. Android Studio installs the JDK and SDK for you.
 
-The debug build installs as **app.opaq.debug** and the staging build as **app.opaq.staging**, so they can sit side by side and won't clash with a future release build.
+The debug build installs as **me.opaq.app.debug** and the staging build as **me.opaq.app.staging**, so they can sit side by side and won't clash with a future release build.
 
 ## 2. Install on a phone
 
@@ -57,11 +57,11 @@ tools/test-relay.sh         # leave it running; Ctrl-C saves and stops
 
 It listens on port 7777 and saves its events to `~/.opaq-test-relay/events.jsonl` every minute, so circles survive a restart. Then point **debug builds** at it and restart the app (release and staging builds ignore this):
 
-- **iOS simulator:** `xcrun simctl spawn booted defaults write app.opaq opaqTestRelay ws://localhost:7777`
-- **Android emulator:** `adb shell run-as app.opaq.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'` (open the app once first)
+- **iOS simulator:** `xcrun simctl spawn booted defaults write me.opaq.app opaqTestRelay ws://localhost:7777`
+- **Android emulator:** `adb shell run-as me.opaq.app.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'` (open the app once first)
 - **Android phone on USB:** `adb reverse tcp:7777 tcp:7777`, then the same command with `ws://localhost:7777`
 
-**Settings → Connection** then shows **Test relay · connected**, and the saved relays are ignored. To go back, `defaults delete app.opaq opaqTestRelay` or `run-as app.opaq.debug rm files/test-relay`. A test relay only lets devices on this computer talk to each other, so an iPhone or a phone on mobile data still needs the public relays.
+**Settings → Connection** then shows **Test relay · connected**, and the saved relays are ignored. To go back, `defaults delete me.opaq.app opaqTestRelay` or `run-as me.opaq.app.debug rm files/test-relay`. A test relay only lets devices on this computer talk to each other, so an iPhone or a phone on mobile data still needs the public relays.
 
 ## 4. Faking movement
 
@@ -112,7 +112,7 @@ From a terminal instead of Xcode:
 cd iosApp
 xcodebuild -project iosApp.xcodeproj -scheme Opaq -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd build
 xcrun simctl install booted build/dd/Build/Products/Debug-iphonesimulator/Opaq.app
-xcrun simctl launch booted app.opaq
+xcrun simctl launch booted me.opaq.app
 ```
 
 Only `iosApp/project.yml` is edited by hand. After changing it, run `xcodegen` in `iosApp/` (`brew install xcodegen`) and commit the regenerated project too.

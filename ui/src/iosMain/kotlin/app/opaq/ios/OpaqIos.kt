@@ -90,8 +90,8 @@ object OpaqIos {
     /**
      * Debug builds only: the relay saved as `opaqTestRelay` in the app's settings, instead of the
      * saved relays, for testing against a relay on this Mac (tools/test-relay.sh). Set it from the Mac:
-     *   xcrun simctl spawn booted defaults write app.opaq opaqTestRelay ws://localhost:7777
-     * and delete it (`defaults delete app.opaq opaqTestRelay`) to go back. Read when the app starts.
+     *   xcrun simctl spawn booted defaults write me.opaq.app opaqTestRelay ws://localhost:7777
+     * and delete it (`defaults delete me.opaq.app opaqTestRelay`) to go back. Read when the app starts.
      */
     private fun testRelays(): List<String>? {
         if (!Platform.isDebugBinary) return null

@@ -4,7 +4,7 @@ Opaq is an open-source, Life360-style location sharing app with **no accounts an
 
 This repo is **public**. Never commit secrets, real keys, keystores, personal emails or real location data. Commit as the GitHub no-reply address.
 
-**Naming.** The app was called Quietmap until November 2026, and the repository is now `carterkeel/opaq`. Everything is named Opaq (app id `app.opaq`, packages, iOS bundle and target, link scheme `opaq://`), so the rename needed a fresh install. A few things keep the old name on purpose, because they're part of the data format: the encryption labels `quietmap-pin|`, `quietmap-circle|` and `quietmap-invite|` (changing them would cut phones on the new app off from anyone still on the old one, and from circles restored from an old backup), and the old backup header `quietmap-backup-v2`, which still restores. Pasted `quietmap://` links are still recognised.
+**Naming.** The app was called Quietmap until November 2026, and the repository is now `carterkeel/opaq`. Everything is named Opaq (packages `app.opaq`, iOS target, link scheme `opaq://`). The app id on Google Play and the App Store is **`me.opaq.app`** (Android `applicationId`, iOS bundle id in `iosApp/project.yml`; test builds add `.debug` or `.staging`). The rename and the move to this app id each needed a fresh install. A few things keep the old name on purpose, because they're part of the data format: the encryption labels `quietmap-pin|`, `quietmap-circle|` and `quietmap-invite|` (changing them would cut phones on the new app off from anyone still on the old one, and from circles restored from an old backup), and the old backup header `quietmap-backup-v2`, which still restores. Pasted `quietmap://` links are still recognised.
 
 ## Ground rules
 

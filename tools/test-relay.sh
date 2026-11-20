@@ -7,11 +7,11 @@
 #   tools/test-relay.sh       # leave it running; Ctrl-C to stop
 #
 # Then point debug builds at it (release and staging builds ignore this):
-#   iOS simulator:     xcrun simctl spawn booted defaults write app.opaq opaqTestRelay ws://localhost:7777
-#   Android emulator:  adb shell run-as app.opaq.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'
+#   iOS simulator:     xcrun simctl spawn booted defaults write me.opaq.app opaqTestRelay ws://localhost:7777
+#   Android emulator:  adb shell run-as me.opaq.app.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'
 # and restart the app. Settings → Connection shows "Test relay". To go back to the saved relays:
-#   xcrun simctl spawn booted defaults delete app.opaq opaqTestRelay
-#   adb shell run-as app.opaq.debug rm files/test-relay
+#   xcrun simctl spawn booted defaults delete me.opaq.app opaqTestRelay
+#   adb shell run-as me.opaq.app.debug rm files/test-relay
 #
 # The relay keeps events in memory. This script saves them every minute (and when it stops) to
 # $OPAQ_TEST_RELAY_DATA, and loads them again on start, so circles survive a restart.

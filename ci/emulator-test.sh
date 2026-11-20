@@ -15,7 +15,7 @@ for apk in androidApp/build/outputs/apk/staging/*.apk; do
   install_out=$(adb install -r "$apk" 2>&1)
   install_rc=$?
   printf '%s\n' "$install_out" | tee -a emulator.log
-  adb uninstall app.opaq.staging >/dev/null 2>&1 || true
+  adb uninstall me.opaq.app.staging >/dev/null 2>&1 || true
   if [ "$install_rc" -ne 0 ] || grep -q "Failure" <<< "$install_out"; then
     echo "=== Staging install FAILED (adb exit $install_rc): $apk ===" | tee -a emulator.log
     install_failed=1
@@ -25,7 +25,7 @@ status=1
 for attempt in 1 2; do
   echo "=== UI smoke test, attempt $attempt ===" | tee -a emulator.log
   adb logcat -c || true
-  adb shell pm clear app.opaq.debug >/dev/null 2>&1 || true
+  adb shell pm clear me.opaq.app.debug >/dev/null 2>&1 || true
   adb shell rm -rf /sdcard/Download/opaq-screens >/dev/null 2>&1 || true
   ./gradlew :androidApp:connectedDebugAndroidTest --stacktrace 2>&1 | tee -a emulator.log
   status=$?
