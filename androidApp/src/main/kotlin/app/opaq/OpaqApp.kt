@@ -40,6 +40,7 @@ class OpaqApp : Application() {
             deviceName = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}",
             elapsed = { SystemClock.elapsedRealtime() / 1000 },
             historyFiles = FileHistory(this),
+            testRelays = testRelays(),
         ).also { it.start() }
     }
 
@@ -51,6 +52,18 @@ class OpaqApp : Application() {
      * without a visible sign on their phone.
      */
     val sharingBlocked: StateFlow<Boolean> = _sharingBlocked.asStateFlow()
+
+    /**
+     * Debug builds only: the relay in `files/test-relay` (one address per line) instead of the saved
+     * relays, for testing against a relay on this machine (tools/test-relay.sh):
+     *   adb shell run-as app.opaq.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'
+     * Delete the file (or leave it empty) and restart the app to go back to the saved relays.
+     */
+    private fun testRelays(): List<String>? {
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) == 0) return null
+        val lines = runCatching { java.io.File(filesDir, "test-relay").readLines() }.getOrNull() ?: return null
+        return lines.map { it.trim() }.filter { it.isNotEmpty() }.takeIf { it.isNotEmpty() }
+    }
 
     override fun onCreate() {
         super.onCreate()

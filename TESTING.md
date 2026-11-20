@@ -46,6 +46,23 @@ Things to check after that:
 | Restart phone B | Sharing resumes if "Allow all the time" was granted |
 | Settings → Relays | Green dots for connected relays; removing one still works |
 
+### Testing without public relays
+
+Several test devices on one home connection can get that address rate-limited or banned by public relays, which then affects real phones on the same Wi-Fi. For simulators and emulators, run a relay on your computer instead:
+
+```
+brew install nak            # once
+tools/test-relay.sh         # leave it running; Ctrl-C saves and stops
+```
+
+It listens on port 7777 and saves its events to `~/.opaq-test-relay/events.jsonl` every minute, so circles survive a restart. Then point **debug builds** at it and restart the app (release and staging builds ignore this):
+
+- **iOS simulator:** `xcrun simctl spawn booted defaults write app.opaq opaqTestRelay ws://localhost:7777`
+- **Android emulator:** `adb shell run-as app.opaq.debug sh -c 'echo ws://10.0.2.2:7777 > files/test-relay'` (open the app once first)
+- **Android phone on USB:** `adb reverse tcp:7777 tcp:7777`, then the same command with `ws://localhost:7777`
+
+**Settings → Connection** then shows **Test relay · connected**, and the saved relays are ignored. To go back, `defaults delete app.opaq opaqTestRelay` or `run-as app.opaq.debug rm files/test-relay`. A test relay only lets devices on this computer talk to each other, so an iPhone or a phone on mobile data still needs the public relays.
+
 ## 4. Faking movement
 
 - **Emulator:** in the emulator's **⋮ → Location** panel, load a GPX/KML route and press Play to simulate driving.

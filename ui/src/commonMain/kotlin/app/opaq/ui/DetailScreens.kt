@@ -707,6 +707,14 @@ fun SettingsSectionScreen(
             }
 
             SettingsSection.Connection -> {
+                actions.testRelays?.let { test ->
+                    val up = test.any { relayStatus[it] == RelayStatus.CONNECTED }
+                    SettingsRow(
+                        "Test relay",
+                        "${test.joinToString()} · ${if (up) "connected" else "not connected"}. This test build uses only this relay; the ones below are ignored.",
+                        AppIcons.Relay,
+                    )
+                }
                 val connected = state.relays.count { relayStatus[it] == RelayStatus.CONNECTED }
                 SettingsRow("Relays", "$connected of ${state.relays.size} connected · they only see encrypted data", AppIcons.Relay, onClick = { showRelays = !showRelays })
                 AnimatedVisibility(showRelays, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {

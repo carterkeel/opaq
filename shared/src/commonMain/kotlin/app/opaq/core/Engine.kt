@@ -118,6 +118,13 @@ class Engine(
     private val elapsed: () -> Long = now,
     /** Where location history is kept; null keeps none (as in most tests). */
     historyFiles: HistoryFiles? = null,
+    /**
+     * Debug builds only: relays to use instead of the saved ones (and any an invite asks for), such
+     * as a relay on this machine (tools/test-relay.sh), so test devices never touch public relays.
+     * Saved settings aren't changed. Addresses [RelayUrls] doesn't allow leave no relays at all
+     * rather than falling back to the public ones.
+     */
+    val testRelays: List<String>? = null,
 ) {
     private val historyStore = historyFiles?.let { LocationHistory(it) }
     private var historyPrunedAt = 0L
@@ -396,6 +403,7 @@ class Engine(
 
     /** The user's relays, plus relays an invite asked for while that join is still in progress. */
     private fun effectiveRelays(): List<String> {
+        testRelays?.let { test -> return test.mapNotNull { RelayUrls.clean(it) }.distinct() }
         val s = state.value
         return (s.relays + s.pendingJoins.flatMap { it.relays }).mapNotNull { RelayUrls.clean(it) }.distinct()
     }

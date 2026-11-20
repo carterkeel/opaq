@@ -170,7 +170,7 @@ gh api repos/carterkeel/opaq/commits/ci-logs --jq .commit.message
 gh api repos/carterkeel/opaq/contents/log.txt?ref=ci-logs --jq .content | base64 -d
 ```
 
-Two-phone manual testing is described in `TESTING.md`.
+Two-phone manual testing is described in `TESTING.md`. Simulators and emulators should use the local test relay (`tools/test-relay.sh`, `nak serve` on port 7777) rather than public relays: debug builds read it from the `opaqTestRelay` user default (iOS) or `files/test-relay` (Android) and then use only that relay (`Engine.testRelays`; plain `ws://` is allowed only to localhost and the emulator's 10.0.2.2, and only in debug builds).
 
 ## Toolchain gotchas
 

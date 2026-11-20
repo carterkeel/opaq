@@ -20,6 +20,9 @@ class Actions(
 ) {
     val me: String get() = engine.myPubkey
 
+    /** Debug builds pointed at a test relay: the relays used instead of the saved ones. */
+    val testRelays: List<String>? get() = engine.testRelays
+
     /** Whether this phone is currently sending its location to [circle], and if not, why. */
     fun shareStatus(circle: Circle): ShareStatus = engine.shareStatus(circle)
 
