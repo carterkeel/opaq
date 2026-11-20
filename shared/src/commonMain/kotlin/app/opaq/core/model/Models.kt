@@ -7,7 +7,22 @@ val DEFAULT_RELAYS = listOf(
     "wss://nos.lol",
     "wss://relay.primal.net",
     "wss://nostr.mom",
+    "wss://offchain.pub",
 )
+
+/**
+ * Relays added to [DEFAULT_RELAYS] after release, oldest first. Saved states get each one once
+ * ([AppState.relayDefaultsVersion] counts how many they've had), so someone who removes it keeps it removed.
+ * Read sealed DMs (joins, rosters) need a relay that serves them without NIP-42 sign-in, which Opaq doesn't do.
+ */
+val ADDED_DEFAULT_RELAYS = listOf("wss://offchain.pub")
+
+/** [this] with any default relays added since it was saved. */
+fun AppState.withNewDefaultRelays(): AppState {
+    if (relayDefaultsVersion >= ADDED_DEFAULT_RELAYS.size) return this
+    val add = ADDED_DEFAULT_RELAYS.drop(relayDefaultsVersion).filter { it !in relays }
+    return copy(relays = relays + add, relayDefaultsVersion = ADDED_DEFAULT_RELAYS.size)
+}
 
 /** Values of [AppState.themeMode]. */
 const val THEME_SYSTEM = "system"
@@ -22,6 +37,8 @@ data class AppState(
     val identitySecretHex: String,
     val myName: String = "",
     val relays: List<String> = DEFAULT_RELAYS,
+    /** How many of [ADDED_DEFAULT_RELAYS] this state has already been given. */
+    val relayDefaultsVersion: Int = 0,
     val sharing: Boolean = true,
     /** Include battery level in location updates. On for new installs; saved states keep their choice. */
     val shareBattery: Boolean = true,
