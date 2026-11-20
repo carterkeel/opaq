@@ -165,7 +165,7 @@ object OpaqIos {
     /** Handles an `opaq://join…` or shared web invite link. Returns false for links that aren't Opaq's. */
     fun handleUrl(url: String): Boolean {
         val ours = InviteLinks.SCHEMES.any { url.startsWith("$it://") } ||
-            url.startsWith(InviteLinks.WEB_PREFIX)
+            InviteLinks.WEB_PREFIXES.any { url.startsWith(it) }
         if (!ours) return false
         incomingLink.value = url
         return true
