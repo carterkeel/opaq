@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import app.opaq.core.Engine
+import app.opaq.core.nostr.RelayUrls
 import app.opaq.core.protocol.InviteLinks
 import app.opaq.ui.OpaqScreens
 import app.opaq.ui.epochSeconds
@@ -28,7 +29,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
+import kotlin.experimental.ExperimentalNativeApi
+import kotlin.native.Platform
 import platform.Foundation.NSLog
+import platform.Foundation.NSUserDefaults
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSProcessInfo
@@ -62,11 +66,13 @@ import platform.darwin.dispatch_get_main_queue
  * - `OpaqIos.shared.handleUrl(url:)` for `opaq://join` links;
  * - `OpaqIosKt.MainViewController()` for the screen.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, ExperimentalNativeApi::class)
 object OpaqIos {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val engine: Engine by lazy {
+        // Debug builds may use a relay on this Mac over plain ws://; release builds never do.
+        RelayUrls.allowLocalPlaintext = Platform.isDebugBinary
         Engine(
             store = IosStateStore(),
             scope = scope,
@@ -77,8 +83,22 @@ object OpaqIos {
             // Time since boot: changing the date can't shorten a PIN lockout.
             elapsed = { NSProcessInfo.processInfo.systemUptime.toLong() },
             historyFiles = IosHistoryFiles(),
+            testRelays = testRelays(),
         ).also { it.start() }
     }
+
+    /**
+     * Debug builds only: the relay saved as `opaqTestRelay` in the app's settings, instead of the
+     * saved relays, for testing against a relay on this Mac (tools/test-relay.sh). Set it from the Mac:
+     *   xcrun simctl spawn booted defaults write app.opaq opaqTestRelay ws://localhost:7777
+     * and delete it (`defaults delete app.opaq opaqTestRelay`) to go back. Read when the app starts.
+     */
+    private fun testRelays(): List<String>? {
+        if (!Platform.isDebugBinary) return null
+        return NSUserDefaults.standardUserDefaults.stringForKey(TEST_RELAY_KEY)?.trim()?.takeIf { it.isNotEmpty() }?.let { listOf(it) }
+    }
+
+    private const val TEST_RELAY_KEY = "opaqTestRelay"
 
     /** Created on first use, on the main thread, as CoreLocation requires. */
     val location: IosLocationService by lazy { IosLocationService(engine, scope, notifier) }
