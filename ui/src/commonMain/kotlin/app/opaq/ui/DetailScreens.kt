@@ -685,7 +685,7 @@ fun SettingsSectionScreen(
 
             SettingsSection.Security -> {
                 if (state.pin == null) {
-                    SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { settingPin = true })
+                    SettingsRow("Set a PIN", "Asked before backups, invites and other sensitive changes. Never to open the app.", AppIcons.Lock, onClick = { platform.confirmOwnerThen { settingPin = true } })
                 } else {
                     SettingsRow("Change PIN", "Asked before backups, invites and other sensitive changes", AppIcons.Lock, onClick = { gate.require { settingPin = true } })
                     SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { platform.forgetBiometrics(); actions.removePin() } })
@@ -928,7 +928,7 @@ fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                PrimaryButton("Set a PIN", { settingPin = true })
+                PrimaryButton("Set a PIN", { platform.confirmOwnerThen { settingPin = true } })
             }
         }
         return
@@ -948,7 +948,7 @@ fun BackupScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
             PassphraseField(again, { again = it }, "Passphrase again")
             AnimatedVisibility(again.isNotEmpty() && pass != again) { Caption("The passphrases don't match.") }
             PrimaryButton(if (working) "Encrypting…" else "Save backup file", {
-                gate.require {
+                gate.requireNow {
                     working = true
                     actions.exportBackup(pass) { text ->
                         if (text == null) {

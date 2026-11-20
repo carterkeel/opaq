@@ -175,6 +175,8 @@ class Engine(
 
     /** Until when the last correct PIN entry authorizes sensitive actions (memory only). */
     private var authorizedUntil = 0L
+    /** Until when the last PIN (or face or fingerprint) entry still counts for one backup. */
+    private var freshUntil = 0L
 
     init {
         val found = readStore()
@@ -451,6 +453,7 @@ class Engine(
         lockedUntil(lock)?.let { return PinResult.Locked(it) }
         if (constantTimeEquals(pinHash(pin, lock.saltHex.hexToBytes(), lock.iterations), lock.hashHex.hexToBytes())) {
             authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+            freshUntil = elapsed() + FRESH_SECONDS
             if (lock.failedAttempts != 0 || lock.lockUntilElapsed != 0L || lock.lockedUntil != 0L) {
                 update { it.copy(pin = lock.copy(failedAttempts = 0, lockedUntil = 0, lockStartElapsed = 0, lockUntilElapsed = 0)) }
             }
@@ -499,6 +502,7 @@ class Engine(
         val lock = PinLock(pinHash(pin, salt, PIN_ITERATIONS).toHex(), salt.toHex(), PIN_ITERATIONS, biometrics = state.value.pin?.biometrics == true)
         update { it.copy(pin = lock, securityLog = it.logged(if (had) SecurityEventType.PIN_CHANGED else SecurityEventType.PIN_SET)) }
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+        freshUntil = elapsed() + FRESH_SECONDS
     }
 
     /**
@@ -525,6 +529,7 @@ class Engine(
         check(lock.biometrics) { "Biometric unlock is off" }
         lockedUntil(lock)?.let { return@withLock PinResult.Locked(it) }
         authorizedUntil = elapsed() + AUTH_WINDOW_SECONDS
+        freshUntil = elapsed() + FRESH_SECONDS
         PinResult.Ok
     }
 
@@ -1112,8 +1117,11 @@ class Engine(
     suspend fun exportBackup(passphrase: String): String {
         checkReady()
         check(hasPin) { "Set a PIN before making a backup" }
-        requireAuthorized()
+        // A backup copies this phone's identity, so it needs the PIN (or face or fingerprint) entered
+        // just now, for this backup: an entry for something else a minute ago doesn't count.
+        check(elapsed() < freshUntil) { "Enter your PIN first" }
         val text = Backups.encrypt(Backups.fromState(state.value), passphrase)
+        freshUntil = 0 // used up, but not by a passphrase that was refused
         update { it.copy(securityLog = it.logged(SecurityEventType.BACKUP_EXPORTED)) }
         return text
     }
@@ -1823,6 +1831,8 @@ class Engine(
 
         /** One correct PIN entry covers sensitive actions for this long. */
         const val AUTH_WINDOW_SECONDS = 120L
+        /** How long a PIN entry counts for a backup ([exportBackup]), which uses it up. */
+        const val FRESH_SECONDS = 30L
 
         const val PIN_FREE_ATTEMPTS = 5
         const val PIN_ITERATIONS = 150_000

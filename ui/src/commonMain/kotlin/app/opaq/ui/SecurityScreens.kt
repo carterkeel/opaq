@@ -96,9 +96,28 @@ class PinGate(private val actions: Actions) {
     fun require(action: () -> Unit) {
         if (actions.isAuthorized()) action() else pending = action
     }
+
+    /**
+     * Always asks, even if the PIN was entered a minute ago: for backups, which copy this phone's
+     * identity. (With no PIN set it runs straight away; backups refuse that case themselves.)
+     */
+    fun requireNow(action: () -> Unit) {
+        if (actions.hasPin) pending = action else action()
+    }
 }
 
 val LocalPinGate = staticCompositionLocalOf<PinGate> { error("No PinGate provided") }
+
+/**
+ * Runs [action] (opening "Set a PIN") once the phone's own unlock confirms it's the owner, or
+ * straight away on a phone with no screen lock. Without this, someone who picks up an unlocked phone
+ * with no Opaq PIN could choose one and then make a backup. Not needed during first-run setup, before
+ * there's anything to copy.
+ */
+fun PlatformBridge.confirmOwnerThen(action: () -> Unit) =
+    confirmPhoneOwner("Confirm it's you to set a PIN for Opaq") { result ->
+        if (result == BiometricResult.OK || result == BiometricResult.UNAVAILABLE) action()
+    }
 
 /** A field for 4 to 8 digits, hidden as they're typed. */
 @Composable

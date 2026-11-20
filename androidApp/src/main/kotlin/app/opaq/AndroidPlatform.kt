@@ -26,6 +26,7 @@ class AndroidPlatform(
     private val fileSaver: (name: String, text: String, onDone: (Boolean) -> Unit) -> Unit,
     private val fileOpener: ((String?) -> Unit) -> Unit,
     private val requestBackgroundLocation: () -> Unit,
+    confirmScreen: (android.content.Intent, (Boolean) -> Unit) -> Unit,
 ) : PlatformBridge {
     private val app = OpaqApp.from(context)
     /** Face or fingerprint unlock needs Android 11 or later (each use checks, so lint can see it). */
@@ -44,6 +45,9 @@ class AndroidPlatform(
     override fun forgetBiometrics() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) biometrics?.forget()
     }
+
+    private val phoneLock = PhoneLock(context, confirmScreen)
+    override fun confirmPhoneOwner(reason: String, onResult: (BiometricResult) -> Unit) = phoneLock.confirm(reason, onResult)
 
     override fun showMessage(text: String) {
         Toast.makeText(context, text, Toast.LENGTH_LONG).show()

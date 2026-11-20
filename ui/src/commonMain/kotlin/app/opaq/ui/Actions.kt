@@ -115,6 +115,7 @@ class Actions(
     // PIN and security
 
     fun isAuthorized(): Boolean = engine.isAuthorized()
+    val hasPin: Boolean get() = engine.hasPin
 
     /** Checks the PIN off the main thread (it's a slow hash) and reports back on the main thread. */
     /** [onFailed] runs (after the error is shown) if the check itself couldn't run. */

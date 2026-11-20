@@ -188,6 +188,22 @@ class SecurityTest {
     }
 
     @Test
+    fun eachBackupNeedsThePinEnteredJustNow() = runTest {
+        val e = engine(FlakyStore())
+        e.createCircle("Family")
+        e.setPin("2468")
+        e.exportBackup("correct horse battery")
+        assertTrue(e.isAuthorized(), "the PIN still covers other changes for a while")
+        assertFailsWith<IllegalStateException>("one entry covers one backup") { e.exportBackup("correct horse battery") }
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        clock += Engine.FRESH_SECONDS + 1
+        assertTrue(e.isAuthorized())
+        assertFailsWith<IllegalStateException>("an entry from a minute ago, for something else, doesn't count") { e.exportBackup("correct horse battery") }
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        e.exportBackup("correct horse battery")
+    }
+
+    @Test
     fun sensitiveActionsNeedThePinButViewingDoesNot() = runTest {
         val e = engine(FlakyStore())
         val c = e.createCircle("Family")

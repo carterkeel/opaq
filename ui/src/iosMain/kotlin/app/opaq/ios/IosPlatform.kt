@@ -56,6 +56,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     override fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = biometrics.enroll(reason, onResult)
     override fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = biometrics.check(reason, onResult)
     override fun forgetBiometrics() = biometrics.forget()
+    override fun confirmPhoneOwner(reason: String, onResult: (BiometricResult) -> Unit) = biometrics.confirmOwner(reason, onResult)
 
     private val photoPicker = IosPhotoPicker()
 

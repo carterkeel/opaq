@@ -85,6 +85,13 @@ interface PlatformBridge {
     /** Forgets what [enrollBiometrics] remembered. */
     fun forgetBiometrics() {}
 
+    /**
+     * Asks for the phone's own unlock (its passcode, or its face or fingerprint): before the first
+     * Opaq PIN is set, so someone who picks up an unlocked phone can't choose a PIN and make a backup.
+     * [BiometricResult.UNAVAILABLE] means the phone has no screen lock, so there's nothing to check.
+     */
+    fun confirmPhoneOwner(reason: String, onResult: (BiometricResult) -> Unit) = onResult(BiometricResult.UNAVAILABLE)
+
     /** Lets the user pick a text file (a backup) and calls [onResult] with its contents, or null. */
     fun openTextFile(onResult: (String?) -> Unit) {
         showMessage("Opening files isn't available on this device yet")
