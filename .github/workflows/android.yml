@@ -1,7 +1,9 @@
 name: Android
 
-# Every push builds and tests, including pushes to pull request branches. (A separate
-# pull_request trigger would build the same code twice and race for the log.)
+# Every push runs the tests and compiles the app, including pushes to pull request branches.
+# The APKs (and the emulator test that installs one) are only built for main, which a merge
+# pushes to, or when the workflow is run by hand from the Actions tab on any branch.
+# (A separate pull_request trigger would build the same code twice and race for the log.)
 on:
   push:
     branches-ignore: [ci-logs]
@@ -21,6 +23,9 @@ defaults:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # true on main and on manual runs: build, check and upload the APKs and run the emulator test.
+      APKS: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
@@ -35,12 +40,14 @@ jobs:
       # Test builds are signed with one long-lived key so each new APK installs over the last.
       # The key lives only in the Actions cache (never in the repo); it's for test builds only.
       - name: Restore the test signing key
+        if: env.APKS == 'true'
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: ~/.opaq-ci-key
           key: opaq-ci-signing-v1
 
       - name: Create the test signing key if there isn't one yet
+        if: env.APKS == 'true'
         run: |
           mkdir -p ~/.opaq-ci-key
           if [ ! -f ~/.opaq-ci-key/ci.jks ]; then
@@ -54,12 +61,19 @@ jobs:
       - name: Unit tests (crypto and protocol)
         run: ./gradlew :shared:testAndroidHostTest --warning-mode all --stacktrace 2>&1 | tee test.log
 
+      # Branches: compile everything (shared, ui and the app) without packaging an APK.
+      - name: Compile the app
+        if: env.APKS != 'true'
+        run: ./gradlew :androidApp:compileDebugSources --warning-mode all --stacktrace 2>&1 | tee build.log
+
       - name: Build debug and staging APKs
+        if: env.APKS == 'true'
         run: ./gradlew :androidApp:assembleDebug :androidApp:assembleStaging --warning-mode all --stacktrace 2>&1 | tee build.log
 
       # Proves each APK is signed with the shared test key, and records its version code, so
       # "App not installed" on a phone can be told apart from a bad build.
       - name: Check APK signatures
+        if: env.APKS == 'true'
         run: |
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           # Every APK is checked and logged; the step fails afterwards if any didn't verify
@@ -80,6 +94,7 @@ jobs:
           ) 2>&1 | tee apk.log
 
       - name: Upload debug APK
+        if: env.APKS == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: opaq-debug-apk
@@ -87,12 +102,14 @@ jobs:
 
       # Optimised build (R8, not debuggable): use this one to judge smoothness and battery.
       - name: Upload staging APK
+        if: env.APKS == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: opaq-staging-apk
           path: androidApp/build/outputs/apk/staging/*.apk
 
       - name: Enable KVM for the emulator
+        if: env.APKS == 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -100,6 +117,7 @@ jobs:
 
       # Installs the debug app on an emulator and runs the first-run smoke test (androidTest/).
       - name: UI smoke test on an emulator
+        if: env.APKS == 'true'
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
