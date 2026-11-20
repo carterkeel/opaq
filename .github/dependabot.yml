@@ -1,5 +1,8 @@
 # Weekly update PRs for Gradle dependencies and GitHub Actions. Security advisories for these
 # dependencies also show up as Dependabot alerts once they're enabled in the repository settings.
+#
+# Updates are grouped so each week brings a few PRs instead of one per dependency. A dependency
+# goes in the first group it matches.
 version: 2
 updates:
   - package-ecosystem: gradle
@@ -7,7 +10,17 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    groups:
+      # The renderer runtime must match the maplibre-native-ffi version maplibre-compose depends
+      # on, so they're bumped together, and kept apart so a mismatch doesn't hold up the rest.
+      maplibre:
+        patterns: ["org.maplibre*"]
+      libraries:
+        patterns: ["*"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
