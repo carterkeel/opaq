@@ -79,7 +79,8 @@ site/        Static GitHub Pages site (pages.yml), no build step:
              join.html    hands https invite links to the app. Invite links point at
                           opaq.me/join (the Pages custom domain). Older links use
                           carterkeel.github.io/opaq/join, which Pages redirects there, keeping the # part.
-docs/readme/ README images: brand wordmarks, the banner and framed screenshots from the CI emulator run.
+docs/readme/ README images: brand wordmarks, the banner and framed screenshots from the iOS simulator
+             (test people and locations only).
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 
