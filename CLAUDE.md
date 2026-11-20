@@ -68,11 +68,13 @@ androidApp/  Android host app.
   PhotoProcessor.kt  Crops/compresses profile photos to a small JPEG.
   BootReceiver.kt    Resumes sharing after reboot or update.
 
-site/        Static GitHub Pages site (pages.yml): join.html hands https invite links to the app.
-             Invite links point at carterkeel.github.io/opaq/join, so it must stay published there.
-website/     The public website (Cloudflare Pages, output directory `website`, no build step):
-             index.html, sf-map.json (downtown San Francisco from OpenStreetMap, © OSM contributors,
-             ODbL) and _headers (security headers).
+site/        Static GitHub Pages site (pages.yml), no build step:
+             index.html   the public website (three.js from cdnjs, fonts from Google Fonts; a CSP meta tag
+                          allows only those). The demo map draws sf-map.json: downtown San Francisco
+                          from OpenStreetMap (© OSM contributors, ODbL, credited on the page).
+             join.html    hands https invite links to the app. Invite links point at
+                          carterkeel.github.io/opaq/join, so the site must stay published there (a custom
+                          domain on Pages redirects that address, keeping the # part).
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 

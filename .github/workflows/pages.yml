@@ -1,7 +1,8 @@
-# Publishes site/ (the invite link page) to GitHub Pages. Needs Settings → Pages → Source:
+# Publishes site/ (the website, index.html with sf-map.json, and the invite link page, join.html)
+# to GitHub Pages. Needs Settings → Pages → Source:
 # "GitHub Actions" turned on once. The page is static: invites stay after # in the address,
 # which browsers never send to the host.
-name: Invite page
+name: Website and invite page
 
 on:
   push:
