@@ -13,6 +13,8 @@ val DEFAULT_RELAYS = listOf(
 const val THEME_SYSTEM = "system"
 const val THEME_LIGHT = "light"
 const val THEME_DARK = "dark"
+/** Dark, with a pure black background instead of Ink (OLED screens, night). */
+const val THEME_MIDNIGHT = "midnight"
 
 /** Everything the app persists. Stored encrypted on the device. */
 @Serializable
@@ -36,7 +38,7 @@ data class AppState(
     val showPhotos: Boolean = true,
     /** Draw the map with the dark style. Off (the light map) unless turned on in Settings. */
     val darkMap: Boolean = false,
-    /** The app's colours: [THEME_SYSTEM] (follow the phone), [THEME_LIGHT] or [THEME_DARK]. A string, so
+    /** The app's colours: [THEME_SYSTEM] (follow the phone), [THEME_LIGHT], [THEME_DARK] or [THEME_MIDNIGHT]. A string, so
      *  a value from a newer version can't make saved state unreadable; anything unknown follows the phone. */
     val themeMode: String = THEME_SYSTEM,
     /** Landscape only: the people panel at the side of the map is slid away. */

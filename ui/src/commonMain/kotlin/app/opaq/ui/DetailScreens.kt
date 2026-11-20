@@ -60,6 +60,7 @@ import app.opaq.core.model.AppState
 import app.opaq.core.model.Invite
 import app.opaq.core.model.THEME_DARK
 import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_MIDNIGHT
 import app.opaq.core.model.THEME_SYSTEM
 import app.opaq.core.nostr.RelayStatus
 import app.opaq.core.nostr.RelayUrls
@@ -813,19 +814,21 @@ fun SettingsSectionScreen(
 private fun themeLabel(mode: String) = when (mode) {
     THEME_LIGHT -> "Light"
     THEME_DARK -> "Dark"
+    THEME_MIDNIGHT -> "Midnight"
     else -> "System default"
 }
 
-/** Settings → Appearance → Theme: follow the phone (the default), or always light or dark. */
+/** Settings → Appearance → Theme: follow the phone (the default), or always light, dark or midnight. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ThemeSheet(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
             Text("Theme", style = MaterialTheme.typography.titleLarge, modifier = Gutter)
-            Caption("System default follows your phone's light or dark setting.", Gutter.then(Modifier.padding(top = 4.dp, bottom = 8.dp)))
-            val selected = if (current == THEME_LIGHT || current == THEME_DARK) current else THEME_SYSTEM
-            listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK).forEach { mode ->
+            Caption("System default follows your phone's light or dark setting. Midnight is dark with a black background.", Gutter.then(Modifier.padding(top = 4.dp, bottom = 8.dp)))
+            val modes = listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK, THEME_MIDNIGHT)
+            val selected = if (current in modes) current else THEME_SYSTEM
+            modes.forEach { mode ->
                 SettingsRow(themeLabel(mode), onClick = { onPick(mode) }) {
                     if (mode == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
                 }
