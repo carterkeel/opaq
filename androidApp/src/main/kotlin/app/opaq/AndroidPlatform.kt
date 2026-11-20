@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
@@ -27,15 +28,22 @@ class AndroidPlatform(
     private val requestBackgroundLocation: () -> Unit,
 ) : PlatformBridge {
     private val app = OpaqApp.from(context)
-    /** Face or fingerprint unlock needs Android 11 or later. */
-    private val biometrics = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Biometrics(context) else null
+    /** Face or fingerprint unlock needs Android 11 or later (each use checks, so lint can see it). */
+    private val biometrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) Biometrics(context) else null
 
-    override val biometricName: String? get() = biometrics?.name
-    override fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) =
-        biometrics?.enroll(reason, onResult) ?: onResult(BiometricResult.UNAVAILABLE)
-    override fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) =
-        biometrics?.check(reason, onResult) ?: onResult(BiometricResult.UNAVAILABLE)
-    override fun forgetBiometrics() { biometrics?.forget() }
+    override val biometricName: String?
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) biometrics?.name else null
+    override fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) {
+        val b = biometrics
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && b != null) b.enroll(reason, onResult) else onResult(BiometricResult.UNAVAILABLE)
+    }
+    override fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) {
+        val b = biometrics
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && b != null) b.check(reason, onResult) else onResult(BiometricResult.UNAVAILABLE)
+    }
+    override fun forgetBiometrics() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) biometrics?.forget()
+    }
 
     override fun showMessage(text: String) {
         Toast.makeText(context, text, Toast.LENGTH_LONG).show()

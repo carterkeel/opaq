@@ -32,15 +32,13 @@ class Biometrics(private val context: Context) {
     val name: String?
         get() {
             val manager = context.getSystemService(BiometricManager::class.java) ?: return null
-            if (manager.canAuthenticate(BIOMETRIC_STRONG) != BiometricManager.BIOMETRIC_SUCCESS) return null
+            // Never crash over this (it needs USE_BIOMETRIC): without an answer the option just isn't offered.
+            val status = runCatching { manager.canAuthenticate(BIOMETRIC_STRONG) }.getOrNull()
+            if (status != BiometricManager.BIOMETRIC_SUCCESS) return null
             val pm = context.packageManager
-            val face = pm.hasSystemFeature(PackageManager.FEATURE_FACE)
-            val finger = pm.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)
-            return when {
-                face && !finger -> "Face unlock"
-                finger && !face -> "Fingerprint"
-                else -> "Fingerprint or face"
-            }
+            // Many phones list face hardware that isn't strong enough (or has no face set up), so a
+            // fingerprint sensor wins; the system prompt still accepts any strong biometric.
+            return if (pm.hasSystemFeature(PackageManager.FEATURE_FINGERPRINT)) "Fingerprint" else "Face unlock"
         }
 
     fun enroll(reason: String, onResult: (BiometricResult) -> Unit) {
