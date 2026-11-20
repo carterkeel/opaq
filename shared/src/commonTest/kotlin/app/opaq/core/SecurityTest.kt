@@ -212,6 +212,53 @@ class SecurityTest {
     }
 
     @Test
+    fun biometricsStandInForThePinOnlyWhenTurnedOn() = runTest {
+        val e = engine(FlakyStore())
+        assertFailsWith<IllegalStateException>("needs a PIN first") { e.setBiometrics(true) }
+        e.setPin("2468")
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFailsWith<IllegalStateException>("turning it on needs the PIN") { e.setBiometrics(true) }
+        assertFailsWith<IllegalStateException>("off: a face or fingerprint isn't accepted") { e.unlockWithBiometrics() }
+        assertEquals(PinResult.Ok, e.unlock("2468"))
+        e.setBiometrics(true)
+        assertEquals(SecurityEventType.BIOMETRICS_ON, e.state.value.securityLog.last().type)
+
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        assertFalse(e.isAuthorized())
+        assertEquals(PinResult.Ok, e.unlockWithBiometrics())
+        assertTrue(e.isAuthorized(), "counts as entering the PIN")
+
+        // Changing the PIN keeps it; turning it off needs nothing (the phone does it when faces or fingers change).
+        e.setPin("1357")
+        assertTrue(e.state.value.pin!!.biometrics)
+        clock += Engine.AUTH_WINDOW_SECONDS + 1
+        e.setBiometrics(false)
+        assertFalse(e.state.value.pin!!.biometrics)
+        assertEquals(SecurityEventType.BIOMETRICS_OFF, e.state.value.securityLog.last().type)
+        assertFailsWith<IllegalStateException> { e.unlockWithBiometrics() }
+
+        // Removing the PIN removes it too.
+        assertEquals(PinResult.Ok, e.unlock("1357"))
+        e.setBiometrics(true)
+        e.removePin()
+        assertEquals(null, e.state.value.pin)
+    }
+
+    @Test
+    fun biometricsWaitOutAPinLockout() = runTest {
+        var uptime = 5_000L
+        val e = Engine(FlakyStore(), scope, { clock }, transport = { network.client(it) }, elapsed = { uptime })
+        e.setPin("2468")
+        e.setBiometrics(true)
+        uptime += Engine.AUTH_WINDOW_SECONDS + 1
+        repeat(5) { e.unlock("0000") }
+        assertTrue(e.unlockWithBiometrics() is PinResult.Locked, "a face doesn't skip the wait wrong PINs started")
+        assertFalse(e.isAuthorized())
+        uptime += 31
+        assertEquals(PinResult.Ok, e.unlockWithBiometrics())
+    }
+
+    @Test
     fun changingTheDateDoesntEndAPinLockout() = runTest {
         var uptime = 5_000L
         val e = Engine(FlakyStore(), scope, { clock }, transport = { network.client(it) }, elapsed = { uptime })

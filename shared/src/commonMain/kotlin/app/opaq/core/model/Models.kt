@@ -199,10 +199,15 @@ data class PinLock(
      */
     val lockStartElapsed: Long = 0,
     val lockUntilElapsed: Long = 0,
+    /**
+     * Face ID, Touch ID or a fingerprint can stand in for typing the PIN. Only possible with a PIN
+     * set (removing the PIN turns it off), and the PIN always works too.
+     */
+    val biometrics: Boolean = false,
 )
 
 @Serializable
-enum class SecurityEventType { BACKUP_EXPORTED, BACKUP_RESTORED, PIN_SET, PIN_CHANGED, PIN_REMOVED, PIN_LOCKED, IDENTITY_RESET }
+enum class SecurityEventType { BACKUP_EXPORTED, BACKUP_RESTORED, PIN_SET, PIN_CHANGED, PIN_REMOVED, PIN_LOCKED, IDENTITY_RESET, BIOMETRICS_ON, BIOMETRICS_OFF }
 
 @Serializable
 data class SecurityEvent(val type: SecurityEventType, val at: Long, val device: String? = null)

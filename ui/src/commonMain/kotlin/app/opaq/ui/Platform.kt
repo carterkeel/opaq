@@ -63,11 +63,45 @@ interface PlatformBridge {
     val sharingIndicatorText: String
         get() = "A notification shows while you're sharing"
 
+    /**
+     * The phone's face or fingerprint unlock by name ("Face ID", "Touch ID", "Fingerprint"), or null
+     * when the phone has none set up (or it's too old: Android before 11).
+     */
+    val biometricName: String? get() = null
+
+    /**
+     * Turns face or fingerprint unlock on for Opaq: remembers which faces or fingers the phone has
+     * now, then asks for one. Calls [onResult] on the main thread.
+     */
+    fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = onResult(BiometricResult.UNAVAILABLE)
+
+    /**
+     * Asks for the owner's face or fingerprint. [BiometricResult.CHANGED] means a face or finger was
+     * added or removed since [enrollBiometrics]: someone else's may be on the phone, so the caller
+     * turns biometric unlock off and asks for the PIN.
+     */
+    fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) = onResult(BiometricResult.UNAVAILABLE)
+
+    /** Forgets what [enrollBiometrics] remembered. */
+    fun forgetBiometrics() {}
+
     /** Lets the user pick a text file (a backup) and calls [onResult] with its contents, or null. */
     fun openTextFile(onResult: (String?) -> Unit) {
         showMessage("Opening files isn't available on this device yet")
         onResult(null)
     }
+}
+
+/** How a face or fingerprint check went. */
+enum class BiometricResult {
+    /** It was the owner. */
+    OK,
+    /** Cancelled, failed, or the user chose to type the PIN. */
+    CANCELLED,
+    /** The phone's enrolled faces or fingers changed since biometric unlock was turned on. */
+    CHANGED,
+    /** No face or fingerprint unlock on this phone. */
+    UNAVAILABLE,
 }
 
 /** A platform-specific row under Settings → Sharing, such as background access, battery optimisation or a switch. */

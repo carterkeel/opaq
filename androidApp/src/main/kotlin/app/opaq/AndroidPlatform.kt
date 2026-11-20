@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import app.opaq.ui.BiometricResult
 import app.opaq.ui.PlatformBridge
 import app.opaq.ui.SettingItem
 
@@ -26,6 +27,15 @@ class AndroidPlatform(
     private val requestBackgroundLocation: () -> Unit,
 ) : PlatformBridge {
     private val app = OpaqApp.from(context)
+    /** Face or fingerprint unlock needs Android 11 or later. */
+    private val biometrics = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) Biometrics(context) else null
+
+    override val biometricName: String? get() = biometrics?.name
+    override fun enrollBiometrics(reason: String, onResult: (BiometricResult) -> Unit) =
+        biometrics?.enroll(reason, onResult) ?: onResult(BiometricResult.UNAVAILABLE)
+    override fun checkBiometrics(reason: String, onResult: (BiometricResult) -> Unit) =
+        biometrics?.check(reason, onResult) ?: onResult(BiometricResult.UNAVAILABLE)
+    override fun forgetBiometrics() { biometrics?.forget() }
 
     override fun showMessage(text: String) {
         Toast.makeText(context, text, Toast.LENGTH_LONG).show()

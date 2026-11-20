@@ -124,6 +124,13 @@ class Actions(
     }
 
     fun setPin(pin: String, onFailed: () -> Unit = {}, onDone: () -> Unit = {}) = launchAction(after = onDone, failed = onFailed) { engine.setPin(pin) }
+    /** After the phone confirmed a face or fingerprint: counts as entering the PIN. */
+    fun unlockWithBiometrics(onResult: (PinResult) -> Unit) {
+        var result: PinResult? = null
+        launchAction(after = { result?.let(onResult) }) { result = engine.unlockWithBiometrics() }
+    }
+
+    fun setBiometrics(on: Boolean, onDone: () -> Unit = {}) = launchAction(after = onDone) { engine.setBiometrics(on) }
     fun removePin() = launchAction(after = { platform.showMessage("PIN removed") }) { engine.removePin() }
     fun resetIdentity(onDone: () -> Unit) = launchAction(after = onDone) { engine.resetIdentity() }
     fun setHideInRecents(on: Boolean) = launchAction { engine.setHideInRecents(on) }
