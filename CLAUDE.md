@@ -69,6 +69,10 @@ androidApp/  Android host app.
   BootReceiver.kt    Resumes sharing after reboot or update.
 
 site/        Static GitHub Pages site (pages.yml): join.html hands https invite links to the app.
+             Invite links point at carterkeel.github.io/opaq/join, so it must stay published there.
+website/     The public website (Cloudflare Pages, output directory `website`, no build step):
+             index.html, sf-map.json (downtown San Francisco from OpenStreetMap, © OSM contributors,
+             ODbL) and _headers (security headers).
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 
@@ -144,7 +148,7 @@ Requires JDK 17 and the Android SDK.
 ./gradlew :androidApp:assembleStaging        # R8-optimised, debug-signed: judge performance here
 ```
 
-**CI** (`.github/workflows/android.yml`) runs the tests and both APK builds on every push. It uploads `opaq-debug-apk` and `opaq-staging-apk`, and writes a plain-text summary of each run to the **`ci-logs` branch** (`log.txt`, force-pushed, latest run only). Claude sessions without Maven access read build errors from that branch:
+**CI** (`.github/workflows/android.yml`) runs the tests and compiles the app (`:androidApp:compileDebugSources`) on every push. The APKs and the emulator test only run on `main` (a merge pushes there) or when the workflow is started by hand from the Actions tab (any branch). Those runs upload `opaq-debug-apk` and `opaq-staging-apk`. Every run writes a plain-text summary of each run to the **`ci-logs` branch** (`log.txt`, force-pushed, latest run only). Claude sessions without Maven access read build errors from that branch:
 
 ```
 gh api repos/carterkeel/opaq/commits/ci-logs --jq .commit.message
@@ -160,7 +164,7 @@ Two-phone manual testing is described in `TESTING.md`.
 - **Kotlin 2.4.x.** Dependencies built with a newer Kotlin may not be readable. See the libsodium comment in `libs.versions.toml`.
 - **CI runs steps with `shell: bash`** so that `| tee` doesn't hide a failing Gradle command (pipefail). Keep it.
 - **iOS targets can't build on Linux.** `kotlin.native.ignoreDisabledTargets=true` silences that. iOS `actual`s (`*.ios.kt`) are only compiled on macOS, so double-check them by hand.
-- **CI test builds share one signing key** (cached in GitHub Actions as `opaq-ci-signing-v1`, never committed) and use the run number as `versionCode`, so a new APK installs over the previous one. Caches are per branch (branches can read `main`'s), so the first build on a new branch may get its own key until `main` has one.
+- **CI test builds share one signing key** (cached in GitHub Actions as `opaq-ci-signing-v1`, never committed) and use the run number as `versionCode`, so a new APK installs over the previous one. APKs are built on `main` (and on manual runs, which can read `main`'s cache), so they all share `main`'s key.
 - **The `staging` build uses R8.** Anything reached through JNI or reflection (secp256k1, MapLibre, kotlinx.serialization serializers, the zxing scanner) needs a rule in `androidApp/proguard-rules.pro`.
 - **Compose is much slower in debug builds.** Judge smoothness on the staging APK.
 - **maplibre-compose needs a renderer runtime on Android.** It only ships the JNI bridge; `libmaplibre-native-c.so` comes from `org.maplibre.nativeffi:maplibre-native-ffi-runtime-opengl` (in `ui` androidMain). Its version must match the `maplibre-native-ffi` version maplibre-compose pulls in. Without it the app crashes as soon as the map opens.
