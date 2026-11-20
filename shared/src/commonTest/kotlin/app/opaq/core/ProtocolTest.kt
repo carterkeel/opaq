@@ -256,11 +256,12 @@ class ProtocolTest {
         p.add(LocationSample(41.00181, 16.0, 6f, 0f, null, t + 63))
         assertFalse(p.shouldPublish(t + 63))
 
-        // A rough fix doesn't settle it; nor does one after the wait is over.
+        // A rough fix doesn't settle it; nor does an accurate one 35 m off that arrives after the
+        // wait is over (a jump that small isn't movement either, so nothing goes out).
         p.requestRefresh(t + 100)
-        p.add(LocationSample(41.01, 16.0, 120f, null, null, t + 102))
+        p.add(LocationSample(41.00181, 16.0, 120f, null, null, t + 102))
         assertFalse(p.shouldPublish(t + 102))
-        p.add(LocationSample(41.01, 16.0, 5f, 0f, null, t + 100 + MotionPolicy.REFRESH_SECONDS + 1))
+        p.add(LocationSample(41.00213, 16.0, 5f, 0f, null, t + 100 + MotionPolicy.REFRESH_SECONDS + 1))
         assertFalse(p.shouldPublish(t + 100 + MotionPolicy.REFRESH_SECONDS + 1))
     }
 
