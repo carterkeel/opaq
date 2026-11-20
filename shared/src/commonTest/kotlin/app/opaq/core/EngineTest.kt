@@ -2,6 +2,7 @@ package app.opaq.core
 
 import app.opaq.core.model.Member
 import app.opaq.core.model.THEME_DARK
+import app.opaq.core.model.THEME_MIDNIGHT
 import app.opaq.core.model.THEME_SYSTEM
 import app.opaq.core.protocol.Backups
 import kotlinx.coroutines.CoroutineScope
@@ -41,8 +42,10 @@ class EngineTest {
         assertEquals(THEME_SYSTEM, e.state.value.themeMode)
         e.setThemeMode(THEME_DARK)
         assertEquals(THEME_DARK, e.state.value.themeMode)
+        e.setThemeMode(THEME_MIDNIGHT)
+        assertEquals(THEME_MIDNIGHT, e.state.value.themeMode)
         assertFailsWith<IllegalArgumentException> { e.setThemeMode("purple") }
-        assertEquals(THEME_DARK, e.state.value.themeMode)
+        assertEquals(THEME_MIDNIGHT, e.state.value.themeMode)
 
         // Turned off and backed up: the restore keeps it off.
         e.setShareBattery(false)

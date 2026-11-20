@@ -13,7 +13,10 @@ import platform.UIKit.UIPasteboard
 import platform.UIKit.UIViewController
 import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowScene
+import platform.UIKit.alternateIconName
 import platform.UIKit.popoverPresentationController
+import platform.UIKit.setAlternateIconName
+import platform.UIKit.supportsAlternateIcons
 
 /** iOS side of the shared screens. */
 class IosPlatform(private val location: IosLocationService) : PlatformBridge {

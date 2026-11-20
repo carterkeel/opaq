@@ -9,6 +9,7 @@ import app.opaq.core.crypto.toHex
 import app.opaq.core.model.AppState
 import app.opaq.core.model.THEME_DARK
 import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_MIDNIGHT
 import app.opaq.core.model.THEME_SYSTEM
 import app.opaq.core.model.Circle
 import app.opaq.core.model.Contact
@@ -309,7 +310,7 @@ class Engine(
     suspend fun setDarkMap(on: Boolean) = update { it.copy(darkMap = on) }
 
     suspend fun setThemeMode(mode: String) {
-        require(mode == THEME_SYSTEM || mode == THEME_LIGHT || mode == THEME_DARK) { "Unknown theme" }
+        require(mode == THEME_SYSTEM || mode == THEME_LIGHT || mode == THEME_DARK || mode == THEME_MIDNIGHT) { "Unknown theme" }
         update { it.copy(themeMode = mode) }
     }
 

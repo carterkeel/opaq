@@ -130,7 +130,7 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - Tapping a person's dot calls [onPersonClick] with their id; tapping a bubble zooms in on it.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
- * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home screen.
+ * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home and history screens.
  */
 @Composable
 fun MapPane(

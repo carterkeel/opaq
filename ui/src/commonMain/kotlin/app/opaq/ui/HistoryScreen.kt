@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.opaq.core.HistoryPoint
 import app.opaq.core.HistorySegment
 import app.opaq.core.HistorySegments
@@ -108,7 +109,15 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val focus = selected?.let { segments.getOrNull(it)?.points }
     val mapBox: @Composable (Modifier) -> Unit = { modifier ->
         Box(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
-            if (shown.isNotEmpty()) key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxSize(), darkMap = state.darkMap) }
+            if (shown.isNotEmpty()) {
+                key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxSize(), darkMap = state.darkMap) }
+                Text(
+                    MAP_ATTRIBUTION,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
             else Text(
                 if (points == null) "" else "No history for this day",
                 style = MaterialTheme.typography.bodyMedium,

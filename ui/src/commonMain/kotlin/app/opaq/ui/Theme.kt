@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.opaq.core.model.THEME_DARK
 import app.opaq.core.model.THEME_LIGHT
+import app.opaq.core.model.THEME_MIDNIGHT
 import app.opaq.core.model.THEME_SYSTEM
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -88,6 +89,21 @@ private val Dark = darkColorScheme(
     onErrorContainer = Color(0xFFFFB4AB),
 )
 
+/** Dark with a pure black background: neutral greys instead of Ink's navy, the same accent and text. */
+private val Midnight = Dark.copy(
+    secondaryContainer = Color(0xFF2E3036),
+    background = Color.Black,
+    surface = Color.Black,
+    surfaceVariant = Color(0xFF1C1C1E),
+    surfaceContainerLowest = Color.Black,
+    surfaceContainerLow = Color(0xFF111112),
+    surfaceContainer = Color(0xFF1C1C1E),
+    surfaceContainerHigh = Color(0xFF242426),
+    surfaceContainerHighest = Color(0xFF2C2C2E),
+    outline = Color(0xFF4A4D55),
+    outlineVariant = Color(0xFF2C2C2E),
+)
+
 private val System = FontFamily.Default
 
 private val AppTypography = Typography(
@@ -115,18 +131,22 @@ private val AppShapes = Shapes(
 /** Whether the app is showing its dark colours, which can differ from the phone's setting. */
 val LocalDarkTheme = staticCompositionLocalOf { false }
 
-/** [mode] is `AppState.themeMode`: follow the phone (the default), or always light or dark. */
+/** [mode] is `AppState.themeMode`: follow the phone (the default), or always light, dark or midnight. */
 @Composable
 fun OpaqTheme(mode: String = THEME_SYSTEM, content: @Composable () -> Unit) {
     val dark = when (mode) {
         THEME_LIGHT -> false
-        THEME_DARK -> true
+        THEME_DARK, THEME_MIDNIGHT -> true
         else -> isSystemInDarkTheme()
     }
-    SystemBarsTheme(dark, followSystem = mode != THEME_LIGHT && mode != THEME_DARK)
+    SystemBarsTheme(dark, followSystem = mode != THEME_LIGHT && mode != THEME_DARK && mode != THEME_MIDNIGHT)
     CompositionLocalProvider(LocalDarkTheme provides dark) {
         MaterialTheme(
-            colorScheme = if (dark) Dark else Light,
+            colorScheme = when {
+                mode == THEME_MIDNIGHT -> Midnight
+                dark -> Dark
+                else -> Light
+            },
             typography = AppTypography,
             shapes = AppShapes,
             content = content,

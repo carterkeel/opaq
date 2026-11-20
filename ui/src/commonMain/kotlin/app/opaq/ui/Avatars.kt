@@ -74,7 +74,7 @@ object AvatarColors {
     /** In dark mode the pastel becomes the text and a deep tint becomes the circle, like Signal. */
     @Composable
     fun themed(pair: Pair): Pair =
-        if (LocalDarkTheme.current) Pair(pair.content.copy(alpha = 0.55f).compositeOver(Palette.Ink), pair.container) else pair
+        if (LocalDarkTheme.current) Pair(pair.content.copy(alpha = 0.55f).compositeOver(MaterialTheme.colorScheme.background), pair.container) else pair
 }
 
 /** Everything needed to draw someone's avatar. */
