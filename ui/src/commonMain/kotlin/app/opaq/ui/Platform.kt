@@ -47,6 +47,12 @@ interface PlatformBridge {
     /** Whether relays can be routed through Tor here (Android with Orbot). */
     val supportsTor: Boolean get() = false
 
+    /** The launcher icon in use (an [AppIconChoice] id), or null where the app can't change it. */
+    val appIcon: String? get() = null
+
+    /** Switches the launcher icon to [AppIconChoice] [id]. */
+    fun setAppIcon(id: String) {}
+
     /** How the phone shows that sharing is on, for the setup screen ("A notification shows…"). */
     val sharingIndicatorText: String
         get() = "A notification shows while you're sharing"

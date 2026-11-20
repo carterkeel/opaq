@@ -604,12 +604,14 @@ fun SettingsSectionScreen(
     var confirmLeave by remember { mutableStateOf<String?>(null) }
     var showHistoryDays by remember { mutableStateOf(false) }
     var showTheme by remember { mutableStateOf(false) }
+    var showAppIcon by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf<String?>(null) }
     var showRelays by remember { mutableStateOf(false) }
     var settingPin by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     val gate = LocalPinGate.current
     val platform = LocalPlatform.current
+    var appIcon by remember { mutableStateOf(platform.appIcon) }
 
     ScreenScaffold(section.title, onBack) {
         when (section) {
@@ -656,6 +658,12 @@ fun SettingsSectionScreen(
 
             SettingsSection.Appearance -> {
                 SettingsRow("Theme", themeLabel(state.themeMode), AppIcons.Appearance, onClick = { showTheme = true })
+                appIcon?.let { id ->
+                    val current = AppIconChoice.of(id)
+                    SettingsRow("App icon", current.label, AppIcons.AppTile, onClick = { showAppIcon = true }) {
+                        AppIconPreview(current, 32.dp)
+                    }
+                }
                 SwitchRow("Show profile photos", "Off shows everyone's initial instead", state.showPhotos, AppIcons.Face) { actions.setShowPhotos(it) }
                 SwitchRow("Dark map", "Darker map colors, easier on the eyes at night", state.darkMap, AppIcons.Moon) { actions.setDarkMap(it) }
             }
@@ -769,6 +777,13 @@ fun SettingsSectionScreen(
         )
     }
     if (settingPin) SetPinSheet(actions, if (state.pin == null) "Set a PIN" else "Change PIN") { settingPin = false }
+    if (showAppIcon) {
+        AppIconSheet(appIcon ?: AppIconChoice.Default.id, onPick = { id ->
+            showAppIcon = false
+            platform.setAppIcon(id)
+            appIcon = platform.appIcon
+        }, onDismiss = { showAppIcon = false })
+    }
     if (showTheme) {
         ThemeSheet(state.themeMode, onPick = { mode -> showTheme = false; actions.setThemeMode(mode) }, onDismiss = { showTheme = false })
     }
@@ -813,6 +828,41 @@ private fun ThemeSheet(current: String, onPick: (String) -> Unit, onDismiss: () 
             listOf(THEME_SYSTEM, THEME_LIGHT, THEME_DARK).forEach { mode ->
                 SettingsRow(themeLabel(mode), onClick = { onPick(mode) }) {
                     if (mode == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+}
+
+/** An app icon as it looks on a home screen, for Settings. */
+@Composable
+fun AppIconPreview(choice: AppIconChoice, size: Dp) {
+    val shape = RoundedCornerShape(size * 0.225f)
+    Image(
+        appIconArt(choice),
+        contentDescription = null,
+        modifier = Modifier.size(size).clip(shape)
+            // The white icon needs an edge to stand out on a light screen.
+            .then(if (choice == AppIconChoice.White) Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, shape) else Modifier),
+    )
+}
+
+/** Settings → Appearance → App icon: the approved icons. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AppIconSheet(current: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+            Text("App icon", style = MaterialTheme.typography.titleLarge, modifier = Gutter)
+            Caption("The icon on your home screen. It can take a moment to change.", Gutter.then(Modifier.padding(top = 4.dp, bottom = 8.dp)))
+            AppIconChoice.entries.forEach { choice ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { onPick(choice.id) }.padding(horizontal = 24.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AppIconPreview(choice, 48.dp)
+                    Text(choice.label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f).padding(start = 16.dp))
+                    if (choice.id == current) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
                 }
             }
         }

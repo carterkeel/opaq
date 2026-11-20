@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the OPAQ brand pack by tools/generate-app-icons.py; change the script, not this file. -->
+<resources>
+    <color name="ic_launcher_bg_white">#FFFFFF</color>
+    <color name="ic_launcher_bg_twotone">#0F172A</color>
+    <color name="ic_launcher_bg_oversized">#6366F1</color>
+</resources>

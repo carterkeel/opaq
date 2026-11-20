@@ -1,10 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the OPAQ brand pack by tools/generate-app-icons.py; change the script, not this file. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M12,2C8.13,2 5,5.13 5,9c0,5.25 7,13 7,13s7,-7.75 7,-13c0,-3.87 -3.13,-7 -7,-7zM12,11.5c-1.38,0 -2.5,-1.12 -2.5,-2.5s1.12,-2.5 2.5,-2.5 2.5,1.12 2.5,2.5 -1.12,2.5 -2.5,2.5z" />
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <group android:translateX="4" android:translateY="-1.4286" android:scaleX="0.2857" android:scaleY="0.2857">
+        <group>
+            <clip-path android:pathData="M-10 0 H66 V61.74 L30.82 80.68 Q28 82.2 25.18 80.68 L-10 61.74 Z" />
+            <path android:fillColor="#FFFFFFFF" android:pathData="M11 42 H45 V85 H11 Z" />
+            <path android:fillColor="#FFFFFFFF" android:pathData="M2 85 V38 C2 20 14 12 28 12 C42 12 54 20 54 38 V85 H42 V38 C42 25 36 19 28 19 C20 19 14 25 14 38 V85 Z" />
+        </group>
+    </group>
 </vector>

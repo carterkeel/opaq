@@ -358,6 +358,14 @@ object AppIcons {
         moveTo(14.5f, 9.5f); arcTo(2.5f, 2.5f, 0f, true, true, 9.5f, 9.5f); arcTo(2.5f, 2.5f, 0f, true, true, 14.5f, 9.5f); close()
     }
 
+    /** An app tile with the A's arch: Settings → Appearance → App icon. */
+    val AppTile: ImageVector = stroke("AppTile") {
+        moveTo(8f, 3f); lineTo(16f, 3f); arcTo(5f, 5f, 0f, false, true, 21f, 8f); lineTo(21f, 16f)
+        arcTo(5f, 5f, 0f, false, true, 16f, 21f); lineTo(8f, 21f); arcTo(5f, 5f, 0f, false, true, 3f, 16f)
+        lineTo(3f, 8f); arcTo(5f, 5f, 0f, false, true, 8f, 3f); close()
+        moveTo(9f, 17f); lineTo(9f, 11.5f); arcTo(3f, 3f, 0f, false, true, 15f, 11.5f); lineTo(15f, 17f)
+    }
+
     val Lock: ImageVector = stroke("Lock") {
         moveTo(5f, 11f); lineTo(19f, 11f); lineTo(19f, 20f); lineTo(5f, 20f); close()
         moveTo(8f, 11f); lineTo(8f, 8f); arcTo(4f, 4f, 0f, false, true, 16f, 8f); lineTo(16f, 11f)

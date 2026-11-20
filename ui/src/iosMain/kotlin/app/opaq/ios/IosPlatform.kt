@@ -64,6 +64,24 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
     // iOS lets apps cover their app-switcher snapshot, but not block screenshots.
     override val hideInRecentsDetail = "Blank Opaq's screen in the app switcher"
 
+    /** Alternate icon sets in Assets.xcassets, by app icon id. Dark A on white is the main AppIcon. */
+    private val alternateIcons = mapOf("twotone" to "AppIcon-TwoTone", "oversized" to "AppIcon-Oversized")
+
+    override val appIcon: String?
+        get() {
+            val app = UIApplication.sharedApplication
+            if (!app.supportsAlternateIcons) return null
+            val name = app.alternateIconName ?: return "white"
+            return alternateIcons.entries.firstOrNull { it.value == name }?.key ?: "white"
+        }
+
+    override fun setAppIcon(id: String) {
+        val app = UIApplication.sharedApplication
+        if (!app.supportsAlternateIcons || id == appIcon) return
+        // iOS shows its own "You have changed the icon" alert.
+        app.setAlternateIconName(alternateIcons[id], completionHandler = null)
+    }
+
     private val filePicker = IosFilePicker(::showMessage)
 
     override fun saveTextFile(fileName: String, text: String, onDone: (Boolean) -> Unit) {
