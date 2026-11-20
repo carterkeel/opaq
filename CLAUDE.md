@@ -84,7 +84,7 @@ docs/readme/ README images: brand wordmarks, the banner and framed screenshots f
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 
-The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store, CoreLocation service, photo picker, `PlatformBridge`). The Xcode app shell is in progress (#13, PR #19).
+The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store, CoreLocation service, photo picker, `PlatformBridge`). The Xcode app shell is in `iosApp/` (project `iosApp.xcodeproj`, scheme `Opaq`; App Intents in `OpaqShortcuts.swift`).
 
 ## How it works
 
@@ -189,7 +189,7 @@ Two-phone manual testing is described in `TESTING.md`. Simulators and emulators 
 
 ## Conventions
 
-- Branch from the branch you're changing, open a PR, and keep `main` releasable. `ios-app` holds the multiplatform work in progress.
+- Branch from `main`, open a PR, and keep `main` releasable. Delete a branch once its PR is merged.
 - UI changes go in `ui/` (shared), not `androidApp/`, so iOS gets them too. Android-only APIs belong behind `PlatformBridge` or an `expect`/`actual`.
 - New persisted fields go in `AppState` **with defaults**, so older saved state still loads.
 - New protocol messages: add a `Body` subclass with a `@SerialName`, keep old ones decodable, and add a round-trip test in `ProtocolTest`.
