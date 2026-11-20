@@ -135,7 +135,7 @@ The steps in [section 3](#3-the-core-test-two-phones) are the same, with these d
 |---|---|
 | Location permission | Asks for **While Using the App** first. Once sharing starts, iOS offers **Change to Always Allow**: choose it, or sharing stops when the app is in the background. |
 | Settings → Sharing | Shows **Allow all the time** with **Open** until Always is granted. |
-| While sharing | The blue location indicator in the status bar takes the place of Android's "Sharing your location" notification. |
+| While sharing | With **Show blue location pill** off (the default) and Always access, nothing shows at the top of the screen. Turn it on in Settings → Sharing and the blue pill appears while Opaq shares in the background. With While Using access iOS shows it anyway. |
 | Scanning an invite | **Scan QR code** asks for camera access the first time, then opens a full-screen scanner. The iPhone Camera app also works: it opens the invite in Opaq, as do shared `opaq://` links. The simulator has no camera, so there it says to paste the link instead. |
 | Profile photo | Uses the system photo picker; no photo library permission is needed. |
 

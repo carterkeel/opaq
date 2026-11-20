@@ -72,8 +72,9 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
         qrScanner.scan(presenter, onResult)
     }
 
-    // iOS has no persistent notification; the system location arrow is the sign that sharing is on.
-    override val sharingIndicatorText = "The location arrow shows at the top of the screen while you're sharing"
+    // iOS has no persistent notification. The blue location pill can be its sign that sharing is on,
+    // but it's off by default (IosLocationService.showIndicator).
+    override val sharingIndicatorText = "Settings → Sharing can show the blue location pill while you're sharing"
 
     // iOS lets apps cover their app-switcher snapshot, but not block screenshots.
     override val hideInRecentsDetail = "Blank Opaq's screen in the app switcher"

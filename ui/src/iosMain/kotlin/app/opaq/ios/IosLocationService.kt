@@ -98,12 +98,12 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     val hasAlways: Boolean get() = authorization.value == kCLAuthorizationStatusAuthorizedAlways
 
     private val _showIndicator = MutableStateFlow(
-        NSUserDefaults.standardUserDefaults.let { it.objectForKey(SHOW_INDICATOR_KEY) == null || it.boolForKey(SHOW_INDICATOR_KEY) },
+        NSUserDefaults.standardUserDefaults.boolForKey(SHOW_INDICATOR_KEY),
     )
     /**
      * Whether to ask iOS for the blue location pill (Dynamic Island or status bar) while sharing
-     * in the background. On by default. iOS only honours "off" with Always access; with While
-     * Using it shows the pill anyway. With it off, nothing at the top of the screen shows that
+     * in the background. Off by default (the user can turn it on in Settings → Sharing). iOS only
+     * honours "off" with Always access; with While Using it shows the pill anyway. With it off, nothing at the top of the screen shows that
      * sharing is on while the app is in the background.
      */
     val showIndicator: StateFlow<Boolean> = _showIndicator.asStateFlow()
