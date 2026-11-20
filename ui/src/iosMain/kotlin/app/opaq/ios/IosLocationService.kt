@@ -19,6 +19,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreLocation.CLAuthorizationStatus
+import platform.CoreLocation.CLCircularGeographicCondition
+import platform.CoreLocation.CLLocationCoordinate2DMake
+import platform.CoreLocation.CLMonitor
+import platform.CoreLocation.CLMonitorConfiguration
+import platform.CoreLocation.CLMonitoringState
 import platform.CoreLocation.CLLocation
 import platform.CoreLocation.CLLocationManager
 import platform.CoreLocation.CLLocationManagerDelegateProtocol
@@ -28,12 +33,18 @@ import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
 import platform.CoreLocation.kCLDistanceFilterNone
 import platform.CoreLocation.kCLLocationAccuracyBest
 import platform.CoreLocation.kCLLocationAccuracyHundredMeters
+import platform.CoreMotion.CMMotionActivity
+import platform.CoreMotion.CMMotionActivityConfidenceLow
+import platform.CoreMotion.CMMotionActivityManager
 import platform.Foundation.NSBundle
+import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSDate
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.timeIntervalSince1970
+import platform.Foundation.timeIntervalSinceNow
 import platform.UIKit.UIDevice
 import platform.darwin.NSObject
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS counterpart of Android's LocationService: collects fixes and publishes encrypted
@@ -46,6 +57,14 @@ import platform.darwin.NSObject
  * ([setShowIndicator]), which leaves no sign of sharing at the top of the screen. Significant-change monitoring makes iOS
  * relaunch the app after a reboot or force-quit once the phone moves about 500 m.
  *
+ * Two things stand in for Android's significant-motion sensor, so a walk or drive is noticed
+ * straight away rather than after 100 m or more of coarse fixes:
+ * - Core Motion's activity reading (walking, running, cycling, in a vehicle), worked out on the
+ *   phone from its motion chips. It needs the Motion & Fitness permission; without it, nothing
+ *   changes except that starts are noticed later. Nothing from it leaves the phone.
+ * - A geofence ([CLMonitor]) around the spot where the phone stopped.
+ *   Leaving it switches to GPS, and wakes or relaunches the app if iOS had stopped it.
+ *
  * Everything here runs on the main thread, where CoreLocation delivers its callbacks.
  */
 @OptIn(ExperimentalForeignApi::class)
@@ -56,6 +75,11 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private var publishJob: Job? = null
     private var highAccuracy: Boolean? = null
     private var lastReminderAt = 0L
+    private val activityManager = CMMotionActivityManager()
+    private var activityUpdatesOn = false
+
+    /** Geofence around where the phone stopped; null until iOS hands it over. */
+    private var monitor: CLMonitor? = null
 
     /** Wakes the publish loop early: a fix arrived while an update is due. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -91,6 +115,16 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         manager.delegate = delegate
         manager.pausesLocationUpdatesAutomatically = false
         UIDevice.currentDevice.batteryMonitoringEnabled = true
+        // Asked for on every launch, with the same name, so a geofence exit that relaunched the
+        // app is delivered to it.
+        CLMonitor.requestMonitorWithConfiguration(
+            CLMonitorConfiguration.configWithMonitorName(MONITOR_NAME, dispatch_get_main_queue()) { m, event ->
+                if (event?.identifier == STILL_REGION && event.state == CLMonitoringState.CLMonitoringStateUnsatisfied) {
+                    m?.removeConditionFromMonitoringWithIdentifier(STILL_REGION)
+                    onMovementHint()
+                }
+            },
+        ) { m -> monitor = m }
         // Follow sharing on/off and circles coming and going, like Android's service does.
         scope.launch(Dispatchers.Main) {
             engine.state
@@ -137,6 +171,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         setAccuracy(high = true)
         manager.startUpdatingLocation()
         if (CLLocationManager.significantLocationChangeMonitoringAvailable()) manager.startMonitoringSignificantLocationChanges()
+        startActivityUpdates()
         // Same loop as Android's LocationService: MotionPolicy decides each tick whether an update
         // is due (steady moving/still rates, plus one extra when someone starts or stops moving).
         publishJob = scope.launch(Dispatchers.Main) {
@@ -146,13 +181,15 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                     lastReminderAt = now
                     notifier.sharingReminder()
                 }
+                // No fixes for a while means the phone stopped: report it, don't keep saying "Driving".
+                policy.refresh(now)
                 adjustAccuracy()
                 // An update that reached no relay is replaced as soon as one would get through, rather
                 // than at the next interval: the relays never saw the missed one.
                 if (policy.shouldPublish(now) || (missed && engine.canPublishNow())) {
                     val battery = batteryPercent()
                     val status = if (battery != null && battery <= 5) "low battery" else null
-                    policy.snapshot(battery, status)?.let { loc ->
+                    policy.snapshot(battery, status, now)?.let { loc ->
                         policy.markPublished(now)
                         missed = !withContext(Dispatchers.Default) { runCatching { engine.publishLocation(loc) }.getOrDefault(false) }
                     }
@@ -168,6 +205,49 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
+        if (activityUpdatesOn) activityManager.stopActivityUpdates()
+        activityUpdatesOn = false
+        monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION)
+    }
+
+    /**
+     * Core Motion says the phone started walking, running, cycling or travelling in a vehicle.
+     * The first call shows the Motion & Fitness prompt; if it's refused, no readings arrive.
+     */
+    private fun startActivityUpdates() {
+        if (activityUpdatesOn || !CMMotionActivityManager.isActivityAvailable()) return
+        activityUpdatesOn = true
+        activityManager.startActivityUpdatesToQueue(NSOperationQueue.mainQueue) { activity: CMMotionActivity? ->
+            if (activity != null && activity.confidence != CMMotionActivityConfidenceLow &&
+                (activity.walking || activity.running || activity.cycling || activity.automotive)
+            ) {
+                onMovementHint()
+            }
+        }
+    }
+
+    /** Started moving (motion chips, or left the geofence): switch to GPS now and let fixes say how fast. */
+    private fun onMovementHint() {
+        if (publishJob?.isActive != true) return
+        val now = nowSeconds()
+        policy.motionHint(now)
+        adjustAccuracy()
+        wake.trySend(Unit)
+    }
+
+    /**
+     * While still, a geofence around the last fix (at least [STILL_RADIUS] m, more if the fix was
+     * rough). Leaving it is the signal to switch back to GPS, even if iOS stopped the app meanwhile.
+     */
+    private fun placeStillRegion() {
+        val m = monitor ?: return
+        val fix = policy.latest ?: return
+        val radius = maxOf(STILL_RADIUS, 2.0 * fix.accuracy)
+        m.addConditionForMonitoring(
+            CLCircularGeographicCondition(center = CLLocationCoordinate2DMake(fix.lat, fix.lon), radius = radius),
+            STILL_REGION,
+            CLMonitoringState.CLMonitoringStateSatisfied,
+        )
     }
 
     private fun adjustAccuracy() = setAccuracy(high = policy.wantsHighAccuracy(nowSeconds()))
@@ -184,6 +264,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = high
         manager.desiredAccuracy = if (high) kCLLocationAccuracyBest else kCLLocationAccuracyHundredMeters
         manager.distanceFilter = if (high) kCLDistanceFilterNone else 25.0
+        if (high) monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION) else placeStillRegion()
     }
 
     private fun batteryPercent(): Int? =
@@ -201,6 +282,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                 heading = location.course.takeIf { it >= 0 }?.toFloat(),
                 time = location.timestamp.timeIntervalSince1970.toLong(),
             ),
+            receivedAt = nowSeconds(),
+            ageSeconds = (-location.timestamp.timeIntervalSinceNow).toLong(),
         )
         adjustAccuracy()
         // Publish with this fresh fix instead of waiting for the next tick (and an older fix).
@@ -221,6 +304,9 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private companion object {
         const val TICK_MS = 5_000L
         const val SHOW_INDICATOR_KEY = "showLocationIndicator"
+        const val MONITOR_NAME = "opaq"
+        const val STILL_REGION = "still"
+        const val STILL_RADIUS = 100.0
 
         /** Background updates crash unless Info.plist declares the `location` background mode. */
         val canRunInBackground: Boolean by lazy {

@@ -15,6 +15,7 @@ import android.location.LocationManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.BatteryManager
+import android.os.SystemClock
 import android.os.Build
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -110,13 +111,15 @@ class LocationService : LifecycleService(), LocationListener {
                     lastReminderAt = now
                     app.notifySharingReminder()
                 }
+                // No fixes for a while means the phone stopped: report it, don't keep saying "Driving".
+                policy.refresh(now)
                 adjustAccuracy()
                 // An update that reached no relay is replaced as soon as one would get through, rather
                 // than at the next interval: the relays never saw the missed one.
                 if (policy.shouldPublish(now) || (missed && app.engine.canPublishNow())) {
                     val battery = batteryPercent()
                     val status = if (battery != null && battery <= 5) "low battery" else null
-                    policy.snapshot(battery, status)?.let {
+                    policy.snapshot(battery, status, now)?.let {
                         missed = !app.engine.publishLocation(it)
                         policy.markPublished(now)
                     }
@@ -162,6 +165,10 @@ class LocationService : LifecycleService(), LocationListener {
                 heading = if (location.hasBearing()) location.bearing else null,
                 time = location.time / 1000,
             ),
+            receivedAt = nowSeconds(),
+            // From the monotonic clock: location.time is GPS time, which can differ from a phone
+            // clock that's set wrong.
+            ageSeconds = (SystemClock.elapsedRealtimeNanos() - location.elapsedRealtimeNanos) / 1_000_000_000,
         )
         adjustAccuracy()
         // Publish with this fresh fix instead of waiting for the next tick (and an older fix).

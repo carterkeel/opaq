@@ -20,6 +20,11 @@ import kotlin.math.sqrt
  * someone is moving. On top of that, one extra update goes out when someone starts or stops
  * moving, so the circle never sees "Driving" for minutes after you've parked, or waits five
  * minutes to see you've left. The activity itself travels inside the encrypted update.
+ *
+ * Phones stop sending fixes when they stop moving (iOS's distance filter, a simulator, an idle
+ * GPS), so the policy also works from the clock: no fix for [QUIET_SECONDS] means still, and a
+ * still update carries the time it was sent, not the time of the last fix. Otherwise a phone
+ * that stays put would look stale and then offline to everyone, while sharing normally.
  */
 class MotionPolicy {
     private val buffer = ArrayDeque<LocationSample>()
@@ -30,13 +35,36 @@ class MotionPolicy {
     private var lastPublishedMoving: Boolean? = null
     private var jitter = 1.0
 
-    fun add(sample: LocationSample) {
+    /** When the newest fix arrived, on this phone's clock (a fix's own time can come from GPS). */
+    private var lastFixAt: Long? = null
+
+    /**
+     * Adds a fix that arrived at [receivedAt] (this phone's clock) and was [ageSeconds] old then.
+     * A fix already older than [MAX_FIX_AGE] (a cached position from before sharing started, maybe
+     * somewhere else) is ignored rather than shared. The age is passed in rather than worked out
+     * from [receivedAt] - time, because a fix's time can come from GPS while the phone's clock is
+     * set wrong.
+     */
+    fun add(sample: LocationSample, receivedAt: Long = sample.time, ageSeconds: Long = receivedAt - sample.time) {
+        if (ageSeconds > MAX_FIX_AGE) return
         if (buffer.isNotEmpty() && sample.time < buffer.last().time) return
+        lastFixAt = receivedAt
         buffer.addLast(sample)
         val cutoff = sample.time - BUFFER_SECONDS
         while (buffer.isNotEmpty() && buffer.first().time < cutoff) buffer.removeFirst()
         activity = classify(estimateSpeed(), activity)
     }
+
+    /**
+     * Called on every tick. When fixes have stopped coming for [QUIET_SECONDS], the phone isn't
+     * moving any more: classify it as still, so the stop is published instead of "Driving" forever.
+     */
+    fun refresh(now: Long) {
+        if (quiet(now)) activity = classify(0f, activity)
+    }
+
+    /** No fix has arrived for [QUIET_SECONDS]. */
+    private fun quiet(now: Long): Boolean = lastFixAt?.let { now - it >= QUIET_SECONDS } == true
 
     /** The phone's motion sensor says it started moving; treat as moving until fixes say otherwise. */
     fun motionHint(now: Long) {
@@ -82,11 +110,15 @@ class MotionPolicy {
      * Speed in m/s. Uses only fixes accurate to 30 m: the median of the fixes' own speeds over the
      * last 30 s, otherwise distance over time, counting movement only when it beats the GPS error.
      */
-    fun estimateSpeed(): Float? {
+    fun estimateSpeed(now: Long? = null): Float? {
         val last = buffer.lastOrNull() ?: return null
+        if (now != null && quiet(now)) return 0f
         val good = buffer.filter { it.accuracy <= GOOD_ACCURACY && it.time >= last.time - SPEED_WINDOW }
         val reported = good.mapNotNull { it.speed }
-        if (reported.size >= 2 || (reported.size == 1 && good.size == 1)) return reported.sorted()[reported.size / 2]
+        // The lower median, so one bad reading can't say "moving" on its own. A lone reading only
+        // counts if it says still: movement waits for a second fix (a few seconds on GPS).
+        if (reported.size >= 2) return reported.sorted()[(reported.size - 1) / 2]
+        if (reported.size == 1 && good.size == 1 && reported[0] < STILL_SPEED) return reported[0]
         if (good.size >= 2) {
             val a = good.first()
             val b = good.last()
@@ -104,19 +136,25 @@ class MotionPolicy {
         return if (d > max(noise.toDouble(), 75.0)) (d / dt).toFloat() else 0f
     }
 
-    /** Builds the update payload, including up to six recent points so viewers can replay the path. */
-    fun snapshot(battery: Int?, status: String? = null): MemberLocation? {
+    /**
+     * Builds the update payload, including up to six recent points so viewers can replay the path.
+     * A still update is stamped [now]: the phone is confirming it's still there, even if no new
+     * fix arrived (iOS sends none until it moves 25 m).
+     */
+    fun snapshot(battery: Int?, status: String? = null, now: Long? = null): MemberLocation? {
         val last = buffer.lastOrNull() ?: return null
         val points = buffer.filter { it.time >= last.time - 60 }.takeLast(6).map { Point(round6(it.lat), round6(it.lon), it.time) }
         return MemberLocation(
             lat = round6(last.lat),
             lon = round6(last.lon),
             accuracy = last.accuracy,
-            speed = estimateSpeed(),
+            speed = estimateSpeed(now),
             heading = last.heading,
             activity = activity,
             battery = battery,
-            time = last.time,
+            // Still: the fix's time moved on by how long ago it arrived, so it stays on the same
+            // clock as moving updates even if this phone's clock is off.
+            time = if (now != null && activity == Activity.STILL) last.time + max(0L, now - (lastFixAt ?: now)) else last.time,
             points = points,
             status = status,
         )
@@ -131,8 +169,15 @@ class MotionPolicy {
         private const val SPEED_WINDOW = 30L
         private const val GOOD_ACCURACY = 30f
 
+        /** No fix for this long means the phone has stopped (moving phones get one every few seconds). */
+        const val QUIET_SECONDS = 60L
+
+        /** A fix older than this when it arrives is a cached one, not where the phone is now. */
+        const val MAX_FIX_AGE = 120L
+
         // Upper speed bounds in m/s: still < 1.8 km/h, walking < 9 km/h, cycling < 25 km/h.
-        private val BOUNDS = listOf(Activity.STILL to 0.5f, Activity.WALKING to 2.5f, Activity.CYCLING to 7f)
+        private const val STILL_SPEED = 0.5f
+        private val BOUNDS = listOf(Activity.STILL to STILL_SPEED, Activity.WALKING to 2.5f, Activity.CYCLING to 7f)
 
         /** Classifies speed, with 15% hysteresis so a reading near a boundary doesn't flip back and forth. */
         fun classify(speed: Float?, previous: Activity): Activity {

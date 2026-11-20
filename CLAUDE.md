@@ -117,8 +117,10 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 **Motion** (`MotionPolicy`).
 - Speed comes only from fixes accurate to 30 m: the median of reported GPS speeds over 30 s, otherwise distance over time. Coarse network fixes count as movement only for a clear jump.
 - Classification uses 15% hysteresis.
-- The Android significant-motion sensor sets a "motion hint" that switches to GPS straight away.
+- A "motion hint" switches to GPS straight away. On Android it comes from the significant-motion sensor. On iOS it comes from Core Motion's activity reading (walking, running, cycling or in a vehicle, at least medium confidence; needs Motion & Fitness, `NSMotionUsageDescription`) and from leaving a `CLMonitor` geofence (100 m, or twice the fix's accuracy) placed where the phone went still. The older `startMonitoringForRegion` is on its way to deprecation, so don't use it.
+- One speed reading never starts a drive: a lone fix counts only if it says still, and two or more use the lower median.
 - `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 20 s after the last publish.
+- Phones stop sending fixes when they stop moving (iOS's 25 m distance filter while still), so the policy also goes by the clock. `refresh(now)` runs every tick: no fix for `QUIET_SECONDS` (60 s) counts as stopped. A still update carries the time it was sent, not the time of the last fix, so someone who stays put doesn't look stale and then offline. A fix that's already over `MAX_FIX_AGE` (2 min) old when it arrives (the OS's cached last position) is ignored.
 - On the receiving side, `Format.status` shows a stale moving update as "Was driving".
 
 **Between updates.** Display only, on the viewer's phone (`MapPane.rememberMovingMarkers`); nothing extra is sent or published.
