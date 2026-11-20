@@ -128,7 +128,7 @@ struct PauseCircleIntent: AppIntent {
     static let description = IntentDescription("Stops sending your location to one circle. You still see everyone in it.")
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
-    @Parameter(title: "Circle")
+    @Parameter(title: "Circle", requestValueDialog: "Which circle?")
     var circle: CircleEntity
 
     @Parameter(title: "For", default: .untilResumed)
@@ -148,7 +148,7 @@ struct ResumeCircleIntent: AppIntent {
     static let description = IntentDescription("Starts sending your location to a circle you paused.")
     static let authenticationPolicy: IntentAuthenticationPolicy = .requiresAuthentication
 
-    @Parameter(title: "Circle")
+    @Parameter(title: "Circle", requestValueDialog: "Which circle?")
     var circle: CircleEntity
 
     static var parameterSummary: some ParameterSummary { Summary("Resume sharing with \(\.$circle)") }
@@ -197,13 +197,13 @@ struct OpaqAppShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: PauseCircleIntent(),
-            phrases: ["Pause \(\.$circle) in \(.applicationName)", "Pause sharing with \(\.$circle) in \(.applicationName)"],
+            phrases: ["Pause a circle in \(.applicationName)", "Pause \(\.$circle) in \(.applicationName)", "Pause sharing with \(\.$circle) in \(.applicationName)"],
             shortTitle: "Pause a Circle",
             systemImageName: "person.2.slash"
         )
         AppShortcut(
             intent: ResumeCircleIntent(),
-            phrases: ["Resume \(\.$circle) in \(.applicationName)", "Resume sharing with \(\.$circle) in \(.applicationName)"],
+            phrases: ["Resume a circle in \(.applicationName)", "Resume \(\.$circle) in \(.applicationName)", "Resume sharing with \(\.$circle) in \(.applicationName)"],
             shortTitle: "Resume a Circle",
             systemImageName: "person.2"
         )

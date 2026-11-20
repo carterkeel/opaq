@@ -300,7 +300,18 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.weight(1f))
-                SharingToggle(state.sharing) {
+                // Every circle paused one by one shares nothing either, so the button says so, and a
+                // tap resumes those circles rather than pausing everything.
+                val sharingCircles = state.circles.filter { it.confirmed }
+                val allCirclesPaused = sharingCircles.isNotEmpty() && sharingCircles.all { it.paused }
+                SharingToggle(state.sharing && !allCirclesPaused) {
+                    if (state.sharing && allCirclesPaused) {
+                        haptics.toggle(true)
+                        sharingCircles.forEach { actions.setCirclePaused(it.id, false) }
+                        platform.showMessage("Sharing your location")
+                        if (!hasLocationPermission) onRequestLocation()
+                        return@SharingToggle
+                    }
                     val on = !state.sharing
                     haptics.toggle(on)
                     actions.setSharing(on)
