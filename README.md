@@ -48,8 +48,7 @@ shared/       Kotlin Multiplatform core: crypto, Nostr, circles, invites, motion
 ui/           Compose Multiplatform screens and map, shared by Android and iOS
 androidApp/   Android app: foreground location service, Keystore storage, permissions
 iosApp/       Xcode project for the iPhone and iPad app (iOS code lives in ui/src/iosMain)
-site/         Static page that hands https invite links to the app (GitHub Pages)
-website/      The public website (Cloudflare Pages)
+site/         The website and the page that hands https invite links to the app (GitHub Pages)
 ```
 
 ## Building
