@@ -55,7 +55,12 @@ actual object PlatformCrypto {
         val generator = Argon2BytesGenerator()
         generator.init(params)
         val out = ByteArray(length)
-        generator.generateBytes(password.encodeToByteArray(), out)
+        try {
+            generator.generateBytes(password.encodeToByteArray(), out)
+        } catch (_: OutOfMemoryError) {
+            // It needs memoryKiB all at once; say so plainly rather than "Failed to allocate…".
+            throw IllegalStateException("Not enough free memory on this phone. Close other apps and try again.")
+        }
         return out
     }
 }
