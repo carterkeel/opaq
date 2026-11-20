@@ -57,7 +57,7 @@ Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multip
 ## Features
 
 - **Live map.** Everyone in the circle as a dot with their photo or colour, plus a people list with what they're doing ("Walking", "Driving", "Still") and battery level if they share it. Tap a dot or a row to open their profile.
-- **Smooth movement.** Between updates, a moving person's dot carries on along the road they're on, so it doesn't jump every 30 seconds. This is worked out on your phone; nothing extra is sent.
+- **Smooth movement.** Between updates, a moving person's dot carries on along the road they're on, so it doesn't jump with every update. This is worked out on your phone; nothing extra is sent.
 - **Location history.** Each phone keeps the updates it receives in encrypted files on the device (7 days by default, up to 90, or off). Open it from a profile to see the day's path and stops.
 - **Circles.** Invite with a link or QR code, scan codes in the app, let a link be used by up to 10 people, and approve every join. Make people managers, hand over the admin role, rename, remove someone (which changes the key), or delete the circle.
 - **Verification.** Compare device codes, or scan the QR in person; verified contacts get a green check.
@@ -71,7 +71,7 @@ Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multip
 |---|---|
 | Location updates | Encrypted once per circle (NIP-44 v2 with a circle key that ratchets forward daily and is replaced weekly), padded to a fixed size, and published as a replaceable Nostr event. Relays keep only the newest one. |
 | Unlinkability | The signing key and the event tag both change every hour, and come from secrets the relay doesn't have, so relays can't tie a member's updates together across hours. Each update is also signed inside the encryption by the sender's real key, so circle members know who sent it. |
-| Send rhythm | Two fixed rates with jitter: about every 30 seconds while moving, about every five minutes while still. Relays can tell at most whether someone is moving. Walking, driving and speed are inside the encryption. |
+| Send rhythm | Two fixed rates with jitter: about every 10 seconds while moving, about every five minutes while still. Relays can tell at most whether someone is moving. Walking, driving and speed are inside the encryption. |
 | Invites and approvals | Sealed one-to-one messages (kind 1059) signed by a throwaway key and encrypted to the recipient. |
 | Removing someone | The admin rotates the circle key and sends it only to remaining members. |
 | Storage | App state, including your private key, is encrypted with an Android Keystore key (iOS: the Keychain) and excluded from cloud and device backups. Location history uses its own key that never leaves the phone. |

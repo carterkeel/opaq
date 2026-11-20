@@ -93,6 +93,17 @@ class OpaqApp : Application() {
     }
 
     /** Starts the sharing service if sharing is on, location access was granted and the notification can show. */
+    /** The locate button: asks the running sharing service for a fresh fix (see MotionPolicy.requestRefresh). */
+    fun refreshMyLocation() {
+        val s = engine.state.value
+        if (!s.sharing || s.circles.isEmpty() || !canShowSharingNotification()) return
+        try {
+            ContextCompat.startForegroundService(this, Intent(this, LocationService::class.java).setAction(LocationService.ACTION_REFRESH))
+        } catch (t: Throwable) {
+            Log.w("Opaq", "could not reach sharing service: ${t.message}")
+        }
+    }
+
     fun ensureSharingService() {
         val granted = ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED

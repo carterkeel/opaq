@@ -50,14 +50,15 @@ class RoadFollowTest {
     fun aDriverFollowsTheRoadRoundABend() {
         val loc = mover(at(100.0, 3.0), heading = 90f)
         val roads = Roads(listOf(bend))
-        for (t in listOf(5.0, 10.0, 20.0, 30.0)) {
+        // Within the horizon (updates come about every 10 s, so it lasts about 26 s).
+        for (t in listOf(5.0, 10.0, 15.0, 20.0)) {
             val e = Prediction.estimate(loc, t0 + t, roads)
             val expected = alongBend(100 + 20 * t)
             assertTrue(meters(e.point(), expected) < 1.0, "at $t s: ${meters(e.point(), expected)} m off the road")
         }
         // Without the road it would have gone straight on, far from where the road goes.
-        val straight = Prediction.estimate(loc, t0 + 30.0)
-        assertTrue(meters(straight.point(), alongBend(700.0)) > 200)
+        val straight = Prediction.estimate(loc, t0 + 20.0)
+        assertTrue(meters(straight.point(), alongBend(500.0)) > 200)
     }
 
     @Test

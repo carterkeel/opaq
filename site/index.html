@@ -1087,7 +1087,7 @@ footer .legal a { color: inherit; }
     {
       title: "Your phone finds you",
       text: ["Your phone reads its own location, and works out whether you're still, walking, cycling or driving. If this circle gets your approximate location, the exact spot is blurred here, before anything else happens.",
-             "It sends an update about every 30 seconds while you're moving and every 5 minutes while you're still, plus one when you start or stop."],
+             "It sends an update about every 10 seconds while you're moving and every 5 minutes while you're still, plus one when you start or stop."],
       head: "On your phone", note: "Plain text, never sent like this",
       body: function () {
         return '{\n  <span class="k">"lat"</span>: 37.7893,\n  <span class="k">"lon"</span>: -122.4081,\n  <span class="k">"activity"</span>: "driving",\n  <span class="k">"speed"</span>: 15.2,\n  <span class="k">"battery"</span>: 72,\n  <span class="k">"points"</span>: [\n    [37.7891, -122.4077],\n    [37.7889, -122.4072],\n    [37.7886, -122.4066]\n  ]\n}';
@@ -1431,7 +1431,7 @@ footer .legal a { color: inherit; }
     { id: "relays", label: "Relays",
       intro: "The public Nostr servers that pass sealed updates between phones. Opaq starts with four; you can choose others.",
       can: [["Your IP address", "And when you're online, unless you connect through Tor."],
-            ["When you send updates", "About every 30 seconds while moving and every 5 minutes while still, so roughly whether you're moving. Times are blurred by up to 15 seconds."],
+            ["When you send updates", "About every 10 seconds while moving and every 5 minutes while still, so roughly whether you're moving. Times are blurred by up to 15 seconds."],
             ["Which tags your phone follows", "The tags change every hour or day and mean nothing on their own. But one connection asks for all of a phone's circles together, which can hint at who shares a circle and how big it is."],
             ["That a circle changed", "Joins, removals and new keys send a short burst of messages."]],
       cant: [["Where you are", "Locations are encrypted on your phone."],

@@ -173,6 +173,7 @@ fun OpaqScreens(
                                 onScan = scan,
                                 onRestore = { push(Route.Restore) },
                                 onCircleCreated = selectCircle,
+                                backgroundSettings = sharingSettings,
                             )
                           }
                         }

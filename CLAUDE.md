@@ -15,7 +15,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~30 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops.
+  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, and one when the locate button finds the shared position was more than 25 m off.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Opaq", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -130,7 +130,8 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - Classification uses 15% hysteresis.
 - A "motion hint" switches to GPS straight away. On Android it comes from the significant-motion sensor. On iOS it comes from Core Motion's activity reading (walking, running, cycling or in a vehicle, at least medium confidence; needs Motion & Fitness, `NSMotionUsageDescription`) and from leaving a `CLMonitor` geofence (100 m, or twice the fix's accuracy) placed where the phone went still. The older `startMonitoringForRegion` is on its way to deprecation, so don't use it.
 - One speed reading never starts a drive: a lone fix counts only if it says still, and two or more use the lower median.
-- `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 20 s after the last publish.
+- `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 10 s after the last publish. The location services check every 2 s (`TICK_MS`), and a fresh fix wakes them, so updates go out close to when they're due.
+- The locate button (`PlatformBridge.refreshMyLocation`, `MotionPolicy.requestRefresh`) switches to GPS for a fresh fix. If the first fix accurate to 30 m within 30 s is more than 25 m (or its own error) from the last one shared, it's sent straight away; otherwise nothing extra goes out. The map follows you to the new position.
 - Phones stop sending fixes when they stop moving (iOS's 25 m distance filter while still), so the policy also goes by the clock. `refresh(now)` runs every tick: no fix for `QUIET_SECONDS` (60 s) counts as stopped. A still update carries the time it was sent, not the time of the last fix, so someone who stays put doesn't look stale and then offline. A fix that's already over `MAX_FIX_AGE` (2 min) old when it arrives (the OS's cached last position) is ignored.
 - On the receiving side, `Format.status` shows a stale moving update as "Was driving".
 
@@ -143,7 +144,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
-**First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
+**First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. Once location is allowed, the location step also lists the platform's background rows that still need doing (the same `sharingSettings` as Settings → Sharing; on Android "Allow all the time" and turning off the battery saver for Opaq), each with its button (#131). Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
 
 ## Building and testing
 
