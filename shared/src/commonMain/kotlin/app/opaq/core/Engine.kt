@@ -1685,7 +1685,10 @@ class Engine(
         tagIndex = index
         inboxIndex = inboxes
         val subs = buildMap {
-            if (inboxes.isNotEmpty()) put(SUB_DIRECT, listOf(Filter(kinds = listOf(Kinds.SEALED_DIRECT), tagP = inboxes.keys.sorted(), since = t - 7 * 24 * 3600)))
+            // From the start of the hour a week ago, not the second: the filter then only changes when the
+            // hourly tags do, instead of every minute, which made every relay replay a week of messages
+            // each time and looked like abuse to relays that refuse the subscription.
+            if (inboxes.isNotEmpty()) put(SUB_DIRECT, listOf(Filter(kinds = listOf(Kinds.SEALED_DIRECT), tagP = inboxes.keys.sorted(), since = directSince(t))))
             val circleTags = index.filterValues { it.kind != TagKind.CONTROL }.keys.sorted()
             if (circleTags.isNotEmpty()) put(SUB_CIRCLES, listOf(Filter(kinds = listOf(Kinds.CIRCLE_UPDATE), tagD = circleTags)))
             val controlTags = index.filterValues { it.kind == TagKind.CONTROL }.keys.sorted()
@@ -1774,6 +1777,9 @@ class Engine(
          * to the new hour's tags at once means the first updates of each hour aren't held up for up to
          * a minute (they'd wait on the relay until the next pass subscribed to them).
          */
+        /** Where the sealed-DM subscription starts: the start of the hour, a week before [t] (messages expire after 7 days). */
+        internal fun directSince(t: Long): Long = (t - 7 * 24 * 3600).let { it - it.mod(3600L) }
+
         internal fun housekeepingDelayMillis(t: Long): Long {
             val toNextHour = 3600 - t.mod(3600L)
             return if (toNextHour < 60) (toNextHour + 1) * 1000 else 60_000L

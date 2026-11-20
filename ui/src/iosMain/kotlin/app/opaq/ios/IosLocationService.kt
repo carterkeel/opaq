@@ -78,6 +78,9 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private val activityManager = CMMotionActivityManager()
     private var activityUpdatesOn = false
 
+    /** When Core Motion started saying "walking", until it has said so for [WALK_CONFIRM_SECONDS]. */
+    private var walkingSince: Long? = null
+
     /** Geofence around where the phone stopped; null until iOS hands it over. */
     private var monitor: CLMonitor? = null
 
@@ -183,6 +186,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                     lastReminderAt = now
                     notifier.sharingReminder()
                 }
+                // Still walking after [WALK_CONFIRM_SECONDS]: a real walk, not a few steps indoors.
+                walkingSince?.let { if (now - it >= WALK_CONFIRM_SECONDS) { walkingSince = null; onMovementHint() } }
                 // No fixes for a while means the phone stopped: report it, don't keep saying "Driving".
                 policy.refresh(now)
                 adjustAccuracy()
@@ -196,7 +201,10 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                         missed = !withContext(Dispatchers.Default) { runCatching { engine.publishLocation(loc) }.getOrDefault(false) }
                     }
                 }
-                withTimeoutOrNull(TICK_MS) { wake.receive() }
+                // Every 2 s while moving or confirming a walk; while still, only when the next update
+                // is due (at most 30 s), instead of waking all night for nothing.
+                val wait = if (walkingSince != null) MotionPolicy.FAST_CHECK_MILLIS else policy.nextCheckMillis(nowSeconds())
+                withTimeoutOrNull(wait) { wake.receive() }
             }
         }
     }
@@ -209,21 +217,32 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         manager.stopMonitoringSignificantLocationChanges()
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
+        walkingSince = null
         monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION)
     }
 
     /**
-     * Core Motion says the phone started walking, running, cycling or travelling in a vehicle.
+     * Core Motion says the phone started running, cycling or travelling in a vehicle: switch to GPS
+     * at once. Walking only counts once it has gone on for [WALK_CONFIRM_SECONDS]: a few steps
+     * around the house or office would otherwise turn GPS on for minutes each time, all day.
      * The first call shows the Motion & Fitness prompt; if it's refused, no readings arrive.
      */
     private fun startActivityUpdates() {
         if (activityUpdatesOn || !CMMotionActivityManager.isActivityAvailable()) return
         activityUpdatesOn = true
         activityManager.startActivityUpdatesToQueue(NSOperationQueue.mainQueue) { activity: CMMotionActivity? ->
-            if (activity != null && activity.confidence != CMMotionActivityConfidenceLow &&
-                (activity.walking || activity.running || activity.cycling || activity.automotive)
-            ) {
-                onMovementHint()
+            if (activity == null) return@startActivityUpdatesToQueue
+            val sure = activity.confidence != CMMotionActivityConfidenceLow
+            when {
+                sure && (activity.running || activity.cycling || activity.automotive) -> {
+                    walkingSince = null
+                    onMovementHint()
+                }
+                activity.walking -> if (sure && walkingSince == null && publishJob?.isActive == true) {
+                    walkingSince = nowSeconds()
+                    wake.trySend(Unit) // check again in 2 s rather than up to 30
+                }
+                else -> walkingSince = null // stopped walking before it counted
             }
         }
     }
@@ -313,7 +332,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
 
     private companion object {
         // Often enough that a 10 s moving update goes out close to when it's due.
-        const val TICK_MS = 2_000L
+        /** How long Core Motion has to keep saying "walking" before GPS goes on. */
+        const val WALK_CONFIRM_SECONDS = 30L
         const val SHOW_INDICATOR_KEY = "showLocationIndicator"
         const val MONITOR_NAME = "opaq"
         const val STILL_REGION = "still"

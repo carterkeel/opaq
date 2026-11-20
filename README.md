@@ -25,7 +25,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/readme/hero.png" alt="Opaq on three phones: the map with your circle, the same map in the dark theme, and a day of location history" width="100%">
+  <img src="docs/readme/hero.png" alt="Opaq on three phones: a day of location history, the map with your circle, and the app icon picker in the Midnight theme" width="100%">
 </p>
 
 ## Why Opaq
@@ -42,17 +42,17 @@ Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multip
 <table>
   <tr>
     <td align="center" width="33%"><img src="docs/readme/screen-home.png" alt="The map with your circle and the people sheet" width="220"><br><sub><b>Your circle on the map</b><br>Everyone as a dot, with what they're doing</sub></td>
-    <td align="center" width="33%"><img src="docs/readme/screen-dark-home.png" alt="The map in the dark theme" width="220"><br><sub><b>Light and dark</b><br>Follows your phone, or pick a theme</sub></td>
+    <td align="center" width="33%"><img src="docs/readme/screen-light-home.png" alt="The map in the light theme" width="220"><br><sub><b>Light, Dark or Midnight</b><br>Follows your phone, or pick a theme</sub></td>
     <td align="center" width="33%"><img src="docs/readme/screen-profile.png" alt="A profile with status, history and device code" width="220"><br><sub><b>Profiles</b><br>Status, history and the device code to compare</sub></td>
   </tr>
   <tr>
     <td align="center"><img src="docs/readme/screen-history.png" alt="A day of location history on the map" width="220"><br><sub><b>Location history</b><br>Kept encrypted on the phone, never uploaded</sub></td>
     <td align="center"><img src="docs/readme/screen-invite.png" alt="An invite QR code with the inviter's device code" width="220"><br><sub><b>Invites</b><br>A QR code or a link, and every join is approved</sub></td>
-    <td align="center"><img src="docs/readme/screen-settings-app-icon.png" alt="The app icon picker in settings" width="220"><br><sub><b>Your icon</b><br>Dark on white, Two-tone or Oversized A</sub></td>
+    <td align="center"><img src="docs/readme/screen-settings-app-icon.png" alt="The app icon picker in settings, in the Midnight theme" width="220"><br><sub><b>Your icon</b><br>Dark on white, Two-tone or Oversized A (shown in Midnight)</sub></td>
   </tr>
 </table>
 
-<sub>Screenshots come from the automated emulator test, so they show test data.</sub>
+<sub>Screenshots come from the iOS simulator, with test people and locations.</sub>
 
 ## Features
 
@@ -85,7 +85,7 @@ ui/           Compose Multiplatform screens and map, shared by Android and iOS
 androidApp/   Android app: foreground location service, Keystore storage, permissions
 iosApp/       Xcode project for the iPhone and iPad app (iOS code lives in ui/src/iosMain)
 site/         opaq.me on GitHub Pages: the website, the invite link page and the report form
-docs/readme/  Images for this README (screenshots come from the CI emulator run, with test data)
+docs/readme/  Images for this README (screenshots from the iOS simulator, with test data)
 ```
 
 ## Building

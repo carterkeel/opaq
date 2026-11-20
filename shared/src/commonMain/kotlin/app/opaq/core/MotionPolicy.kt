@@ -122,6 +122,21 @@ class MotionPolicy {
         return elapsed >= (base * jitter).toLong()
     }
 
+    /**
+     * How long the location loop may wait before its next check, in milliseconds. Every 2 s while
+     * moving, about to (GPS on, a motion hint, the locate button) or just stopped (the stop goes out
+     * once [MIN_GAP_SECONDS] have passed); otherwise until the next still update is due, but at most
+     * 30 s. Waking every 2 s all night while nothing happens costs battery for nothing. A fix or a motion
+     * hint still wakes the loop at once, and the wait ends exactly when the update is due, so update
+     * timing (what relays can see) is the same as checking every 2 s.
+     */
+    fun nextCheckMillis(now: Long): Long {
+        val last = lastPublishAt
+        if (latest == null || last == null || wantsHighAccuracy(now) || lastPublishedMoving == true) return FAST_CHECK_MILLIS
+        val due = last + (STILL_INTERVAL * jitter).toLong() - now
+        return due.coerceIn(1L, SLOW_CHECK_SECONDS) * 1000
+    }
+
     /** Publish on the next check, e.g. right after joining a circle, so nobody waits for the next interval. */
     fun publishSoon() {
         lastPublishAt = null
@@ -192,6 +207,8 @@ class MotionPolicy {
     companion object {
         const val MOVING_INTERVAL = 10L
         const val STILL_INTERVAL = 300L
+        const val FAST_CHECK_MILLIS = 2_000L
+        private const val SLOW_CHECK_SECONDS = 30L
         private const val MIN_GAP_SECONDS = 10L
 
         /** How long the locate button waits for an accurate fix, and how far off the shared one may be. */
