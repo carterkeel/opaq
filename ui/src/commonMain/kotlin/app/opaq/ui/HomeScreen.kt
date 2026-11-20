@@ -321,6 +321,7 @@ fun HomeScreen(
                     sharingBlocked = sharingBlocked,
                     onFixSharing = onFixSharing,
                     onStartSharing = { gate.require { haptics.confirm(); actions.confirmCircle(circle.id) } },
+                    onResumeCircle = { haptics.confirm(); actions.setCirclePaused(circle.id, false) },
                     hasLocationPermission = hasLocationPermission,
                     onRequestLocation = onRequestLocation,
                     onReview = { reviewing = it },
@@ -599,6 +600,7 @@ private fun PeopleList(
     sharingBlocked: String?,
     onFixSharing: () -> Unit,
     onStartSharing: () -> Unit,
+    onResumeCircle: () -> Unit,
     hasLocationPermission: Boolean,
     onRequestLocation: () -> Unit,
     onReview: (JoinRequest) -> Unit,
@@ -619,6 +621,13 @@ private fun PeopleList(
                     text = "You're in ${circle.name} with $others. Nobody here sees your location until you start sharing.",
                     action = "Start sharing",
                     onAction = onStartSharing,
+                )
+                Banner(
+                    visible = state.sharing && circle.confirmed && circle.paused,
+                    text = "You've paused sharing with ${circle.name}. You still see everyone here." +
+                        (if (circle.pausedUntil > 0) " It starts again at ${formatClock(circle.pausedUntil)}." else ""),
+                    action = "Resume",
+                    onAction = onResumeCircle,
                 )
                 val adminName = circle.members.firstOrNull { it.pubkey == circle.adminPubkey }?.let { avatarFor(state, it.pubkey, me, it.name).name } ?: "The admin"
                 Banner(
@@ -686,7 +695,7 @@ private fun PeopleList(
                         }
                     }
                     Text(
-                        if (m.pubkey == me && !state.sharing) "Sharing paused" else Format.status(loc, now),
+                        if (m.pubkey == me && (!state.sharing || circle.paused)) "Sharing paused" else Format.status(loc, now),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,

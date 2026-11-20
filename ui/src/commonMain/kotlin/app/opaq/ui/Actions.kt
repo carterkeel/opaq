@@ -84,6 +84,7 @@ class Actions(
     fun dismissJoinRefusal(circleId: String) = launchAction { engine.dismissJoinRefusal(circleId) }
 
     fun setCirclePrecision(circleId: String, precision: Precision) = launchAction { engine.setCirclePrecision(circleId, precision) }
+    fun setCirclePaused(circleId: String, paused: Boolean) = launchAction { engine.setCirclePaused(circleId, paused) }
     fun setCircleTrail(circleId: String, on: Boolean) = launchAction { engine.setCircleTrail(circleId, on) }
 
     fun confirmCircle(circleId: String) = launchAction(after = { platform.ensureSharingService() }) { engine.confirmCircle(circleId) }

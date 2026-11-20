@@ -7,6 +7,7 @@ import app.opaq.core.crypto.constantTimeEquals
 import app.opaq.core.crypto.hexToBytes
 import app.opaq.core.crypto.toHex
 import app.opaq.core.model.ADDED_DEFAULT_RELAYS
+import app.opaq.core.model.Activity
 import app.opaq.core.model.AppState
 import app.opaq.core.model.THEME_DARK
 import app.opaq.core.model.THEME_LIGHT
@@ -237,6 +238,7 @@ class Engine(
     suspend fun housekeeping() {
         if (_recovery.value != null) return
         if (state.value.consentAt == 0L) update { it.copy(consentAt = now()) }
+        endTimedPauses()
         pruneExpired()
         advanceRatchets()
         adminDuties()
@@ -305,8 +307,58 @@ class Engine(
         publishProfileIfDue()
     }
 
-    /** Turning sharing on counts as confirming it, for the monthly reminder. */
-    suspend fun setSharing(on: Boolean) = update { if (on) it.copy(sharing = true, consentAt = now()) else it.copy(sharing = false) }
+    /**
+     * Turns sharing on or off for every circle. Turning it on counts as confirming it, for the monthly
+     * reminder. Turning it off first tells each circle (a last "paused" update), and [resumeAt] (unix
+     * seconds, 0 = none) turns it back on then, the next time the app runs.
+     */
+    suspend fun setSharing(on: Boolean, resumeAt: Long = 0) {
+        if (!on && state.value.sharing) publishPausedNotice(state.value.circles)
+        update { if (on) it.copy(sharing = true, consentAt = now(), sharingResumeAt = 0) else it.copy(sharing = false, sharingResumeAt = resumeAt) }
+    }
+
+    /**
+     * Pauses or resumes sharing with one circle. Pausing tells the circle first (a last "paused"
+     * update); [until] (unix seconds, 0 = until resumed by hand) ends the pause on its own. Resuming
+     * needs no PIN, like turning sharing back on: it only goes back to what was shared before.
+     */
+    suspend fun setCirclePaused(circleId: String, paused: Boolean, until: Long = 0) {
+        val c = state.value.circles.firstOrNull { it.id == circleId } ?: return
+        if (paused && !c.paused && state.value.sharing) publishPausedNotice(listOf(c))
+        update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(paused = paused, pausedUntil = if (paused) until else 0) else it }) }
+    }
+
+    /** Ends timed pauses that are over: all sharing, and single circles. */
+    private suspend fun endTimedPauses() {
+        val t = now()
+        val s = state.value
+        if (!s.sharing && s.sharingResumeAt in 1..t) setSharing(true)
+        s.circles.filter { it.paused && it.pausedUntil in 1..t }.forEach { setCirclePaused(it.id, false) }
+    }
+
+    /**
+     * One last update to each of [circles] that this phone shares with now, saying sharing is paused:
+     * the last position shared, as still, without speed or path, stamped now. Without it the circle
+     * would see the person's last update age and then show them as offline.
+     */
+    private suspend fun publishPausedNotice(circles: List<Circle>) {
+        if (_recovery.value != null) return
+        val s = state.value
+        val t = now()
+        val seq = maxOf(s.lastSeq + 1, t * 1000)
+        var sent = false
+        circles.forEach { c ->
+            if (shareStatus(c) != ShareStatus.OK) return@forEach
+            val last = s.locations[c.id]?.get(myPubkey) ?: return@forEach
+            val notice = LocationPrecision.apply(last, c.precision, trail = false).copy(
+                speed = null, heading = null, activity = Activity.STILL, time = t, points = emptyList(), status = MemberLocation.PAUSED,
+            )
+            val event = if (c.version < 2) sealV1(c, notice, t) else sealV2(c, notice, t, seq) ?: return@forEach
+            pool.publish(event, queueIfOffline = false)
+            sent = true
+        }
+        if (sent) update { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
+    }
 
     suspend fun setShareBattery(on: Boolean) = update { it.copy(shareBattery = on) }
 
@@ -940,6 +992,7 @@ class Engine(
      */
     fun shareStatus(c: Circle): ShareStatus = when {
         !c.confirmed -> ShareStatus.NOT_CONFIRMED
+        c.paused -> ShareStatus.PAUSED
         c.stale -> ShareStatus.KEY_REPLACED
         c.version < 2 || c.adminPubkey == myPubkey -> ShareStatus.OK
         now() - c.heartbeatAt > HEARTBEAT_MAX_AGE_SECONDS -> ShareStatus.ADMIN_AWAY
@@ -1768,6 +1821,9 @@ enum class ShareStatus {
 
     /** Just joined: waiting for the user to look at who's in the circle and start sharing. */
     NOT_CONFIRMED,
+
+    /** The user paused sharing with this circle. */
+    PAUSED,
 }
 
 /** The result of entering the PIN. */

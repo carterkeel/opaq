@@ -70,6 +70,7 @@ object Format {
     fun status(loc: MemberLocation?, now: Long, showBattery: Boolean = true): String {
         if (loc == null) return "No location yet"
         val age = (now - loc.time).coerceAtLeast(0)
+        if (loc.status == MemberLocation.PAUSED) return "Sharing paused · ${ago(age)}"
         if (isOffline(loc, now)) {
             val why = loc.status?.let { " ($it)" } ?: ""
             return "Offline$why · last seen ${ago(age)}"
