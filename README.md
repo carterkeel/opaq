@@ -31,7 +31,7 @@
 ## Why Opaq
 
 - **Identity is a key on your phone.** On first launch the app creates a secp256k1 keypair. Your *device code* (for example `7F3A 91C2 D04E 6B1A`) is a fingerprint of the public key; compare it in person to verify someone.
-- **Circles share both ways**, like Life360. The circle admin sends a signed invite link that expires in an hour (or 24 hours), and approves each person who opens it.
+- **Circles share both ways**, like other 360-type apps. The circle admin sends a signed invite link that expires in an hour (or 24 hours), and approves each person who opens it.
 - **Everything is end-to-end encrypted** on the device before it leaves. Updates travel through public [Nostr](https://nostr.com) relays, which only ever see ciphertext.
 - **Open source.** Anyone can check what the app sends.
 
