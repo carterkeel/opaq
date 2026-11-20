@@ -118,7 +118,7 @@ class ProtocolTest {
         assertEquals(data, InviteLinks.decode("Join my circle: $link"))
         assertNull(InviteLinks.decode("opaq://join#garbage"))
         val web = InviteLinks.webLink(link)
-        assertTrue(web.startsWith("https://carterkeel.github.io/opaq/join#"))
+        assertTrue(web.startsWith("https://opaq.me/join#"))
         assertEquals(link.substringAfter('#'), web.substringAfter('#'), "the invite stays after #, so the web host never gets it")
         assertEquals(data, InviteLinks.decode("Join my circle \"Family\" on Opaq: $web"))
     }
@@ -145,6 +145,7 @@ class ProtocolTest {
             // Links made before the rename to Opaq, pasted in.
             "quietmap://join/$payload",
             "https://carterkeel.github.io/quietmap/join#$payload",
+            "https://carterkeel.github.io/opaq/join#$payload",
             // A # some app percent-encoded.
             web.replace("#", "%23"),
             // Long words broken by a line break or an invisible character.

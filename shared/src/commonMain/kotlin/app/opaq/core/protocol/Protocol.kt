@@ -398,7 +398,10 @@ object InviteLinks {
      * static page there hands the invite to the app. Everything after `#` stays on the phone:
      * browsers never send it to the web host.
      */
-    const val WEB_PREFIX = "https://carterkeel.github.io/opaq/join#"
+    const val WEB_PREFIX = "https://opaq.me/join#"
+
+    /** Web addresses invites have been shared under. Links made before opaq.me still open the app. */
+    val WEB_PREFIXES = listOf(WEB_PREFIX, "https://carterkeel.github.io/opaq/join#")
 
     /** The tappable web form of an invite link. Both forms decode the same way. */
     fun webLink(link: String): String = WEB_PREFIX + link.trim().substringAfter('#')

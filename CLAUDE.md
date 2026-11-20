@@ -73,8 +73,8 @@ site/        Static GitHub Pages site (pages.yml), no build step:
                           allows only those). The demo map draws sf-map.json: downtown San Francisco
                           from OpenStreetMap (© OSM contributors, ODbL, credited on the page).
              join.html    hands https invite links to the app. Invite links point at
-                          carterkeel.github.io/opaq/join, so the site must stay published there (a custom
-                          domain on Pages redirects that address, keeping the # part).
+                          opaq.me/join (the Pages custom domain). Older links use
+                          carterkeel.github.io/opaq/join, which Pages redirects there, keeping the # part.
 tools/       generate-app-icons.py: Android icon resources and AppIconArt.kt from the brand SVG geometry.
 ```
 
@@ -95,7 +95,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - `Engine.createInvite` makes a secret that expires in 1 h by default (24 h optional). It works once, or for up to `Invite.MAX_USES` (10) people if "Let more than one person use this link" is on; the inviter still approves every join. `Engine.cancelInvite` stops it early. Links are signed by the inviter (v2, `InviteLinks.signed`); unsigned v1 links are refused.
 - A request that can't go ahead (used up, expired, cancelled, or denied with `Engine.deny`) gets a `JoinRefusedBody` reply, so the joiner stops waiting and sees why (`AppState.joinRefusals`). The joiner accepts it only from the inviter they asked, naming them and that invite. Replies are rate-limited (one per person per 10 min, 20 an hour in all). The inviter listens on an invite's inbox until it's pruned, a day after it expires.
 - The join screen shows the inviter's device code: "The codes match" marks them verified, "Join without checking" joins unverified (verify later from their profile). Scanning the QR in the app verifies automatically. A new circle stays unconfirmed, sharing nothing, until the joiner taps "Start sharing".
-- The link is `opaq://join#<base64url JSON>`. Shared and copied links use `https://carterkeel.github.io/opaq/join#…` (`InviteLinks.webLink`), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=opaq;end`, since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
+- The link is `opaq://join#<base64url JSON>`. Shared and copied links use `https://opaq.me/join#…` (`InviteLinks.webLink`; older `carterkeel.github.io/opaq/join` links still work), since chat apps only make http(s) links tappable; `site/join.html` (GitHub Pages, `pages.yml`) hands it to the app (on Android as `intent://join/<payload>#Intent;scheme=opaq;end`, since browsers can mangle a fragment on a custom-scheme link). The payload is never in the part a web host sees. `InviteLinks.decode` finds the invite in any of these forms, a bare payload or a whole pasted message; `InviteLinks.problem` says when a link was cut off at the `#`.
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 

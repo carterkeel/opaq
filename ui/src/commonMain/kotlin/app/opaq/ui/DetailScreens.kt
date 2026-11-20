@@ -375,7 +375,9 @@ fun AddScreen(state: AppState, me: String, circleId: String, actions: Actions, o
                         // QR codes need dark modules on a light background, in both themes.
                         Surface(color = Color.White, shape = RoundedCornerShape(24.dp), shadowElevation = 2.dp) {
                             Image(
-                                painter = rememberQrCodePainter(current),
+                                // The web form, so a phone's own camera app opens the join page (which hands the
+                                // invite to Opaq) instead of finding a link no app handles. Opaq's scanner reads both.
+                                painter = rememberQrCodePainter(remember(current) { InviteLinks.webLink(current) }),
                                 contentDescription = "Invite QR code",
                                 modifier = Modifier.padding(20.dp).size(232.dp),
                             )

@@ -216,7 +216,7 @@ class CreateCircleTest {
         // An invite link cut off at the # (#96): the join screen says it's incomplete.
         waitFor("Invite")
         context.startActivity(
-            Intent(Intent.ACTION_VIEW, Uri.parse("https://carterkeel.github.io/opaq/join"), context, MainActivity::class.java)
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://opaq.me/join"), context, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
         )
         device.wait(Until.findObject(By.textContains("invite link is incomplete")), 20_000) ?: run {
