@@ -14,11 +14,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableDoubleStateOf
@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
@@ -107,7 +108,13 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
     var saving by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar(if (existing == null) "New place" else "Edit place", onBack)
+        TopBar(if (existing == null) "New place" else "Edit place", onBack) {
+            if (existing != null) {
+                IconButton(onClick = { confirmDelete = true }) {
+                    Icon(AppIcons.Delete, contentDescription = "Delete place", tint = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().height(260.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp))) {
             PlacePickerMap(at.first, at.second, radius, state.darkMap, onPick = { lat, lon -> at = lat to lon }, modifier = Modifier.fillMaxSize())
         }
@@ -118,7 +125,8 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
         val ground = MaterialTheme.colorScheme.background
         Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(scroll).padding(top = 12.dp, bottom = 24.dp),
+            // Room above the name field for its label, which sits on the field's top edge.
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(top = 18.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             OutlinedTextField(
@@ -151,24 +159,6 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
             if (existing != null) SwitchRow("Alerts for this place", if (enabled) "On" else "Off, and hidden from the map", enabled) { enabled = it }
 
             Spacer(Modifier.height(16.dp))
-            PrimaryButton(
-                if (existing == null) "Add place" else "Save",
-                onClick = {
-                    saving = true
-                    actions.savePlace(
-                        Place(existing?.id.orEmpty(), name, at.first, at.second, radius, circleId, onArrive, onLeave, enabled),
-                        done = onBack,
-                        failed = { saving = false },
-                    )
-                },
-                modifier = Gutter.fillMaxWidth(),
-                enabled = !saving && name.isNotBlank() && (onArrive || onLeave),
-            )
-            if (existing != null) {
-                TextButton(onClick = { confirmDelete = true }, modifier = Gutter) {
-                    Text("Delete place", color = MaterialTheme.colorScheme.error)
-                }
-            }
             Caption(PLACES_PRIVATE, Gutter.padding(top = 8.dp))
         }
         Box(
@@ -176,7 +166,27 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
                 .graphicsLayer { alpha = (scroll.value / 40f).coerceIn(0f, 1f) }
                 .background(Brush.verticalGradient(listOf(ground, ground.copy(alpha = 0f)))),
         )
+        // The same fade at the bottom, above the button, while there's more to scroll to.
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(20.dp)
+                .graphicsLayer { alpha = ((scroll.maxValue - scroll.value) / 40f).coerceIn(0f, 1f) }
+                .background(Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground))),
+        )
         }
+        // Always in reach, however far the settings are scrolled.
+        PrimaryButton(
+            if (existing == null) "Add place" else "Save",
+            onClick = {
+                saving = true
+                actions.savePlace(
+                    Place(existing?.id.orEmpty(), name, at.first, at.second, radius, circleId, onArrive, onLeave, enabled),
+                    done = onBack,
+                    failed = { saving = false },
+                )
+            },
+            modifier = Gutter.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp),
+            enabled = !saving && name.isNotBlank() && (onArrive || onLeave),
+        )
     }
 
     if (confirmDelete && existing != null) {

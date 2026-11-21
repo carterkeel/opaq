@@ -128,14 +128,15 @@ class CreateCircleTest {
 
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
     private fun scrollTo(text: String): UiObject2 {
-        repeat(6) {
+        // A list under a map is short, so each scroll moves it only a little: allow plenty.
+        repeat(15) {
             device.findObject(By.text(text))?.let { return it }
             // Scroll the scrollable part, keeping clear of the screen's bottom edge: a swipe that
             // starts there is the system's "go home" gesture and sends the app to the background.
             // The map counts as scrollable too; the screen's list is the one reaching lowest.
             device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
                 list.setGestureMargin((device.displayHeight * 0.15).toInt())
-                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
+                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
         }
@@ -291,13 +292,13 @@ class CreateCircleTest {
         device.pressBack() // close the keyboard
         Thread.sleep(2_000) // let the map load
         shot("place-new")
-        scrollTo("Add place").click()
+        waitFor("Add place").click() // pinned under the settings, no scrolling needed
         waitFor("Add a place")
         waitFor("Home")
         shot("places")
         waitFor("Home").click()
         waitFor("Edit place")
-        scrollTo("Delete place").click()
+        (device.wait(Until.findObject(By.desc("Delete place")), 10_000) ?: error("no Delete place button")).click()
         waitFor("Delete").click()
         waitFor("Add a place")
         device.pressBack()
