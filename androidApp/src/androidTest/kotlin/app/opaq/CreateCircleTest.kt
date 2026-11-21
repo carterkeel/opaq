@@ -113,13 +113,27 @@ class CreateCircleTest {
     }
 
     /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
+    /** Like [tapUntil], for a button found by its content description. */
+    private fun tapDescUntil(label: String, expected: String) {
+        repeat(3) {
+            dismissSystemDialogs()
+            device.wait(Until.findObject(By.desc(label)), 10_000)?.click()
+            if (device.wait(Until.hasObject(By.desc(expected)), 10_000)) return
+        }
+        device.wait(Until.findObject(By.desc(expected)), 1_000) ?: run {
+            logScreen()
+            error("\"$expected\" didn't appear")
+        }
+    }
+
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
     private fun scrollTo(text: String): UiObject2 {
         repeat(6) {
             device.findObject(By.text(text))?.let { return it }
             // Scroll the scrollable part, keeping clear of the screen's bottom edge: a swipe that
             // starts there is the system's "go home" gesture and sends the app to the background.
-            device.findObject(By.scrollable(true))?.let { list ->
+            // The map counts as scrollable too; the screen's list is the one reaching lowest.
+            device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
                 list.setGestureMargin((device.displayHeight * 0.15).toInt())
                 list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
             }
@@ -209,8 +223,10 @@ class CreateCircleTest {
         shot("home")
 
         // Sharing toggle on the map.
-        tapUntil("Sharing", expected = "Paused")
-        tapUntil("Paused", expected = "Sharing")
+        // The sharing button is an icon described as "Sharing" or "Paused"; it says so in words for 5 s after a tap.
+        tapDescUntil("Sharing", expected = "Paused")
+        shot("sharing-paused")
+        tapDescUntil("Paused", expected = "Sharing")
 
         // Invite screen with a QR code, as a link several people can use (#53). Creating an invite
         // asks for the PIN once the last entry is old.

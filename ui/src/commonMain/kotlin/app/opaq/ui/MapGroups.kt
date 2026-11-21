@@ -24,8 +24,19 @@ internal const val FACE_DP = 36f
 
 private const val RING_DP = 3f
 
-/** How far apart faces sit in a stack of [count] (#146): 22 dp for a few, closer as it grows, so a stack stays under 100 dp wide. */
-internal fun stackStep(count: Int): Double = if (count < 2) 0.0 else minOf(22.0, 60.0 / (count - 1))
+/**
+ * Where face [index] of a stack of [count] sits, in dp from the stack's centre (#146): round a
+ * circle, so two sit side by side, three make a triangle (point up), four a square, and so on.
+ * Neighbours are about 26 dp apart, so the 36 dp faces still overlap like a stack; past eight the
+ * ring stops growing and they overlap more. Screen directions: y grows downwards.
+ */
+internal fun stackSlot(index: Int, count: Int): Pair<Double, Double> {
+    if (count < 2) return 0.0 to 0.0
+    val radius = minOf(30.0, 13.0 / kotlin.math.sin(kotlin.math.PI / count))
+    val start = if (count % 2 == 1) -kotlin.math.PI / 2 else -kotlin.math.PI / 2 - kotlin.math.PI / count
+    val a = start + 2 * kotlin.math.PI * index / count
+    return radius * kotlin.math.cos(a) to radius * kotlin.math.sin(a)
+}
 
 /**
  * One person on the map: their photo or initial inside a white ring, dimmed (greyed, or a faded

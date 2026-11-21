@@ -1,5 +1,8 @@
 package app.opaq.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -134,8 +137,9 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - It opens at city level around you, and [focus] glides the camera to a point (yourself for the
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
- * - People whose dots would overlap are stacked, their faces side by side and closer together the
- *   more there are ([Grouping], [stackStep]). Faces glide into and out of a stack as you zoom (#146).
+ * - People whose dots would overlap are stacked in a ring round the stack's centre: two side by
+ *   side, three in a triangle, four in a square ([Grouping], [stackSlot]). Faces glide into and out
+ *   of a stack as you zoom (#146).
  * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group zooms in until they
  *   separate, or, for people in the same spot, calls [onGroupClick] with their ids.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
@@ -170,7 +174,8 @@ fun MapPane(
         Grouping.group(ordered.map { it.lat to it.lon }, groupZoom).map { g -> g.map { ordered[it] } }
     }
     // Each face glides into its place in a stack, and back out, rather than jumping.
-    val faces = rememberStackedFaces(groups)
+    var zoom by remember { mutableStateOf(CITY_ZOOM) }
+    val faces = rememberStackedFaces(groups, zoom)
     // One picture per person: their photo or initial in a white ring, dimmed when offline.
     val measurer = rememberTextMeasurer()
     val faceIcons = remember(shown.map(::faceKey).toSet()) {
@@ -242,7 +247,10 @@ fun MapPane(
 
     // Regroup every half zoom level, as the map zooms.
     LaunchedEffect(mapState) {
-        snapshotFlow { floor(mapState.cameraPosition.zoom * 2) / 2 }.collect { groupZoom = it }
+        snapshotFlow { mapState.cameraPosition.zoom }.collect {
+            zoom = it
+            groupZoom = floor(it * 2) / 2
+        }
     }
 
     // Open once per circle at city level around me (or whoever has a location first).
@@ -316,13 +324,27 @@ fun PlacePickerMap(lat: Double, lon: Double, radius: Double, darkMap: Boolean, o
             }
         }
     }
-    val area = remember(lat, lon, radius) { placesToGeoJson(listOf(Place("", "", lat, lon, radius))) }
-    val spot = remember(lat, lon) {
-        buildJsonObject {
-            put("type", "Point")
-            putJsonArray("coordinates") { add(lon); add(lat) }
-        }.toString()
+    // A new spot glides there (ease out, 450 ms) from wherever the area is drawn, even mid-glide,
+    // and the dot in the middle pops as it lands.
+    val glide = remember { Animatable(1f) }
+    val drawn = remember { doubleArrayOf(lat, lon) }
+    val from = remember { doubleArrayOf(lat, lon) }
+    LaunchedEffect(lat, lon) {
+        if (drawn[0] == lat && drawn[1] == lon) return@LaunchedEffect
+        from[0] = drawn[0]; from[1] = drawn[1]
+        glide.snapTo(0f)
+        glide.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
     }
+    val p = glide.value.toDouble()
+    val shownLat = from[0] + (lat - from[0]) * p
+    val shownLon = from[1] + (lon - from[1]) * p
+    SideEffect { drawn[0] = shownLat; drawn[1] = shownLon }
+    val pop = kotlin.math.sin(PI * p).toFloat()
+    val area = placesToGeoJson(listOf(Place("", "", shownLat, shownLon, radius)))
+    val spot = buildJsonObject {
+        put("type", "Point")
+        putJsonArray("coordinates") { add(shownLon); add(shownLat) }
+    }.toString()
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val areaSource = rememberGeoJsonSource(GeoJsonData.JsonString(area))
         FillLayer(id = "pick-fill", source = areaSource, color = const(Palette.Ultramarine), opacity = const(0.15f))
@@ -330,7 +352,7 @@ fun PlacePickerMap(lat: Double, lon: Double, radius: Double, darkMap: Boolean, o
         CircleLayer(
             id = "pick-spot",
             source = rememberGeoJsonSource(GeoJsonData.JsonString(spot)),
-            radius = const(5.dp),
+            radius = const((5f + 4f * pop).dp),
             color = const(Palette.Ultramarine),
             strokeColor = const(Color.White),
             strokeWidth = const(2.dp),
@@ -466,12 +488,12 @@ private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
                 put("type", "Feature")
                 putJsonObject("geometry") {
                     put("type", "Point")
-                    putJsonArray("coordinates") { add(f.lon); add(f.lat) }
+                    putJsonArray("coordinates") { add(f.marker.lon); add(f.marker.lat) }
                 }
                 putJsonObject("properties") {
                     put("id", f.marker.id)
                     put("face", faceKey(f.marker))
-                    putJsonArray("off") { add(f.dx); add(0.0) }
+                    putJsonArray("off") { add(f.dx); add(f.dy) }
                     put("order", f.order)
                     if (f.ids != null) put("ids", f.ids)
                 }
@@ -480,63 +502,85 @@ private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
     }
 }.toString()
 
-/** A face as drawn: where, how far along its stack (dp), its drawing order, and its stack's people. */
-private data class StackedFace(val marker: MapMarker, val lat: Double, val lon: Double, val dx: Double, val order: Int, val ids: String?)
+/** A face as drawn: at its person's own spot, shifted by ([dx], [dy]) dp, its drawing order, and its stack's people. */
+private data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?)
+
+/** Where a face belongs: [anchor]'s spot plus ([sx], [sy]) dp. Someone on their own is their own anchor. */
+private data class Slot(val anchor: String, val sx: Double, val sy: Double, val order: Int, val ids: String?)
 
 /** How long a face takes to glide into or out of a stack. */
-private const val STACK_MILLIS = 350.0
+private const val STACK_MILLIS = 400.0
 
-/** Where each face belongs: alone at its own spot, or in its group's stack at the first person's spot. */
-private fun stackTargets(groups: List<List<MapMarker>>): List<StackedFace> = groups.flatMap { g ->
-    val anchor = g.first()
-    val step = stackStep(g.size)
-    val ids = if (g.size > 1) g.joinToString(",") { it.id } else null
-    g.mapIndexed { i, m ->
-        val lat = if (g.size > 1) anchor.lat else m.lat
-        val lon = if (g.size > 1) anchor.lon else m.lon
-        StackedFace(m, lat, lon, (i - (g.size - 1) / 2.0) * step, g.size - i, ids)
+private fun slots(groups: List<List<MapMarker>>): Map<String, Slot> = buildMap {
+    groups.forEach { g ->
+        val ids = if (g.size > 1) g.joinToString(",") { it.id } else null
+        g.forEachIndexed { i, m ->
+            val (sx, sy) = stackSlot(i, g.size)
+            put(m.id, Slot(g.first().id, sx, sy, g.size - i, ids))
+        }
     }
 }
 
+/** Web Mercator, as a fraction of the world across and down. */
+private fun mercator(lat: Double, lon: Double): Pair<Double, Double> {
+    val phi = lat.coerceIn(-85.0511, 85.0511) * PI / 180.0
+    return (lon + 180.0) / 360.0 to (1.0 - ln(kotlin.math.tan(phi) + 1.0 / cos(phi)) / PI) / 2.0
+}
+
 /**
- * The faces as they should be drawn right now (#146). When someone joins or leaves a stack (the map
- * zoomed, or they moved), their face glides from where it was drawn to its new place over
- * [STACK_MILLIS], instead of jumping.
+ * The faces as they should be drawn right now (#146).
+ *
+ * Every face stays at its own person's spot on the map, and a stack is made by shifting the
+ * picture (`icon-offset`) to the stack's centre and round its circle. Moving the point itself by
+ * more than a couple of pixels between redraws makes MapLibre treat it as a new symbol and fade it
+ * in from transparent, which flashed. When someone joins or leaves a stack, the shift glides from
+ * the old slot to the new one over [STACK_MILLIS]. Both slots are worked out at the current
+ * [zoom], so a glide stays right while the map zooms.
  */
 @Composable
-private fun rememberStackedFaces(groups: List<List<MapMarker>>): List<StackedFace> {
+private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): List<StackedFace> {
     val clock = remember { kotlin.time.TimeSource.Monotonic.markNow() }
-    var out by remember { mutableStateOf(stackTargets(groups)) }
-    val drawn = remember { HashMap<String, StackedFace>() }
-    val places = remember { HashMap<String, String>() }
-    val glides = remember { HashMap<String, Pair<StackedFace, Double>>() }
-    LaunchedEffect(groups) {
-        val targets = stackTargets(groups)
-        val start = clock.elapsedNow().inWholeMilliseconds.toDouble()
-        targets.forEach { f ->
-            // Which stack and slot it's in; a change starts a glide from where it's drawn now.
-            val place = "${f.ids}|${f.dx}"
-            val was = places[f.marker.id]
-            if (was != null && was != place) drawn[f.marker.id]?.let { glides[f.marker.id] = it to start }
-            places[f.marker.id] = place
-        }
-        val ids = targets.map { it.marker.id }.toSet()
-        listOf(drawn, places, glides).forEach { it.keys.retainAll(ids) }
-        fun frame(now: Double): List<StackedFace> = targets.map { f ->
-            val glide = glides[f.marker.id] ?: return@map f
-            val t = ((now - glide.second) / STACK_MILLIS).coerceIn(0.0, 1.0)
-            if (t >= 1.0) { glides.remove(f.marker.id); return@map f }
-            val e = 1 - (1 - t) * (1 - t) * (1 - t) // ease out
-            val from = glide.first
-            f.copy(lat = from.lat + (f.lat - from.lat) * e, lon = from.lon + (f.lon - from.lon) * e, dx = from.dx + (f.dx - from.dx) * e)
-        }.also { list -> list.forEach { drawn[it.marker.id] = it } }
-        out = frame(start)
-        while (glides.isNotEmpty()) {
-            withFrameMillis { }
-            out = frame(clock.elapsedNow().inWholeMilliseconds.toDouble())
+    val current = remember { HashMap<String, Slot>() }
+    val glides = remember { HashMap<String, Pair<Slot, Double>>() }
+    var now by remember { mutableStateOf(0.0) }
+    val targets = remember(groups) { slots(groups) }
+    val byId = remember(groups) { groups.flatten().associateBy { it.id } }
+    // A changed slot starts a glide from the old one.
+    val start = clock.elapsedNow().inWholeMilliseconds.toDouble()
+    targets.forEach { (id, slot) ->
+        val was = current[id]
+        if (was != null && (was.anchor != slot.anchor || was.sx != slot.sx || was.sy != slot.sy)) glides[id] = was to start
+        current[id] = slot
+    }
+    current.keys.retainAll(targets.keys)
+    glides.keys.retainAll(targets.keys)
+    if (glides.isNotEmpty()) {
+        LaunchedEffect(glides.keys.toSet()) {
+            while (glides.isNotEmpty()) withFrameMillis { now = clock.elapsedNow().inWholeMilliseconds.toDouble() }
         }
     }
-    return out
+    val world = 512.0 * kotlin.math.exp(zoom * ln(2.0))
+    fun offset(m: MapMarker, slot: Slot): Pair<Double, Double> {
+        val anchor = byId[slot.anchor] ?: m
+        val (ax, ay) = mercator(anchor.lat, anchor.lon)
+        val (ox, oy) = mercator(m.lat, m.lon)
+        return (ax - ox) * world + slot.sx to (ay - oy) * world + slot.sy
+    }
+    val t = maxOf(now, start)
+    return groups.flatten().map { m ->
+        val slot = targets.getValue(m.id)
+        val (tx, ty) = offset(m, slot)
+        val glide = glides[m.id]
+        val f = glide?.let { ((t - it.second) / STACK_MILLIS).coerceIn(0.0, 1.0) } ?: 1.0
+        if (f >= 1.0) {
+            glides.remove(m.id)
+            StackedFace(m, tx, ty, slot.order, slot.ids)
+        } else {
+            val (fx, fy) = offset(m, glide!!.first)
+            val e = 1 - (1 - f) * (1 - f) * (1 - f) // ease out
+            StackedFace(m, fx + (tx - fx) * e, fy + (ty - fy) * e, slot.order, slot.ids)
+        }
+    }
 }
 
 /**

@@ -1,5 +1,6 @@
 package app.opaq.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -109,17 +111,16 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
         Box(Modifier.fillMaxWidth().height(260.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp))) {
             PlacePickerMap(at.first, at.second, radius, state.darkMap, onPick = { lat, lon -> at = lat to lon }, modifier = Modifier.fillMaxSize())
         }
+        // The hint stays put under the map. What scrolls up behind it fades into the background
+        // just below it, rather than running into the text.
+        Caption("Move the map and tap where the place should be.", Gutter.padding(top = 8.dp, bottom = 4.dp))
         val scroll = rememberScrollState()
+        val ground = MaterialTheme.colorScheme.background
+        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
         Column(
-            // Clipped, so fields scrolling up go under the map's edge rather than over the caption.
-            Modifier.fillMaxWidth().weight(1f).clipToBounds().verticalScroll(scroll).padding(top = 8.dp, bottom = 24.dp),
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(top = 12.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // The hint scrolls away with the rest, fading as it goes.
-            Caption(
-                "Move the map and tap where the place should be.",
-                Gutter.padding(bottom = 8.dp).graphicsLayer { alpha = (1f - scroll.value / 120f).coerceIn(0f, 1f) },
-            )
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.take(40) },
@@ -169,6 +170,12 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
                 }
             }
             Caption(PLACES_PRIVATE, Gutter.padding(top = 8.dp))
+        }
+        Box(
+            Modifier.fillMaxWidth().height(20.dp)
+                .graphicsLayer { alpha = (scroll.value / 40f).coerceIn(0f, 1f) }
+                .background(Brush.verticalGradient(listOf(ground, ground.copy(alpha = 0f)))),
+        )
         }
     }
 

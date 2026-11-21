@@ -1,5 +1,11 @@
 package app.opaq.ui
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -621,16 +627,74 @@ private fun EveryoneInfoSheet(onDismiss: () -> Unit) {
 
 private const val EVERYONE_INFO = "Shows the people from all your circles on one map. Someone in more than one circle appears once, at their newest location."
 
-/** Tap to turn sharing on or off. */
+/**
+ * Tap to turn sharing on or off. Usually just an icon: a blue location arrow while sharing, the
+ * same arrow in red and crossed out while paused. When it changes, the pill widens smoothly to say
+ * "Sharing" or "Paused", and shrinks back to the icon 5 seconds later.
+ */
 @Composable
 private fun SharingToggle(sharing: Boolean, onToggle: () -> Unit) {
-    val container by animateColorAsState(if (sharing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface, label = "pill")
-    val content by animateColorAsState(if (sharing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, label = "pillText")
-    Surface(onClick = onToggle, shape = RoundedCornerShape(50), color = container, shadowElevation = 3.dp) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = content, modifier = Modifier.size(8.dp)) {}
-            Spacer(Modifier.width(8.dp))
-            Text(if (sharing) "Sharing" else "Paused", color = content, style = MaterialTheme.typography.labelLarge)
+    var showLabel by remember { mutableStateOf(false) }
+    var seen by remember { mutableStateOf(sharing) }
+    LaunchedEffect(sharing) {
+        if (sharing == seen) return@LaunchedEffect
+        seen = sharing
+        showLabel = true
+        delay(5_000)
+        showLabel = false
+    }
+    val label = if (sharing) "Sharing" else "Paused"
+    val content by animateColorAsState(
+        if (sharing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        androidx.compose.animation.core.tween(300),
+        label = "sharingColor",
+    )
+    // Critically damped: smooth, no bounce.
+    val grow = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntSize>(
+        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+    )
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 3.dp,
+        modifier = Modifier.height(44.dp).semantics { contentDescription = label },
+    ) {
+        Row(Modifier.padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            SharingIcon(sharing, content, Modifier.size(22.dp))
+            AnimatedVisibility(
+                visible = showLabel,
+                enter = expandHorizontally(grow, expandFrom = Alignment.Start) + fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)),
+                exit = shrinkHorizontally(grow, shrinkTowards = Alignment.Start) + fadeOut(androidx.compose.animation.core.tween(140)),
+            ) {
+                Text(label, color = content, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            }
+        }
+    }
+}
+
+/** A location arrow tilted a little to the right; paused, a line strikes through it as it turns red. */
+@Composable
+private fun SharingIcon(sharing: Boolean, color: Color, modifier: Modifier) {
+    val slash by animateFloatAsState(
+        if (sharing) 0f else 1f,
+        androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "sharingSlash",
+    )
+    val gap = MaterialTheme.colorScheme.surface
+    androidx.compose.foundation.Canvas(modifier) {
+        val u = size.minDimension / 24f
+        val arrow = androidx.compose.ui.graphics.Path().apply {
+            moveTo(12f * u, 2.5f * u); lineTo(19.5f * u, 20.5f * u); lineTo(12f * u, 16.5f * u); lineTo(4.5f * u, 20.5f * u); close()
+        }
+        androidx.compose.ui.graphics.drawscope.rotate(25f) { drawPath(arrow, color) }
+        if (slash > 0f) {
+            val from = androidx.compose.ui.geometry.Offset(3.5f * u, 3.5f * u)
+            val to = androidx.compose.ui.geometry.Offset((3.5f + 17f * slash) * u, (3.5f + 17f * slash) * u)
+            // A gap in the pill's colour first, so the line reads clearly across the arrow.
+            drawLine(gap, from, to, strokeWidth = 5.5f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(color, from, to, strokeWidth = 2.2f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
     }
 }
