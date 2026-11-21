@@ -26,6 +26,7 @@ import app.opaq.core.model.MemberProfile
 import app.opaq.core.model.MembershipChange
 import app.opaq.core.model.MembershipEvent
 import app.opaq.core.model.PinLock
+import app.opaq.core.model.Place
 import app.opaq.core.model.SecurityEvent
 import app.opaq.core.model.SecurityEventType
 import app.opaq.core.model.OldControl
@@ -801,6 +802,9 @@ class Engine(
                 joinRequests = s.joinRequests.filterNot { it.circleId == circleId },
                 lastCircleId = if (s.lastCircleId == circleId) null else s.lastCircleId,
                 memberSeqs = s.memberSeqs.filterKeys { !it.startsWith("$circleId|") },
+                // Alert areas for this circle alone have no one left to watch.
+                places = s.places.filterNot { it.circleId == circleId },
+                placeInside = s.placeInside.filterKeys { id -> s.places.none { it.id == id && it.circleId == circleId } },
             )
         }
         refreshSubscriptions()
@@ -1365,7 +1369,76 @@ class Engine(
                 memberSeqs = if (target.v2) s.memberSeqs + (seqKey to body.seq) else s.memberSeqs,
             )
         }
-        if (state.value.locations[circleId]?.get(body.from) == body.loc) recordHistory(body.from, body.loc)
+        if (state.value.locations[circleId]?.get(body.from) == body.loc) {
+            recordHistory(body.from, body.loc)
+            checkPlaces(circleId, body.from, body.loc)
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Alert areas (#151): worked out on this phone from updates it receives anyway. Nothing is
+    // published, and places, names and who entered are never logged.
+    // -----------------------------------------------------------------------------------------
+
+    /** When each alert (place|person|change) last went off. Memory only. */
+    private val placeAlerted = HashMap<String, Long>()
+
+    /** Adds an alert area, or replaces the one with the same id. Returns it. */
+    suspend fun savePlace(place: Place): Place {
+        val name = place.name.trim()
+        require(name.isNotEmpty()) { "Give the place a name" }
+        require(place.radius in PlaceAlerts.MIN_RADIUS..PlaceAlerts.MAX_RADIUS) { "Choose a size between 100 ft and 3 miles" }
+        require(place.circleId == null || state.value.circles.any { it.id == place.circleId }) { "Circle not found" }
+        val saved = place.copy(name = name.take(40), id = place.id.ifEmpty { PlatformCrypto.randomBytes(8).toHex() })
+        update { s ->
+            val existing = s.places.any { it.id == saved.id }
+            require(existing || s.places.size < PlaceAlerts.MAX_PLACES) { "You can have up to ${PlaceAlerts.MAX_PLACES} places" }
+            // Whoever is already inside a new or moved place is noted without an alert.
+            val inside = s.circles.filter { saved.circleId == null || it.id == saved.circleId }
+                .flatMap { c -> s.locations[c.id].orEmpty().filter { (k, l) -> k != myPubkey && PlaceAlerts.isInside(saved, l) }.keys }
+                .distinct()
+            s.copy(
+                places = if (existing) s.places.map { if (it.id == saved.id) saved else it } else s.places + saved,
+                placeInside = s.placeInside + (saved.id to inside),
+            )
+        }
+        return saved
+    }
+
+    suspend fun deletePlace(id: String) = update { it.copy(places = it.places.filter { p -> p.id != id }, placeInside = it.placeInside - id) }
+
+    private suspend fun checkPlaces(circleId: String, pubkey: String, loc: MemberLocation) {
+        val s = state.value
+        if (pubkey == myPubkey || s.places.isEmpty()) return
+        val t = now()
+        val circle = s.circles.firstOrNull { it.id == circleId } ?: return
+        val name = s.contacts[pubkey]?.label ?: s.profiles[pubkey]?.name?.ifBlank { null }
+            ?: circle.members.firstOrNull { it.pubkey == pubkey }?.name?.ifBlank { null } ?: "Someone"
+        val moved = HashMap<String, Boolean>()
+        val alerts = ArrayList<Notice>()
+        s.places.filter { it.enabled && (it.circleId == null || it.circleId == circleId) }.forEach { p ->
+            val was = pubkey in s.placeInside[p.id].orEmpty()
+            val r = PlaceAlerts.check(p, was, loc, t)
+            if (r.inside != was) moved[p.id] = r.inside
+            val wanted = when (r.change) {
+                PlaceAlerts.Change.ARRIVED -> p.onArrive
+                PlaceAlerts.Change.LEFT -> p.onLeave
+                PlaceAlerts.Change.NONE -> false
+            }
+            val key = "${p.id}|$pubkey|${r.change}"
+            if (wanted && t - (placeAlerted[key] ?: 0) >= PlaceAlerts.REPEAT_SECONDS) {
+                placeAlerted[key] = t
+                val what = if (r.change == PlaceAlerts.Change.ARRIVED) "arrived at" else "left"
+                alerts += Notice("$name $what ${p.name}", "In ${circle.name}", Notice.PLACE)
+            }
+        }
+        if (moved.isNotEmpty()) update { st ->
+            st.copy(placeInside = st.placeInside + moved.map { (id, inside) ->
+                val now = st.placeInside[id].orEmpty() - pubkey
+                id to if (inside) now + pubkey else now
+            })
+        }
+        alerts.forEach { _notices.tryEmit(it) }
     }
 
     private suspend fun handleProfile(target: TagTarget, event: Event) {
@@ -1943,4 +2016,11 @@ sealed interface PinResult {
 }
 
 /** Something the user should hear about even when the app is closed. */
-data class Notice(val title: String, val text: String)
+data class Notice(val title: String, val text: String, val kind: String = CIRCLE) {
+    companion object {
+        /** Someone joined or left, and other changes to circles. */
+        const val CIRCLE = "circle"
+        /** Someone arrived at or left an alert area (#151). */
+        const val PLACE = "place"
+    }
+}
