@@ -15,7 +15,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, and one when the locate button finds the shared position was more than 25 m off.
+  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, one when sharing with a circle starts, one when the locate button finds the shared position was more than 25 m off, and one when someone in the circle asks for it (#149; at most one answer per person every 2 minutes, 20 an hour, and only while already sharing with that circle). The relay can see that a direct message was followed by an update; it can't read either.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Opaq", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -30,6 +30,8 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/MotionPolicy.kt      When to publish and which activity to report (still/walking/...).
   core/Prediction.kt        Carrying a moving person's dot forward between updates (viewer side).
   core/RoadSnap.kt          Lines a drawn history path up with nearby roads (display only).
+  core/Grouping.kt          Which people's dots overlap at a zoom level, so the map draws them as one group.
+  core/Places.kt            Alert areas: whether an update means someone arrived at or left a place.
   core/History.kt           On-device location history: encrypted per-person/day files, thinning,
                             pruning, and grouping into segments (still/walking/driving).
   core/model/Models.kt      AppState (everything persisted) and data classes.
@@ -50,6 +52,9 @@ ui/          Compose Multiplatform screens shared by Android and iOS.
   SecurityScreens.kt Recovery (unreadable state), PIN prompt and fields, security log, circle info,
                   sharing reminder.
   HistoryScreen.kt Location history map and segments, history-length picker.
+  PlacesScreens.kt Place alerts list and the add/edit screen (tap the map to set the place).
+  MapGroups.kt    Each person's face as a map icon (FacePainter), and how tightly a stack packs them.
+  Everyone.kt     The "Everyone" view: all circles combined, display only.
   Avatars.kt      Avatar colours, photo decoding cache, verified badge.
   Components.kt   Signal-style rows, buttons, top bar, custom icons (AppIcons).
   Theme.kt        Colours, type scale (system font), shapes.
@@ -105,7 +110,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 
-**Sealed DMs** (kind 1059). Signed by a throwaway key, `p`-tagged to the recipient, and NIP-44 encrypted to them. Inside is an `Envelope` whose body is signed by the sender's real key (`Envelopes.open` verifies it). They're used for join requests and refusals, rosters and removals.
+**Sealed DMs** (kind 1059). Signed by a throwaway key, `p`-tagged to the recipient, and NIP-44 encrypted to them. Inside is an `Envelope` whose body is signed by the sender's real key (`Envelopes.open` verifies it). They're used for join requests and refusals, rosters and removals, and location requests (`LocationRequestBody`, "Ask for their location" on a profile).
 
 **Location updates** (kind 30078, addressable).
 - Content is NIP-44 encrypted under a conversation key derived from the circle key and epoch.
@@ -128,6 +133,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Motion** (`MotionPolicy`).
 - Speed comes only from fixes accurate to 30 m: the median of reported GPS speeds over 30 s, otherwise distance over time. Coarse network fixes count as movement only for a clear jump.
+- Three activities: still (< 0.5 m/s), walking (running too, < 4 m/s, about 9 mph) and driving. There's no cycling: speed can't tell it from a run or slow traffic. `Activity.CYCLING` stays in the enum so older updates and history files still decode; it's shown and stored as driving.
 - Classification uses 15% hysteresis.
 - A "motion hint" switches to GPS straight away. On Android it comes from the significant-motion sensor. On iOS it comes from Core Motion's activity reading (running, cycling or in a vehicle at once; walking only once it has lasted 30 s, so steps around the house don't turn GPS on; at least medium confidence; needs Motion & Fitness, `NSMotionUsageDescription`) and from leaving a `CLMonitor` geofence (100 m, or twice the fix's accuracy) placed where the phone went still. The older `startMonitoringForRegion` is on its way to deprecation, so don't use it.
 - One speed reading never starts a drive: a lone fix counts only if it says still, and two or more use the lower median.
@@ -141,7 +147,9 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - On a road it follows the road round its bends (`Roads`, in `Roads.kt`, built from the tiles on screen with `queryRenderedFeatures`, refreshed when the camera stops, zoom ≥ 12). It carries on into the next piece of road only where the road clearly goes straight on, and stops where the known road ends, forks or meets a T junction. A travelling person within 6 m (`SNAP_METERS`, about 20 ft) of a road running their way is drawn on it; drivers and cyclists up to 12 m off it follow it from where they really are. Off-road it goes straight along the heading, and only for 15 s on a winding path.
 - A new update doesn't make the dot jump (`Track`): it travels from where it's drawn to the new estimate along the recent points (lined up with the road), at the person's speed plus enough to close the gap within 0.8–8 s, and waits rather than going back if it got ahead. Over 3 km (`Track.JUMP_METERS`) it's moved at once.
 
-**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile. The drawn path is lined up with roads it runs close to (`RoadSnap`, 12 m walking, 25 m otherwise) using road shapes from the tiles already on screen (`queryRenderedFeatures`); stored points are never changed and nothing is sent to a map-matching service.
+**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile. While driving, points keep the speed (`HistoryPoint.v`: the reported speed for the update, distance over time for its path points), and a drive shows its average and top speed. The drawn path is lined up with roads it runs close to (`RoadSnap`, 12 m walking, 25 m otherwise) using road shapes from the tiles already on screen (`queryRenderedFeatures`); stored points are never changed and nothing is sent to a map-matching service.
+
+**Sharing button.** On the home map it's an icon: a blue location arrow tilted right while sharing, the same arrow in red with a line through it while paused (content description "Sharing" or "Paused"). After a change the pill widens to say so (a no-bounce spring) and goes back to the icon after 5 seconds.
 
 **Pausing.** `AppState.sharing` pauses everything; `Circle.paused` pauses one circle (`ShareStatus.PAUSED`), and the circle still shows on the map. Either can be timed (`sharingResumeAt`, `Circle.pausedUntil`), and housekeeping ends it when it's over, the next time the app runs. Pausing sends each affected circle one last update with `status = MemberLocation.PAUSED` (last shared position, still, no speed or path), so they see "Sharing paused" instead of the person going offline. Resuming needs no PIN, like turning sharing back on.
 
@@ -150,6 +158,14 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 **Shortcuts (iOS).** `iosApp/iosApp/OpaqShortcuts.swift` declares App Intents (start, pause for a while, toggle, pause or resume a circle, update my location) and Siri phrases; the work is in Kotlin (`OpaqShortcuts` in ui/src/iosMain). Every action needs the phone unlocked, starting sharing from a shortcut posts a notification, and no action returns anyone's location (a shortcut can pass its output anywhere, outside the encryption). Keep it that way.
 
 **Relays.** `RelayPool` keeps one websocket per relay, pinged every minute, and retries a lost one after 2 s doubling up to 5 min (at once when the network comes back). A relay that closes a subscription isn't asked for it again for 30 min if it wants sign-in or blocks us, 5 min otherwise; one that answers an update with rate-limited or banned gets no updates for 5 or 30 min (`RelayReplies`). Asking again straight away costs battery and gets the household's address banned. The sealed-DM filter starts on the hour a week back (`Engine.directSince`), so subscriptions only change when the hourly tags do.
+
+**People close together** (#146). Display only. `Grouping.group` puts people whose dots would overlap (40 dp apart, regrouped every half zoom level) into one group, anchored on its first person (you first, then people online). Every person is one face icon (`FacePainter`) in a single symbol layer, always at that person's own spot. A stack is made by shifting the pictures (`iconOffset`) to the stack's centre and round a ring (`stackSlot`: two side by side, three a triangle, four a square; neighbours 26 dp apart so faces still overlap; front face on top via `sortKey`). Never move the point itself by more than a couple of pixels a frame: MapLibre then treats the symbol as new and fades it in from transparent. When someone joins or leaves a stack, the shift glides from the old slot to the new over 400 ms, both worked out at the current zoom (`rememberStackedFaces`). Tapping a stack zooms in until they separate (`Grouping.splitZoom`), or, for people in the same spot, lists them.
+
+**Everyone** (#147). With two or more circles the circle picker offers Everyone (`EVERYONE`): each person once, at their newest location from any circle, with profiles opening in the circle they were last seen in. It's a view only; invites, pausing and per-circle banners stay with each circle.
+
+**Directions** (#150). A profile offers directions to the person's last shared spot through `PlatformBridge.openDirections`: Google Maps or any map app on Android, Apple Maps or Google Maps (`comgooglemaps://`, listed in `LSApplicationQueriesSchemes`) on iOS. The chosen map app sees the destination; nothing else is sent.
+
+**Place alerts** (#151, plan in #101). On the add/edit screen the map moves freely and a tap sets the place; the area glides to it and the centre dot pops (450 ms). The hint stays pinned under the map, with a fade below it for the settings scrolling underneath. `AppState.places` (at most 20, radius 30 m to 5 km, one circle or all) and `placeInside` (who's inside now, so restarts don't re-announce). `Engine.checkPlaces` runs on each received update: only exact, fresh (under 10 min), accurate updates count; leaving needs 25 m (or the accuracy) past the edge; passing through between updates counts as arriving; one alert per person, place and change every 10 minutes; never about yourself. Alerts go out as `Notice`s with `kind = PLACE` (Android channel "Place alerts"). Nothing is published and places are never logged. They're in backups (`BackupData.places`; who's inside isn't), and a circle's places go when the circle does. Enabled places are drawn faintly on the maker's home map.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 

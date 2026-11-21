@@ -1,5 +1,12 @@
 package app.opaq.ui
 
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -88,6 +95,7 @@ import app.opaq.core.ShareStatus
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Circle
 import app.opaq.core.model.JoinRequest
+import app.opaq.core.model.MemberLocation
 import app.opaq.core.protocol.DeviceCode
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -126,9 +134,14 @@ fun HomeScreen(
 ) {
     val gate = LocalPinGate.current
     val haptics = rememberHaptics()
-    val circle = state.circles.firstOrNull { it.id == selectedCircleId }
+    // "Everyone" (#147) is offered once there are two circles to combine.
+    val everyone = remember(state.circles) { if (state.circles.size >= 2) everyoneCircle(state) else null }
+    val circle = everyone?.takeIf { selectedCircleId == EVERYONE }
+        ?: state.circles.firstOrNull { it.id == selectedCircleId }
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
+    val isEveryone = circle?.id == EVERYONE
+
     var showCreate by remember { mutableStateOf(false) }
     var showCircles by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<JoinRequest?>(null) }
@@ -140,8 +153,14 @@ fun HomeScreen(
         val now = rememberNow()
         var focus by remember { mutableStateOf<MapFocus?>(null) }
         var focusSeq by remember { mutableIntStateOf(0) }
-        val locs = state.locations[circle.id].orEmpty()
-        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, now) {
+        // People in one spot, tapped on the map (#146).
+        var together by remember { mutableStateOf<List<String>?>(null) }
+        val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
+        // In Everyone, a profile opens in the circle where the person was seen most recently.
+        val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
+        // Everything a face is drawn from, so a new photo, name or colour shows on the map at once,
+        // stacked or not.
+        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, state.myPhoto, state.myName, state.showPhotos, now) {
             circle.members.mapNotNull { m ->
                 val l = locs[m.pubkey] ?: return@mapNotNull null
                 val info = avatarFor(state, m.pubkey, me, m.name)
@@ -260,7 +279,10 @@ fun HomeScreen(
                     endInset = if (landscape) with(density) { panelW.toDp() } else 0.dp,
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
-                    onPersonClick = { onOpenProfile(circle.id, it) },
+                    onPersonClick = openProfile,
+                    onGroupClick = { together = it },
+                    // Alert areas (#151) watching this circle, only on this phone.
+                    places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
             }
 
@@ -328,7 +350,7 @@ fun HomeScreen(
                     me = me,
                     circle = circle,
                     now = now,
-                    shareStatus = actions.shareStatus(circle),
+                    shareStatus = if (isEveryone) ShareStatus.OK else actions.shareStatus(circle),
                     sharingBlocked = sharingBlocked,
                     onFixSharing = onFixSharing,
                     onStartSharing = { gate.require { haptics.confirm(); actions.confirmCircle(circle.id) } },
@@ -338,7 +360,7 @@ fun HomeScreen(
                     onReview = { reviewing = it },
                     onDismissRefusal = { actions.dismissJoinRefusal(it) },
                     onPerson = onPerson,
-                    onProfile = { onOpenProfile(circle.id, it) },
+                    onProfile = openProfile,
                 )
             }
             // The locate button also checks where you are (#115): the phone takes a fresh GPS fix and
@@ -414,8 +436,8 @@ fun HomeScreen(
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(4.dp).height(36.dp)) {}
                         }
                         Column(Modifier.weight(1f).padding(top = 8.dp)) {
-                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
-                            people { pubkey -> if (!flyTo(pubkey)) onOpenProfile(circle.id, pubkey) }
+                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, combined = isEveryone)
+                            people { pubkey -> if (!flyTo(pubkey)) openProfile(pubkey) }
                         }
                     }
                 }
@@ -481,13 +503,13 @@ fun HomeScreen(
                         Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(36.dp).height(4.dp)) {}
                         }
-                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
+                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, combined = isEveryone)
                     }
                     people { pubkey ->
                         if (flyTo(pubkey)) {
                             if (sheetY < defaultY - 2f) settle(0f, defaultY)
                         } else {
-                            onOpenProfile(circle.id, pubkey)
+                            openProfile(pubkey)
                         }
                     }
                 }
@@ -505,6 +527,18 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
             )
             }
+        }
+        together?.let { ids ->
+            TogetherSheet(
+                state = state,
+                me = me,
+                ids = ids,
+                now = now,
+                location = { locs[it] },
+                name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
+                onProfile = { together = null; openProfile(it) },
+                onDismiss = { together = null },
+            )
         }
     }
 
@@ -566,26 +600,87 @@ fun HomeScreen(
 }
 
 @Composable
-private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit) {
+private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit, combined: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(circle.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}")
+            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}" + if (combined) " from all your circles" else "")
         }
-        if (circle.adminPubkey == me || me in circle.managers) TonalButton("Invite", onInvite, icon = AppIcons.Add)
+        // Everyone (#147) has no invite of its own; what it shows is explained in the circle picker.
+        if (!combined && (circle.adminPubkey == me || me in circle.managers)) TonalButton("Invite", onInvite, icon = AppIcons.Add)
     }
 }
 
-/** Tap to turn sharing on or off. */
+private const val EVERYONE_INFO = "Shows the people from all your circles on one map. Someone in more than one circle appears once, at their newest location."
+
+/**
+ * Tap to turn sharing on or off. Usually just an icon: a blue location arrow while sharing, the
+ * same arrow in red and crossed out while paused. When it changes, the pill widens smoothly to say
+ * "Sharing" or "Paused", and shrinks back to the icon 5 seconds later.
+ */
 @Composable
 private fun SharingToggle(sharing: Boolean, onToggle: () -> Unit) {
-    val container by animateColorAsState(if (sharing) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface, label = "pill")
-    val content by animateColorAsState(if (sharing) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant, label = "pillText")
-    Surface(onClick = onToggle, shape = RoundedCornerShape(50), color = container, shadowElevation = 3.dp) {
-        Row(Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = content, modifier = Modifier.size(8.dp)) {}
-            Spacer(Modifier.width(8.dp))
-            Text(if (sharing) "Sharing" else "Paused", color = content, style = MaterialTheme.typography.labelLarge)
+    var showLabel by remember { mutableStateOf(false) }
+    var seen by remember { mutableStateOf(sharing) }
+    LaunchedEffect(sharing) {
+        if (sharing == seen) return@LaunchedEffect
+        seen = sharing
+        showLabel = true
+        delay(5_000)
+        showLabel = false
+    }
+    val label = if (sharing) "Sharing" else "Paused"
+    val content by animateColorAsState(
+        if (sharing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+        androidx.compose.animation.core.tween(300),
+        label = "sharingColor",
+    )
+    // Critically damped: smooth, no bounce.
+    val grow = androidx.compose.animation.core.spring<androidx.compose.ui.unit.IntSize>(
+        dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+        stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
+    )
+    Surface(
+        onClick = onToggle,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 3.dp,
+        modifier = Modifier.height(44.dp).semantics { contentDescription = label },
+    ) {
+        Row(Modifier.padding(horizontal = 11.dp), verticalAlignment = Alignment.CenterVertically) {
+            SharingIcon(sharing, content, Modifier.size(22.dp))
+            AnimatedVisibility(
+                visible = showLabel,
+                enter = expandHorizontally(grow, expandFrom = Alignment.Start) + fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 60)),
+                exit = shrinkHorizontally(grow, shrinkTowards = Alignment.Start) + fadeOut(androidx.compose.animation.core.tween(140)),
+            ) {
+                Text(label, color = content, style = MaterialTheme.typography.labelLarge, maxLines = 1, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+            }
+        }
+    }
+}
+
+/** A location arrow tilted a little to the right; paused, a line strikes through it as it turns red. */
+@Composable
+private fun SharingIcon(sharing: Boolean, color: Color, modifier: Modifier) {
+    val slash by animateFloatAsState(
+        if (sharing) 0f else 1f,
+        androidx.compose.animation.core.tween(350, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+        label = "sharingSlash",
+    )
+    val gap = MaterialTheme.colorScheme.surface
+    androidx.compose.foundation.Canvas(modifier) {
+        val u = size.minDimension / 24f
+        val arrow = androidx.compose.ui.graphics.Path().apply {
+            moveTo(12f * u, 2.5f * u); lineTo(19.5f * u, 20.5f * u); lineTo(12f * u, 16.5f * u); lineTo(4.5f * u, 20.5f * u); close()
+        }
+        rotate(25f) { drawPath(arrow, color) }
+        if (slash > 0f) {
+            val from = androidx.compose.ui.geometry.Offset(3.5f * u, 3.5f * u)
+            val to = androidx.compose.ui.geometry.Offset((3.5f + 17f * slash) * u, (3.5f + 17f * slash) * u)
+            // A gap in the pill's colour first, so the line reads clearly across the arrow.
+            drawLine(gap, from, to, strokeWidth = 5.5f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(color, from, to, strokeWidth = 2.2f * u, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
     }
 }
@@ -620,7 +715,7 @@ private fun PeopleList(
     onProfile: (String) -> Unit,
 ) {
     val requests = state.joinRequests.filter { it.circleId == circle.id }
-    val locs = state.locations[circle.id].orEmpty()
+    val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
     LazyColumn(Modifier.fillMaxWidth()) {
         item(key = "banners") {
             Column {
@@ -741,10 +836,29 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) -> Unit, onNew: () -> Unit, onJoin: () -> Unit, onDismiss: () -> Unit) {
+    var explain by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
       // Scrolls when there are many circles or the phone is sideways.
       Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Your circles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+        // Everyone from every circle on one map (#147), once there's more than one circle.
+        if (state.circles.size >= 2) {
+            val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
+            SettingsRow(
+                title = "Everyone",
+                subtitle = "$people people from all your circles",
+                icon = AppIcons.Globe,
+                onClick = { onSelect(EVERYONE) },
+            ) {
+                IconButton(onClick = { explain = !explain }) {
+                    Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+            }
+            AnimatedVisibility(explain) {
+                Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+            }
+        }
         state.circles.forEach { c ->
             SettingsRow(
                 title = c.name,
@@ -793,5 +907,33 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
             TonalButton("Join a circle", onJoin, Modifier.fillMaxWidth(), icon = AppIcons.ScanQr)
         }
     }
+    }
+}
+
+/** People in the same spot on the map (#146): tap one to open their profile. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onProfile: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+            ids.forEach { id ->
+                val info = avatarFor(state, id, me, name(id))
+                val loc = location(id)
+                val offline = id != me && Format.isOffline(loc, now)
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClickLabel = "Open profile") { onProfile(id) }.padding(horizontal = 24.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Avatar(info, size = 48.dp, dimmed = offline)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (id == me) "You" else info.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Format.status(loc, now), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }

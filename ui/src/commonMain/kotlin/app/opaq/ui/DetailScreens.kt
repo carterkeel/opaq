@@ -113,6 +113,7 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 // Someone's profile
 // -------------------------------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit, onHistory: () -> Unit = {}) {
     val circle = state.circles.firstOrNull { it.id == circleId }
@@ -132,8 +133,10 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     var renaming by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
+    var directions by remember { mutableStateOf(false) }
     val gate = LocalPinGate.current
     val haptics = rememberHaptics()
+    val platform = LocalPlatform.current
 
     ScreenScaffold("", onBack) {
         val subtitle = when {
@@ -148,6 +151,19 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             subtitle = loc?.let { "Accurate to about ${it.accuracy.toInt()} m" },
             icon = AppIcons.LocationPin,
         )
+        // Ask their phone for a fresh update (#149). It only answers if they're sharing with this circle.
+        if (!isMe && circle.confirmed) {
+            SettingsRow(
+                "Ask for their location",
+                "Their phone sends a fresh update if they're sharing",
+                AppIcons.Refresh,
+                onClick = { haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) },
+            )
+        }
+        // Directions to where they are (#150), from their last shared position.
+        if (!isMe && loc != null && platform.directionsApps.isNotEmpty()) {
+            SettingsRow("Directions", "Open a map app with directions to ${info.name}", AppIcons.Directions, onClick = { directions = true })
+        }
         SettingsRow(
             "Location history",
             if (state.historyDays == 0) "Off · turn it on in Settings" else "Past ${Format.historyDays(state.historyDays).lowercase()}, kept on this phone",
@@ -206,6 +222,22 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         }
     }
 
+    if (directions && loc != null) {
+        ModalBottomSheet(onDismissRequest = { directions = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+            Text("Directions to ${info.name}", style = MaterialTheme.typography.titleMedium, modifier = Gutter)
+            Caption(
+                "Directions go to where they were at their last update. The map app you pick will see the destination.",
+                Gutter.padding(top = 4.dp, bottom = 8.dp),
+            )
+            platform.directionsApps.forEach { app ->
+                SettingsRow(app, icon = AppIcons.Directions, onClick = {
+                    directions = false
+                    platform.openDirections(app, loc.lat, loc.lon, info.name)
+                })
+            }
+            Spacer(Modifier.height(24.dp))
+        }
+    }
     if (renaming) {
         TextSheet("Rename", "Name shown on your phone", contact?.label ?: published, "Save", { renaming = false }) {
             actions.setLabel(pubkey, it); renaming = false
@@ -563,6 +595,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
     onSection: (SettingsSection) -> Unit,
+    onPlaces: () -> Unit = {},
 ) {
     ScreenScaffold("Settings", onBack) {
         Row(
@@ -583,6 +616,8 @@ fun SettingsScreen(
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
             SettingsRow(section.title, icon = section.icon, onClick = { onSection(section) })
+            // Alert areas (#151) sit with sharing and circles.
+            if (section == SettingsSection.Circles) SettingsRow("Place alerts", icon = AppIcons.Radius, onClick = onPlaces)
         }
         Caption("Opaq · open source", Gutter.padding(top = 24.dp))
     }

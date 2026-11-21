@@ -94,6 +94,10 @@ data class AppState(
     val historyDays: Int = 7,
     /** Key for the history files. Never in backups: a restored phone starts its history afresh. */
     val historyKeyHex: String? = null,
+    /** Alert areas drawn on this phone's map (#151). Never sent anywhere; included in backups. */
+    val places: List<Place> = emptyList(),
+    /** Who's inside each place right now, by place id, so a restart doesn't announce them again. */
+    val placeInside: Map<String, List<String>> = emptyMap(),
 )
 
 @Serializable
@@ -305,6 +309,25 @@ data class PendingJoin(
 
 @Serializable
 data class Point(val lat: Double, val lon: Double, val t: Long)
+
+/**
+ * An alert area (#151): a circle on the map that tells this phone when people arrive or leave.
+ * Only its maker sees it; it's worked out on this phone from updates it already receives.
+ */
+@Serializable
+data class Place(
+    val id: String,
+    val name: String,
+    val lat: Double,
+    val lon: Double,
+    /** Metres. */
+    val radius: Double = 150.0,
+    /** The circle whose members it watches, or null for every circle. */
+    val circleId: String? = null,
+    val onArrive: Boolean = true,
+    val onLeave: Boolean = false,
+    val enabled: Boolean = true,
+)
 
 @Serializable
 data class MemberLocation(

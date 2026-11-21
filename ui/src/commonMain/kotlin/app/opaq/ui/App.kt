@@ -56,6 +56,8 @@ sealed interface Route {
     data object SecurityLog : Route
     data class CircleInfo(val circleId: String) : Route
     data class History(val circleId: String, val pubkey: String) : Route
+    data object Places : Route
+    data class Place(val id: String?) : Route
 }
 
 /**
@@ -226,7 +228,10 @@ fun OpaqScreens(
                                             state, me, ::pop,
                                             onEditProfile = { push(Route.EditProfile) },
                                             onSection = { push(Route.SettingsPage(it)) },
+                                            onPlaces = { push(Route.Places) },
                                         )
+                                        Route.Places -> PlacesScreen(state, ::pop, onOpen = { push(Route.Place(it)) })
+                                        is Route.Place -> PlaceScreen(state, me, route.id, actions, ::pop)
                                         is Route.SettingsPage -> SettingsSectionScreen(
                                             route.section, state, me, relayStatus, sharingSettings, actions, ::pop,
                                             onBackup = { push(Route.Backup) },

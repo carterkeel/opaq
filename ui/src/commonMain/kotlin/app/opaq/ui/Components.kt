@@ -254,6 +254,35 @@ object AppIcons {
         moveTo(7f, 12f); lineTo(17f, 12f)
     }
 
+    /** A turn arrow in a road sign: directions. */
+    val Directions: ImageVector = stroke("Directions") {
+        moveTo(12f, 2.5f); lineTo(21.5f, 12f); lineTo(12f, 21.5f); lineTo(2.5f, 12f); close()
+        moveTo(9f, 15f); lineTo(9f, 12f); quadTo(9f, 10f, 11f, 10f); lineTo(15f, 10f)
+        moveTo(13f, 8f); lineTo(15f, 10f); lineTo(13f, 12f)
+    }
+
+    /** A globe: everyone from every circle (#147). */
+    val Globe: ImageVector = stroke("Globe") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(3f, 12f); lineTo(21f, 12f)
+        moveTo(12f, 3f); quadTo(16f, 7.5f, 16f, 12f); quadTo(16f, 16.5f, 12f, 21f)
+        moveTo(12f, 3f); quadTo(8f, 7.5f, 8f, 12f); quadTo(8f, 16.5f, 12f, 21f)
+    }
+
+    /** A bell: notifications. */
+    val Bell: ImageVector = stroke("Bell") {
+        moveTo(6f, 16f); lineTo(6f, 11f); quadTo(6f, 5f, 12f, 5f); quadTo(18f, 5f, 18f, 11f); lineTo(18f, 16f); lineTo(19.5f, 17.5f); lineTo(4.5f, 17.5f); close()
+        moveTo(10f, 20.5f); quadTo(12f, 22f, 14f, 20.5f)
+        moveTo(12f, 3f); lineTo(12f, 5f)
+    }
+
+    /** A spot with a ring round it: an area on the map. */
+    val Radius: ImageVector = stroke("Radius") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(13.5f, 12f); arcTo(1.5f, 1.5f, 0f, true, true, 10.5f, 12f); arcTo(1.5f, 1.5f, 0f, true, true, 13.5f, 12f); close()
+        moveTo(13.5f, 12f); lineTo(21f, 12f)
+    }
+
     val Camera: ImageVector = stroke("Camera") {
         moveTo(4f, 8f); lineTo(7.5f, 8f); lineTo(9f, 5.5f); lineTo(15f, 5.5f); lineTo(16.5f, 8f); lineTo(20f, 8f)
         lineTo(20f, 19f); lineTo(4f, 19f); close()

@@ -26,6 +26,7 @@ import app.opaq.core.model.MemberProfile
 import app.opaq.core.model.MembershipChange
 import app.opaq.core.model.MembershipEvent
 import app.opaq.core.model.PinLock
+import app.opaq.core.model.Place
 import app.opaq.core.model.SecurityEvent
 import app.opaq.core.model.SecurityEventType
 import app.opaq.core.model.OldControl
@@ -50,6 +51,7 @@ import app.opaq.core.protocol.Backups
 import app.opaq.core.protocol.JoinRefusedBody
 import app.opaq.core.protocol.JoinRequestBody
 import app.opaq.core.protocol.LeftBody
+import app.opaq.core.protocol.LocationRequestBody
 import app.opaq.core.protocol.LocationBody
 import app.opaq.core.protocol.ProfileBody
 import app.opaq.core.protocol.RemovedBody
@@ -172,6 +174,19 @@ class Engine(
 
     /** Things worth a notification: someone joined or left a circle. The platform shows them. */
     val notices: SharedFlow<Notice> = _notices.asSharedFlow()
+
+    private val _locationRequests = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /**
+     * Someone in a circle we share with asked where we are (#149), by circle id. The sharing service
+     * takes a fresh fix and sends it at once, as a normal update.
+     */
+    val locationRequests: SharedFlow<String> = _locationRequests.asSharedFlow()
+
+    /** When we last asked each person (circle|pubkey), and when we last answered each person. Memory only. */
+    private val locationAsked = HashMap<String, Long>()
+    private val locationAnswered = HashMap<String, Long>()
+    private val locationAnswers = ArrayDeque<Long>()
 
     /** Until when the last correct PIN entry authorizes sensitive actions (memory only). */
     private var authorizedUntil = 0L
@@ -787,6 +802,9 @@ class Engine(
                 joinRequests = s.joinRequests.filterNot { it.circleId == circleId },
                 lastCircleId = if (s.lastCircleId == circleId) null else s.lastCircleId,
                 memberSeqs = s.memberSeqs.filterKeys { !it.startsWith("$circleId|") },
+                // Alert areas for this circle alone have no one left to watch.
+                places = s.places.filterNot { it.circleId == circleId },
+                placeInside = s.placeInside.filterKeys { id -> s.places.none { it.id == id && it.circleId == circleId } },
             )
         }
         refreshSubscriptions()
@@ -1351,7 +1369,76 @@ class Engine(
                 memberSeqs = if (target.v2) s.memberSeqs + (seqKey to body.seq) else s.memberSeqs,
             )
         }
-        if (state.value.locations[circleId]?.get(body.from) == body.loc) recordHistory(body.from, body.loc)
+        if (state.value.locations[circleId]?.get(body.from) == body.loc) {
+            recordHistory(body.from, body.loc)
+            checkPlaces(circleId, body.from, body.loc)
+        }
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Alert areas (#151): worked out on this phone from updates it receives anyway. Nothing is
+    // published, and places, names and who entered are never logged.
+    // -----------------------------------------------------------------------------------------
+
+    /** When each alert (place|person|change) last went off. Memory only. */
+    private val placeAlerted = HashMap<String, Long>()
+
+    /** Adds an alert area, or replaces the one with the same id. Returns it. */
+    suspend fun savePlace(place: Place): Place {
+        val name = place.name.trim()
+        require(name.isNotEmpty()) { "Give the place a name" }
+        require(place.radius in PlaceAlerts.MIN_RADIUS..PlaceAlerts.MAX_RADIUS) { "Choose a size between 100 ft and 3 miles" }
+        require(place.circleId == null || state.value.circles.any { it.id == place.circleId }) { "Circle not found" }
+        val saved = place.copy(name = name.take(40), id = place.id.ifEmpty { PlatformCrypto.randomBytes(8).toHex() })
+        update { s ->
+            val existing = s.places.any { it.id == saved.id }
+            require(existing || s.places.size < PlaceAlerts.MAX_PLACES) { "You can have up to ${PlaceAlerts.MAX_PLACES} places" }
+            // Whoever is already inside a new or moved place is noted without an alert.
+            val inside = s.circles.filter { saved.circleId == null || it.id == saved.circleId }
+                .flatMap { c -> s.locations[c.id].orEmpty().filter { (k, l) -> k != myPubkey && PlaceAlerts.isInside(saved, l) }.keys }
+                .distinct()
+            s.copy(
+                places = if (existing) s.places.map { if (it.id == saved.id) saved else it } else s.places + saved,
+                placeInside = s.placeInside + (saved.id to inside),
+            )
+        }
+        return saved
+    }
+
+    suspend fun deletePlace(id: String) = update { it.copy(places = it.places.filter { p -> p.id != id }, placeInside = it.placeInside - id) }
+
+    private suspend fun checkPlaces(circleId: String, pubkey: String, loc: MemberLocation) {
+        val s = state.value
+        if (pubkey == myPubkey || s.places.isEmpty()) return
+        val t = now()
+        val circle = s.circles.firstOrNull { it.id == circleId } ?: return
+        val name = s.contacts[pubkey]?.label ?: s.profiles[pubkey]?.name?.ifBlank { null }
+            ?: circle.members.firstOrNull { it.pubkey == pubkey }?.name?.ifBlank { null } ?: "Someone"
+        val moved = HashMap<String, Boolean>()
+        val alerts = ArrayList<Notice>()
+        s.places.filter { it.enabled && (it.circleId == null || it.circleId == circleId) }.forEach { p ->
+            val was = pubkey in s.placeInside[p.id].orEmpty()
+            val r = PlaceAlerts.check(p, was, loc, t)
+            if (r.inside != was) moved[p.id] = r.inside
+            val wanted = when (r.change) {
+                PlaceAlerts.Change.ARRIVED -> p.onArrive
+                PlaceAlerts.Change.LEFT -> p.onLeave
+                PlaceAlerts.Change.NONE -> false
+            }
+            val key = "${p.id}|$pubkey|${r.change}"
+            if (wanted && t - (placeAlerted[key] ?: 0) >= PlaceAlerts.REPEAT_SECONDS) {
+                placeAlerted[key] = t
+                val what = if (r.change == PlaceAlerts.Change.ARRIVED) "arrived at" else "left"
+                alerts += Notice("$name $what ${p.name}", "In ${circle.name}", Notice.PLACE)
+            }
+        }
+        if (moved.isNotEmpty()) update { st ->
+            st.copy(placeInside = st.placeInside + moved.map { (id, inside) ->
+                val now = st.placeInside[id].orEmpty() - pubkey
+                id to if (inside) now + pubkey else now
+            })
+        }
+        alerts.forEach { _notices.tryEmit(it) }
     }
 
     private suspend fun handleProfile(target: TagTarget, event: Event) {
@@ -1430,6 +1517,7 @@ class Engine(
             is LeftBody -> onLeft(body)
             is RosterAckBody -> onRosterAck(body)
             is RosterRequestBody -> onRosterRequest(body, ref)
+            is LocationRequestBody -> onLocationRequest(body)
             else -> Unit
         }
         update { it.copy(seenEventIds = (it.seenEventIds + event.id).takeLast(500)) }
@@ -1665,6 +1753,40 @@ class Engine(
     }
 
     /** A member left: if we're the admin, remove them properly so the circle gets a new key. */
+    /**
+     * Asks [pubkey] in [circleId] for their location now (#149). Returns false without sending if we
+     * asked them less than [LOCATION_REQUEST_GAP_SECONDS] ago.
+     */
+    suspend fun requestLocation(circleId: String, pubkey: String): Boolean {
+        val c = state.value.circles.firstOrNull { it.id == circleId } ?: throw IllegalStateException("Circle not found")
+        if (pubkey == myPubkey || c.members.none { it.pubkey == pubkey }) throw IllegalStateException("They're not in this circle")
+        if (!c.confirmed) throw IllegalStateException("Start sharing with this circle first")
+        val t = now()
+        val key = "$circleId|$pubkey"
+        if (t - (locationAsked[key] ?: 0) < LOCATION_REQUEST_GAP_SECONDS) return false
+        locationAsked[key] = t
+        sendDirect(c, pubkey, LocationRequestBody(myPubkey, t, circleId))
+        return true
+    }
+
+    private fun onLocationRequest(body: LocationRequestBody) {
+        val s = state.value
+        val c = s.circles.firstOrNull { it.id == body.circle } ?: return
+        if (body.from == myPubkey || c.members.none { it.pubkey == body.from }) return
+        // Only while we're sharing with them anyway: a request never turns sharing on.
+        if (!s.sharing || c.paused || !c.confirmed) return
+        val t = now()
+        // Relays keep direct messages, so an old request (or a replayed one) is ignored.
+        if (kotlin.math.abs(t - body.ts) > MAX_CLOCK_SKEW_SECONDS) return
+        // At most one answer per person every 2 minutes, and 20 an hour in all.
+        if (t - (locationAnswered[body.from] ?: 0) < LOCATION_REQUEST_GAP_SECONDS) return
+        while (locationAnswers.isNotEmpty() && t - locationAnswers.first() > 3600) locationAnswers.removeFirst()
+        if (locationAnswers.size >= LOCATION_ANSWERS_PER_HOUR) return
+        locationAnswered[body.from] = t
+        locationAnswers.addLast(t)
+        _locationRequests.tryEmit(c.id)
+    }
+
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
@@ -1806,6 +1928,12 @@ class Engine(
         /** Updates claiming to be from further in the future than this are ignored. */
         const val MAX_CLOCK_SKEW_SECONDS = 10 * 60L
 
+        /** Asking one person for their location, and answering one person, at most this often (#149). */
+        const val LOCATION_REQUEST_GAP_SECONDS = 2 * 60L
+
+        /** Answers to location requests per hour, from everyone together. */
+        const val LOCATION_ANSWERS_PER_HOUR = 20
+
         /**
          * Envelopes are padded to 1400 bytes, which NIP-44 pads to 1536, which base64-encodes to 2140
          * characters. Anything bigger drops batched points, so every update on the relays is the same size.
@@ -1888,4 +2016,11 @@ sealed interface PinResult {
 }
 
 /** Something the user should hear about even when the app is closed. */
-data class Notice(val title: String, val text: String)
+data class Notice(val title: String, val text: String, val kind: String = CIRCLE) {
+    companion object {
+        /** Someone joined or left, and other changes to circles. */
+        const val CIRCLE = "circle"
+        /** Someone arrived at or left an alert area (#151). */
+        const val PLACE = "place"
+    }
+}

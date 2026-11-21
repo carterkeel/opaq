@@ -5,6 +5,7 @@ import app.opaq.core.crypto.PlatformCrypto
 import app.opaq.core.crypto.fromBase64Url
 import app.opaq.core.crypto.toBase64Url
 import app.opaq.core.crypto.toHex
+import app.opaq.core.model.Place
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Circle
 import app.opaq.core.model.Contact
@@ -33,6 +34,8 @@ data class BackupData(
     val contacts: Map<String, Contact> = emptyMap(),
     val pendingJoins: List<PendingJoin> = emptyList(),
     val lastCircleId: String? = null,
+    /** Place alerts (#151). Missing in older backups. Who's inside them isn't kept; that comes back from updates. */
+    val places: List<Place> = emptyList(),
 )
 
 /** Key-derivation settings stored in a v2 backup's second line. */
@@ -82,6 +85,7 @@ object Backups {
         contacts = s.contacts,
         pendingJoins = s.pendingJoins,
         lastCircleId = s.lastCircleId,
+        places = s.places,
     )
 
     /** Fresh app state from a backup. Sharing starts paused so nothing goes out before you check. */
@@ -99,6 +103,7 @@ object Backups {
         contacts = b.contacts,
         pendingJoins = b.pendingJoins,
         lastCircleId = b.lastCircleId,
+        places = b.places.filter { p -> p.circleId == null || b.circles.any { it.id == p.circleId } },
         setupDone = true,
     )
 

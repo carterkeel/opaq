@@ -113,6 +113,35 @@ class CreateCircleTest {
     }
 
     /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
+    /** Like [tapUntil], for a button found by its content description. */
+    private fun tapDescUntil(label: String, expected: String) {
+        repeat(3) {
+            dismissSystemDialogs()
+            device.wait(Until.findObject(By.desc(label)), 10_000)?.click()
+            if (device.wait(Until.hasObject(By.desc(expected)), 10_000)) return
+        }
+        device.wait(Until.findObject(By.desc(expected)), 1_000) ?: run {
+            logScreen()
+            error("\"$expected\" didn't appear")
+        }
+    }
+
+    /** Finds [text], scrolling the screen's scrollable part down until it shows. */
+    private fun scrollTo(text: String): UiObject2 {
+        repeat(6) {
+            device.findObject(By.text(text))?.let { return it }
+            // Scroll the scrollable part, keeping clear of the screen's bottom edge: a swipe that
+            // starts there is the system's "go home" gesture and sends the app to the background.
+            // The map counts as scrollable too; the screen's list is the one reaching lowest.
+            device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
+                list.setGestureMargin((device.displayHeight * 0.15).toInt())
+                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
+            }
+            Thread.sleep(500)
+        }
+        return waitFor(text, 2_000)
+    }
+
     private fun hideKeyboard() {
         if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
             device.pressBack()
@@ -194,8 +223,10 @@ class CreateCircleTest {
         shot("home")
 
         // Sharing toggle on the map.
-        tapUntil("Sharing", expected = "Paused")
-        tapUntil("Paused", expected = "Sharing")
+        // The sharing button is an icon described as "Sharing" or "Paused"; it says so in words for 5 s after a tap.
+        tapDescUntil("Sharing", expected = "Paused")
+        shot("sharing-paused")
+        tapDescUntil("Paused", expected = "Sharing")
 
         // Invite screen with a QR code, as a link several people can use (#53). Creating an invite
         // asks for the PIN once the last entry is old.
@@ -210,8 +241,9 @@ class CreateCircleTest {
         shot("invite")
         // The buttons are below the QR code. Cancel the invite early: back to "Create invite".
         device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
-        waitFor("Share link")
-        waitFor("Cancel this invite").click()
+        // Below the QR code, so a small screen has to scroll to them.
+        scrollTo("Share link")
+        scrollTo("Cancel this invite").click()
         waitFor("Create invite")
         device.pressBack()
 
@@ -249,6 +281,28 @@ class CreateCircleTest {
             device.pressBack()
             waitFor("Appearance")
         }
+        // Place alerts (#151): add one where the map is, see it listed, then delete it.
+        waitFor("Place alerts").click()
+        waitFor("Add a place").click()
+        waitFor("Move the map and tap where the place should be.")
+        val placeName = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no place name field")
+        placeName.click()
+        placeName.text = "Home"
+        device.pressBack() // close the keyboard
+        Thread.sleep(2_000) // let the map load
+        shot("place-new")
+        scrollTo("Add place").click()
+        waitFor("Add a place")
+        waitFor("Home")
+        shot("places")
+        waitFor("Home").click()
+        waitFor("Edit place")
+        scrollTo("Delete place").click()
+        waitFor("Delete").click()
+        waitFor("Add a place")
+        device.pressBack()
+        waitFor("Appearance")
+
         // The app's own theme, then back to following the phone.
         waitFor("Appearance").click()
         waitFor("Theme").click()

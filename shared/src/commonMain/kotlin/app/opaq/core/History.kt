@@ -25,7 +25,15 @@ interface HistoryFiles {
 
 /** One remembered position, with what the person was doing (still, walking, driving...). */
 @Serializable
-data class HistoryPoint(val t: Long, val lat: Double, val lon: Double, val a: Activity = Activity.UNKNOWN, val acc: Float? = null)
+data class HistoryPoint(
+    val t: Long,
+    val lat: Double,
+    val lon: Double,
+    val a: Activity = Activity.UNKNOWN,
+    val acc: Float? = null,
+    /** Speed in m/s, kept while driving. Missing in older files. */
+    val v: Float? = null,
+)
 
 /**
  * Location history (#58), kept only on this phone, never sent anywhere.
@@ -47,8 +55,17 @@ class LocationHistory(private val files: HistoryFiles) {
         if (loc.precision != null && loc.precision != Precision.EXACT) return@withLock
         val prefix = prefix(pubkey)
         var last = lastKept.getOrPut(pubkey) { latestStored(key, prefix) }
-        val candidates = (loc.points.map { HistoryPoint(it.t, it.lat, it.lon, loc.activity) } +
-            HistoryPoint(loc.time, loc.lat, loc.lon, loc.activity, loc.accuracy)).sortedBy { it.t }
+        val activity = drivingIfCycling(loc.activity)
+        val sorted = (loc.points.map { HistoryPoint(it.t, it.lat, it.lon, activity) } +
+            HistoryPoint(loc.time, loc.lat, loc.lon, activity, loc.accuracy, loc.speed)).sortedBy { it.t }
+        // While driving, keep the speed: the reported one for the newest point, and for the recent
+        // path the distance to the next point over the time it took.
+        val candidates = if (activity != Activity.DRIVING) sorted.map { it.copy(v = null) } else sorted.mapIndexed { i, p ->
+            if (p.v != null) return@mapIndexed p
+            val next = sorted.getOrNull(i + 1) ?: return@mapIndexed p
+            val dt = next.t - p.t
+            if (dt <= 0) p else p.copy(v = (MotionPolicy.distanceMeters(p.lat, p.lon, next.lat, next.lon) / dt).toFloat().takeIf { it < 90f })
+        }
         val kept = mutableListOf<HistoryPoint>()
         for (p in candidates) {
             if (keep(last, p)) {
@@ -127,18 +144,28 @@ class LocationHistory(private val files: HistoryFiles) {
         fun prefix(pubkey: String) = "h-" + PlatformCrypto.sha256(("qm-history|$pubkey").encodeToByteArray()).copyOf(8).toHex() + "-"
         fun day(t: Long): Long = t.floorDiv(86_400L)
         fun moving(a: Activity) = a == Activity.WALKING || a == Activity.CYCLING || a == Activity.DRIVING
+
+        /** Cycling isn't reported any more; older updates and files that say so count as driving. */
+        fun drivingIfCycling(a: Activity) = if (a == Activity.CYCLING) Activity.DRIVING else a
     }
 }
 
 /** A stretch of history with one activity: "Driving 8:02–8:25", "Still 8:25–12:10". */
-data class HistorySegment(val activity: Activity, val start: Long, val end: Long, val meters: Double, val points: List<HistoryPoint>)
+data class HistorySegment(val activity: Activity, val start: Long, val end: Long, val meters: Double, val points: List<HistoryPoint>) {
+    /** Fastest speed kept for a drive, in m/s. */
+    val topSpeed: Float? get() = if (activity == Activity.DRIVING) points.mapNotNull { it.v }.maxOrNull() else null
+
+    /** Distance over time for a drive, in m/s. */
+    val averageSpeed: Float? get() = if (activity == Activity.DRIVING && end > start && meters > 0) (meters / (end - start)).toFloat() else null
+}
 
 object HistorySegments {
     /** Moves or stops shorter than this are folded into what came before (GPS blips, traffic lights). */
     private const val MIN_SECONDS = 120L
 
-    fun build(points: List<HistoryPoint>): List<HistorySegment> {
-        if (points.isEmpty()) return emptyList()
+    fun build(all: List<HistoryPoint>): List<HistorySegment> {
+        if (all.isEmpty()) return emptyList()
+        val points = all.map { if (it.a == Activity.CYCLING) it.copy(a = Activity.DRIVING) else it }
         val runs = mutableListOf<MutableList<HistoryPoint>>()
         for (p in points) {
             val run = runs.lastOrNull()

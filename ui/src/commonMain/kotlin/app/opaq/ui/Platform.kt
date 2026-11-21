@@ -27,6 +27,12 @@ interface PlatformBridge {
      */
     fun refreshMyLocation() {}
 
+    /** Map apps that can give directions (#150), by the name shown to people. Empty if none can be opened. */
+    val directionsApps: List<String> get() = emptyList()
+
+    /** Opens [app] (one of [directionsApps]) with directions to [lat], [lon], labelled [name] where the app allows. */
+    fun openDirections(app: String, lat: Double, lon: Double, name: String) {}
+
     /**
      * Lets the user pick a photo, then crops it square and shrinks it to a small JPEG
      * (under [app.opaq.core.protocol.CircleCrypto.MAX_PHOTO_CHARS] once base64-encoded).

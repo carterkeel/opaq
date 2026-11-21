@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -69,6 +70,76 @@ class LiveUpdatesTest {
         joiner.engine.confirmCircle(c.id)
         sync(admin, joiner)
         return c.id
+    }
+
+    @Test
+    fun askingForSomeonesLocationWakesTheirPhoneOnlyWhileTheyShare() = runTest {
+        // #149: Ana asks Ben where he is. His phone is told once; asking again straight away sends
+        // nothing, and a paused circle never answers.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val asked = mutableListOf<String>()
+        val watch = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { b.engine.locationRequests.collect { asked += it } }
+
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id), asked)
+        assertFalse(a.engine.requestLocation(id, b.me), "asked a moment ago")
+
+        clock += Engine.LOCATION_REQUEST_GAP_SECONDS + 1
+        b.engine.setCirclePaused(id, true)
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id), asked, "paused: no answer")
+        watch.cancel()
+    }
+
+    @Test
+    fun alertAreasNotifyOnlyTheirMakerWhenSomeoneArrivesOrLeaves() = runTest {
+        // #151: Ana draws a 100 ft area round her house. Ben's updates tell her phone when he
+        // arrives and leaves; Ben's phone hears nothing about it.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val seen = mutableListOf<Notice>()
+        val heard = mutableListOf<Notice>()
+        val watchA = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { seen += it } }
+        val watchB = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { b.engine.notices.collect { heard += it } }
+
+        b.engine.publishLocation(loc(41.01))
+        net.flush()
+        a.engine.savePlace(app.opaq.core.model.Place("", "Home", 41.0, -87.6, radius = 30.0, onLeave = true))
+        assertTrue(seen.isEmpty())
+
+        b.engine.publishLocation(loc(41.0001))
+        net.flush()
+        assertEquals(listOf("Ben arrived at Home"), seen.map { it.title })
+        assertEquals(Notice.PLACE, seen.single().kind)
+
+        clock += 60
+        b.engine.publishLocation(loc(41.001))
+        net.flush()
+        assertEquals(listOf("Ben arrived at Home", "Ben left Home"), seen.map { it.title })
+        assertTrue(heard.none { it.kind == Notice.PLACE })
+        watchA.cancel(); watchB.cancel()
+    }
+
+    @Test
+    fun aNewPlaceDoesNotAnnounceWhoIsAlreadyThere() = runTest {
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        b.engine.publishLocation(loc(41.0))
+        net.flush()
+        val seen = mutableListOf<Notice>()
+        val watch = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { seen += it } }
+        val place = a.engine.savePlace(app.opaq.core.model.Place("", "Home", 41.0, -87.6, radius = 30.0, circleId = id))
+        assertEquals(listOf(b.me), a.engine.state.value.placeInside[place.id])
+        clock += 30
+        b.engine.publishLocation(loc(41.00005))
+        net.flush()
+        assertTrue(seen.isEmpty())
+        watch.cancel()
     }
 
     @Test
