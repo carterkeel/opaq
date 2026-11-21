@@ -113,6 +113,15 @@ class CreateCircleTest {
     }
 
     /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
+    /** Finds [text], scrolling the screen's scrollable part down until it shows. */
+    private fun scrollTo(text: String): UiObject2 {
+        repeat(6) {
+            device.findObject(By.text(text))?.let { return it }
+            device.findObject(By.scrollable(true))?.scroll(androidx.test.uiautomator.Direction.DOWN, 0.8f)
+        }
+        return waitFor(text, 2_000)
+    }
+
     private fun hideKeyboard() {
         if ("mInputShown=true" in device.executeShellCommand("dumpsys input_method")) {
             device.pressBack()
@@ -249,6 +258,28 @@ class CreateCircleTest {
             device.pressBack()
             waitFor("Appearance")
         }
+        // Place alerts (#151): add one where the map is, see it listed, then delete it.
+        waitFor("Place alerts").click()
+        waitFor("Add a place").click()
+        waitFor("Move the map to put the place in the middle.")
+        val placeName = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no place name field")
+        placeName.click()
+        placeName.text = "Home"
+        device.pressBack() // close the keyboard
+        Thread.sleep(2_000) // let the map load
+        shot("place-new")
+        scrollTo("Add place").click()
+        waitFor("Add a place")
+        waitFor("Home")
+        shot("places")
+        waitFor("Home").click()
+        waitFor("Edit place")
+        scrollTo("Delete place").click()
+        waitFor("Delete").click()
+        waitFor("Add a place")
+        device.pressBack()
+        waitFor("Appearance")
+
         // The app's own theme, then back to following the phone.
         waitFor("Appearance").click()
         waitFor("Theme").click()

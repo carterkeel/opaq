@@ -15,7 +15,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, and one when the locate button finds the shared position was more than 25 m off.
+  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, one when sharing with a circle starts, one when the locate button finds the shared position was more than 25 m off, and one when someone in the circle asks for it (#149; at most one answer per person every 2 minutes, 20 an hour, and only while already sharing with that circle). The relay can see that a direct message was followed by an update; it can't read either.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Opaq", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -30,6 +30,8 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/MotionPolicy.kt      When to publish and which activity to report (still/walking/...).
   core/Prediction.kt        Carrying a moving person's dot forward between updates (viewer side).
   core/RoadSnap.kt          Lines a drawn history path up with nearby roads (display only).
+  core/Grouping.kt          Which people's dots overlap at a zoom level, so the map draws them as one group.
+  core/Places.kt            Alert areas: whether an update means someone arrived at or left a place.
   core/History.kt           On-device location history: encrypted per-person/day files, thinning,
                             pruning, and grouping into segments (still/walking/driving).
   core/model/Models.kt      AppState (everything persisted) and data classes.
@@ -50,6 +52,9 @@ ui/          Compose Multiplatform screens shared by Android and iOS.
   SecurityScreens.kt Recovery (unreadable state), PIN prompt and fields, security log, circle info,
                   sharing reminder.
   HistoryScreen.kt Location history map and segments, history-length picker.
+  PlacesScreens.kt Place alerts list and the add/edit screen (map with the area fixed in the middle).
+  MapGroups.kt    Faces of people close together, drawn as one map icon.
+  Everyone.kt     The "Everyone" view: all circles combined, display only.
   Avatars.kt      Avatar colours, photo decoding cache, verified badge.
   Components.kt   Signal-style rows, buttons, top bar, custom icons (AppIcons).
   Theme.kt        Colours, type scale (system font), shapes.
@@ -105,7 +110,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - The same link is shown as a QR code (qrose) and can be scanned in-app (zxing-android-embedded).
 - Flow: the joiner sends `JoinRequestBody` as a sealed DM, the admin approves, the admin sends `RosterBody` (circle key and members) to every member, and the new member publishes their profile.
 
-**Sealed DMs** (kind 1059). Signed by a throwaway key, `p`-tagged to the recipient, and NIP-44 encrypted to them. Inside is an `Envelope` whose body is signed by the sender's real key (`Envelopes.open` verifies it). They're used for join requests and refusals, rosters and removals.
+**Sealed DMs** (kind 1059). Signed by a throwaway key, `p`-tagged to the recipient, and NIP-44 encrypted to them. Inside is an `Envelope` whose body is signed by the sender's real key (`Envelopes.open` verifies it). They're used for join requests and refusals, rosters and removals, and location requests (`LocationRequestBody`, "Ask for their location" on a profile).
 
 **Location updates** (kind 30078, addressable).
 - Content is NIP-44 encrypted under a conversation key derived from the circle key and epoch.
@@ -150,6 +155,14 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 **Shortcuts (iOS).** `iosApp/iosApp/OpaqShortcuts.swift` declares App Intents (start, pause for a while, toggle, pause or resume a circle, update my location) and Siri phrases; the work is in Kotlin (`OpaqShortcuts` in ui/src/iosMain). Every action needs the phone unlocked, starting sharing from a shortcut posts a notification, and no action returns anyone's location (a shortcut can pass its output anywhere, outside the encryption). Keep it that way.
 
 **Relays.** `RelayPool` keeps one websocket per relay, pinged every minute, and retries a lost one after 2 s doubling up to 5 min (at once when the network comes back). A relay that closes a subscription isn't asked for it again for 30 min if it wants sign-in or blocks us, 5 min otherwise; one that answers an update with rate-limited or banned gets no updates for 5 or 30 min (`RelayReplies`). Asking again straight away costs battery and gets the household's address banned. The sealed-DM filter starts on the hour a week back (`Engine.directSince`), so subscriptions only change when the hourly tags do.
+
+**People close together** (#146). Display only. `Grouping.group` puts people whose dots would overlap (40 dp apart, regrouped every half zoom level) into one group, anchored on its first person (you first, then people online). A group is drawn as their overlapping faces with "+N" past three (`GroupPainter`), not a count. Tapping it zooms in until they separate (`Grouping.splitZoom`), or, for people in the same spot, lists them.
+
+**Everyone** (#147). With two or more circles the circle picker offers Everyone (`EVERYONE`): each person once, at their newest location from any circle, with profiles opening in the circle they were last seen in. It's a view only; invites, pausing and per-circle banners stay with each circle.
+
+**Directions** (#150). A profile offers directions to the person's last shared spot through `PlatformBridge.openDirections`: Google Maps or any map app on Android, Apple Maps or Google Maps (`comgooglemaps://`, listed in `LSApplicationQueriesSchemes`) on iOS. The chosen map app sees the destination; nothing else is sent.
+
+**Place alerts** (#151, plan in #101). `AppState.places` (at most 20, radius 30 m to 5 km, one circle or all) and `placeInside` (who's inside now, so restarts don't re-announce). `Engine.checkPlaces` runs on each received update: only exact, fresh (under 10 min), accurate updates count; leaving needs 25 m (or the accuracy) past the edge; passing through between updates counts as arriving; one alert per person, place and change every 10 minutes; never about yourself. Alerts go out as `Notice`s with `kind = PLACE` (Android channel "Place alerts"). Nothing is published, places are never logged, they're left out of backups, and a circle's places go when the circle does. Enabled places are drawn faintly on the maker's home map.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
