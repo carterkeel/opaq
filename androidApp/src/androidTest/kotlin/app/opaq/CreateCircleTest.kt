@@ -117,7 +117,12 @@ class CreateCircleTest {
     private fun scrollTo(text: String): UiObject2 {
         repeat(6) {
             device.findObject(By.text(text))?.let { return it }
-            device.findObject(By.scrollable(true))?.scroll(androidx.test.uiautomator.Direction.DOWN, 0.8f)
+            // A swipe in the middle of the screen: one from near the bottom edge is the system's
+            // "go home" gesture and sends the app to the background.
+            val w = device.displayWidth
+            val h = device.displayHeight
+            device.swipe(w / 2, (h * 0.7).toInt(), w / 2, (h * 0.35).toInt(), 20)
+            Thread.sleep(500)
         }
         return waitFor(text, 2_000)
     }
