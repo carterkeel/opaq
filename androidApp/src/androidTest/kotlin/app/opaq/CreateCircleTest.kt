@@ -292,13 +292,13 @@ class CreateCircleTest {
         device.pressBack() // close the keyboard
         Thread.sleep(2_000) // let the map load
         shot("place-new")
-        scrollTo("Add place").click()
+        waitFor("Add place").click() // pinned under the settings, no scrolling needed
         waitFor("Add a place")
         waitFor("Home")
         shot("places")
         waitFor("Home").click()
         waitFor("Edit place")
-        scrollTo("Delete place").click()
+        (device.wait(Until.findObject(By.desc("Delete place")), 10_000) ?: error("no Delete place button")).click()
         waitFor("Delete").click()
         waitFor("Add a place")
         device.pressBack()
