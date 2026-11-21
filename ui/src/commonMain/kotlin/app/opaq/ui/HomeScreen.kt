@@ -140,7 +140,7 @@ fun HomeScreen(
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
     val isEveryone = circle?.id == EVERYONE
-    var everyoneInfo by remember { mutableStateOf(false) }
+
     var showCreate by remember { mutableStateOf(false) }
     var showCircles by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<JoinRequest?>(null) }
@@ -433,7 +433,7 @@ fun HomeScreen(
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(4.dp).height(36.dp)) {}
                         }
                         Column(Modifier.weight(1f).padding(top = 8.dp)) {
-                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, onInfo = if (isEveryone) ({ everyoneInfo = true }) else null)
+                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, combined = isEveryone)
                             people { pubkey -> if (!flyTo(pubkey)) openProfile(pubkey) }
                         }
                     }
@@ -500,7 +500,7 @@ fun HomeScreen(
                         Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(36.dp).height(4.dp)) {}
                         }
-                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, onInfo = if (isEveryone) ({ everyoneInfo = true }) else null)
+                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, combined = isEveryone)
                     }
                     people { pubkey ->
                         if (flyTo(pubkey)) {
@@ -538,8 +538,6 @@ fun HomeScreen(
             )
         }
     }
-
-    if (everyoneInfo) EveryoneInfoSheet(onDismiss = { everyoneInfo = false })
 
     if (showCircles) {
         CirclePicker(
@@ -599,29 +597,14 @@ fun HomeScreen(
 }
 
 @Composable
-private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit, onInfo: (() -> Unit)? = null) {
+private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit, combined: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(circle.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}" + if (onInfo != null) " from all your circles" else "")
+            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}" + if (combined) " from all your circles" else "")
         }
-        // Everyone (#147) has no invite of its own; the info button says what it shows instead.
-        if (onInfo != null) IconButton(onClick = onInfo) { Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
-        else if (circle.adminPubkey == me || me in circle.managers) TonalButton("Invite", onInvite, icon = AppIcons.Add)
-    }
-}
-
-/** What the Everyone view shows (#147). */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun EveryoneInfoSheet(onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Everyone", style = MaterialTheme.typography.titleLarge)
-            Text(EVERYONE_INFO, style = MaterialTheme.typography.bodyLarge)
-            Caption("Invites, pausing and circle settings stay with each circle. Pick a circle to use them.")
-            PrimaryButton("OK", onDismiss, Modifier.fillMaxWidth())
-        }
+        // Everyone (#147) has no invite of its own; what it shows is explained in the circle picker.
+        if (!combined && (circle.adminPubkey == me || me in circle.managers)) TonalButton("Invite", onInvite, icon = AppIcons.Add)
     }
 }
 
