@@ -44,13 +44,13 @@ An invite link contains your name, the circle's name, your relays, your public k
 
 ## Location history
 
-Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time and activity (still, walking, cycling, driving), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
+Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time, activity (still, walking, driving) and, while driving, speed, thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
 
 How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Opaq deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Opaq can't prevent that.
 
 ## Place alerts
 
-Anyone in a circle can draw an area on their own map (a place alert) and get a notification when someone in the circle arrives or leaves. It's worked out on their phone from the updates it already receives: nothing new is sent, the area is never published or logged, and it isn't put in backups. Only the person who made it can see it, and the people it watches aren't told. It needs no more than they already share with that circle; pausing or sharing only your area stops it working.
+Anyone in a circle can draw an area on their own map (a place alert) and get a notification when someone in the circle arrives or leaves. It's worked out on their phone from the updates it already receives: nothing new is sent, the area is never published or logged. It goes into the maker's passphrase-encrypted backup file, so it moves to a new phone with them. Only the person who made it can see it, and the people it watches aren't told. It needs no more than they already share with that circle; pausing or sharing only your area stops it working.
 
 ## Directions
 
