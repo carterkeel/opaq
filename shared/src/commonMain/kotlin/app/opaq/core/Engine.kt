@@ -50,6 +50,7 @@ import app.opaq.core.protocol.Backups
 import app.opaq.core.protocol.JoinRefusedBody
 import app.opaq.core.protocol.JoinRequestBody
 import app.opaq.core.protocol.LeftBody
+import app.opaq.core.protocol.LocationRequestBody
 import app.opaq.core.protocol.LocationBody
 import app.opaq.core.protocol.ProfileBody
 import app.opaq.core.protocol.RemovedBody
@@ -172,6 +173,19 @@ class Engine(
 
     /** Things worth a notification: someone joined or left a circle. The platform shows them. */
     val notices: SharedFlow<Notice> = _notices.asSharedFlow()
+
+    private val _locationRequests = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /**
+     * Someone in a circle we share with asked where we are (#149), by circle id. The sharing service
+     * takes a fresh fix and sends it at once, as a normal update.
+     */
+    val locationRequests: SharedFlow<String> = _locationRequests.asSharedFlow()
+
+    /** When we last asked each person (circle|pubkey), and when we last answered each person. Memory only. */
+    private val locationAsked = HashMap<String, Long>()
+    private val locationAnswered = HashMap<String, Long>()
+    private val locationAnswers = ArrayDeque<Long>()
 
     /** Until when the last correct PIN entry authorizes sensitive actions (memory only). */
     private var authorizedUntil = 0L
@@ -1430,6 +1444,7 @@ class Engine(
             is LeftBody -> onLeft(body)
             is RosterAckBody -> onRosterAck(body)
             is RosterRequestBody -> onRosterRequest(body, ref)
+            is LocationRequestBody -> onLocationRequest(body)
             else -> Unit
         }
         update { it.copy(seenEventIds = (it.seenEventIds + event.id).takeLast(500)) }
@@ -1665,6 +1680,40 @@ class Engine(
     }
 
     /** A member left: if we're the admin, remove them properly so the circle gets a new key. */
+    /**
+     * Asks [pubkey] in [circleId] for their location now (#149). Returns false without sending if we
+     * asked them less than [LOCATION_REQUEST_GAP_SECONDS] ago.
+     */
+    suspend fun requestLocation(circleId: String, pubkey: String): Boolean {
+        val c = state.value.circles.firstOrNull { it.id == circleId } ?: throw IllegalStateException("Circle not found")
+        if (pubkey == myPubkey || c.members.none { it.pubkey == pubkey }) throw IllegalStateException("They're not in this circle")
+        if (!c.confirmed) throw IllegalStateException("Start sharing with this circle first")
+        val t = now()
+        val key = "$circleId|$pubkey"
+        if (t - (locationAsked[key] ?: 0) < LOCATION_REQUEST_GAP_SECONDS) return false
+        locationAsked[key] = t
+        sendDirect(c, pubkey, LocationRequestBody(myPubkey, t, circleId))
+        return true
+    }
+
+    private fun onLocationRequest(body: LocationRequestBody) {
+        val s = state.value
+        val c = s.circles.firstOrNull { it.id == body.circle } ?: return
+        if (body.from == myPubkey || c.members.none { it.pubkey == body.from }) return
+        // Only while we're sharing with them anyway: a request never turns sharing on.
+        if (!s.sharing || c.paused || !c.confirmed) return
+        val t = now()
+        // Relays keep direct messages, so an old request (or a replayed one) is ignored.
+        if (kotlin.math.abs(t - body.ts) > MAX_CLOCK_SKEW_SECONDS) return
+        // At most one answer per person every 2 minutes, and 20 an hour in all.
+        if (t - (locationAnswered[body.from] ?: 0) < LOCATION_REQUEST_GAP_SECONDS) return
+        while (locationAnswers.isNotEmpty() && t - locationAnswers.first() > 3600) locationAnswers.removeFirst()
+        if (locationAnswers.size >= LOCATION_ANSWERS_PER_HOUR) return
+        locationAnswered[body.from] = t
+        locationAnswers.addLast(t)
+        _locationRequests.tryEmit(c.id)
+    }
+
     private suspend fun onLeft(body: LeftBody) {
         val circle = state.value.circles.firstOrNull { it.id == body.circle } ?: return
         if (circle.adminPubkey != myPubkey || circle.members.none { it.pubkey == body.from }) return
@@ -1805,6 +1854,12 @@ class Engine(
 
         /** Updates claiming to be from further in the future than this are ignored. */
         const val MAX_CLOCK_SKEW_SECONDS = 10 * 60L
+
+        /** Asking one person for their location, and answering one person, at most this often (#149). */
+        const val LOCATION_REQUEST_GAP_SECONDS = 2 * 60L
+
+        /** Answers to location requests per hour, from everyone together. */
+        const val LOCATION_ANSWERS_PER_HOUR = 20
 
         /**
          * Envelopes are padded to 1400 bytes, which NIP-44 pads to 1536, which base64-encodes to 2140

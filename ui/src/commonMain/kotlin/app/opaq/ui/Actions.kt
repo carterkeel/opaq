@@ -51,6 +51,14 @@ class Actions(
 
     fun setHistoryDays(days: Int) = launchAction { engine.setHistoryDays(days) }
 
+    /** Asks [pubkey] for their location now (#149) and says so. */
+    fun requestLocation(circleId: String, pubkey: String, name: String) = launchAction {
+        val sent = engine.requestLocation(circleId, pubkey)
+        withContext(Dispatchers.Main) {
+            platform.showMessage(if (sent) "Asked $name for their location" else "You asked $name a moment ago")
+        }
+    }
+
     fun setName(name: String) = launchAction { engine.setMyName(name) }
     fun setAvatar(color: Int?, photo: String?) = launchAction { engine.setAvatar(color, photo) }
     fun setSharing(on: Boolean) = launchAction(after = { if (on) platform.ensureSharingService() }) { engine.setSharing(on) }

@@ -95,6 +95,14 @@ class LocationService : LifecycleService(), LocationListener {
                 .distinctUntilChanged()
                 .collect { policy.publishSoon() }
         }
+        // Someone in a circle asked where we are (#149): GPS now, and the fresh fix goes out at once.
+        lifecycleScope.launch {
+            app.engine.locationRequests.collect {
+                policy.requestRefresh(nowSeconds(), always = true)
+                adjustAccuracy()
+                wake.trySend(Unit)
+            }
+        }
 
         armMotionSensor()
         requestUpdates(highAccuracy = true)

@@ -37,6 +37,8 @@ class MotionPolicy {
 
     /** Until when a fresh fix is wanted for the locate button ([requestRefresh]). */
     private var refreshUntil: Long? = null
+    /** The refresh was asked for by someone else (#149): send the fix even if the shared one was right. */
+    private var refreshAlways = false
     private var jitter = 1.0
 
     /** When the newest fix arrived, on this phone's clock (a fix's own time can come from GPS). */
@@ -67,20 +69,29 @@ class MotionPolicy {
      * which can be up to five minutes away while still. If the shared position was right, nothing
      * extra is sent, so the relays rarely see an update off the steady rates.
      */
-    fun requestRefresh(now: Long) {
+    fun requestRefresh(now: Long, always: Boolean = false) {
         motionHint(now)
         refreshUntil = now + REFRESH_SECONDS
+        refreshAlways = refreshAlways || always
     }
 
     private fun checkRefresh(sample: LocationSample, receivedAt: Long) {
         val until = refreshUntil ?: return
-        if (receivedAt > until) { refreshUntil = null; return }
+        val always = refreshAlways
+        if (receivedAt > until) {
+            // No accurate fix in time: someone who asked still gets the best one there is.
+            refreshUntil = null
+            refreshAlways = false
+            if (always) publishSoon()
+            return
+        }
         if (sample.accuracy > GOOD_ACCURACY) return
         refreshUntil = null
+        refreshAlways = false
         val shared = lastPublished
         val off = shared == null ||
             distanceMeters(shared.lat, shared.lon, sample.lat, sample.lon) > max(REFRESH_METERS, sample.accuracy.toDouble())
-        if (off) publishSoon()
+        if (always || off) publishSoon()
     }
 
     /**

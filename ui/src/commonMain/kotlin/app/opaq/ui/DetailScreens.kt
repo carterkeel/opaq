@@ -113,6 +113,7 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 // Someone's profile
 // -------------------------------------------------------------------------------------------------
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit, onHistory: () -> Unit = {}) {
     val circle = state.circles.firstOrNull { it.id == circleId }
@@ -150,6 +151,15 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             subtitle = loc?.let { "Accurate to about ${it.accuracy.toInt()} m" },
             icon = AppIcons.LocationPin,
         )
+        // Ask their phone for a fresh update (#149). It only answers if they're sharing with this circle.
+        if (!isMe && circle.confirmed) {
+            SettingsRow(
+                "Ask for their location",
+                "Their phone sends a fresh update if they're sharing",
+                AppIcons.Refresh,
+                onClick = { haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) },
+            )
+        }
         // Directions to where they are (#150), from their last shared position.
         if (!isMe && loc != null && platform.directionsApps.isNotEmpty()) {
             SettingsRow("Directions", "Open a map app with directions to ${info.name}", AppIcons.Directions, onClick = { directions = true })

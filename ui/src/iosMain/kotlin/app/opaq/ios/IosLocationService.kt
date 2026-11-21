@@ -143,6 +143,15 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                 .distinctUntilChanged()
                 .collect { policy.publishSoon() }
         }
+        // Someone in a circle asked where we are (#149): GPS now, and the fresh fix goes out at once.
+        scope.launch(Dispatchers.Main) {
+            engine.locationRequests.collect {
+                if (publishJob?.isActive != true) return@collect
+                policy.requestRefresh(nowSeconds(), always = true)
+                adjustAccuracy()
+                wake.trySend(Unit)
+            }
+        }
     }
 
     /**

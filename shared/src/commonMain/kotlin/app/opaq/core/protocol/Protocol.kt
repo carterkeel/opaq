@@ -161,6 +161,15 @@ data class RemovedBody(
 @SerialName("left")
 data class LeftBody(override val from: String, override val ts: Long, val circle: String) : Body()
 
+/**
+ * A member asks someone in [circle] for their location now (#149). If they're sharing with the
+ * circle, their phone takes a fresh fix and sends it as a normal location update. Older apps
+ * can't read it and ignore it.
+ */
+@Serializable
+@SerialName("loc_req")
+data class LocationRequestBody(override val from: String, override val ts: Long, val circle: String) : Body()
+
 @Serializable
 private data class Envelope(val b: String, val s: String, val p: String? = null)
 

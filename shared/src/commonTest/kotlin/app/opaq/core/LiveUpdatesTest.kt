@@ -6,6 +6,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.Test
@@ -69,6 +70,30 @@ class LiveUpdatesTest {
         joiner.engine.confirmCircle(c.id)
         sync(admin, joiner)
         return c.id
+    }
+
+    @Test
+    fun askingForSomeonesLocationWakesTheirPhoneOnlyWhileTheyShare() = runTest {
+        // #149: Ana asks Ben where he is. His phone is told once; asking again straight away sends
+        // nothing, and a paused circle never answers.
+        val a = Phone("Ana"); val b = Phone("Ben")
+        val id = circleWith(a, b)
+        val asked = mutableListOf<String>()
+        val watch = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { b.engine.locationRequests.collect { asked += it } }
+
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id), asked)
+        assertFalse(a.engine.requestLocation(id, b.me), "asked a moment ago")
+
+        clock += Engine.LOCATION_REQUEST_GAP_SECONDS + 1
+        b.engine.setCirclePaused(id, true)
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id), asked, "paused: no answer")
+        watch.cancel()
     }
 
     @Test

@@ -23,6 +23,7 @@ import app.opaq.core.protocol.LocationBody
 import app.opaq.core.protocol.ProfileBody
 import app.opaq.core.protocol.EpochBody
 import app.opaq.core.protocol.Roster2Body
+import app.opaq.core.protocol.LocationRequestBody
 import app.opaq.core.protocol.RosterAckBody
 import app.opaq.core.protocol.RosterBody
 import app.opaq.core.protocol.RosterCircle
@@ -266,6 +267,26 @@ class ProtocolTest {
     }
 
     @Test
+    fun aLocationRequestSendsTheFreshFixEvenWhenNothingMoved() {
+        // #149: someone asked. The fresh fix goes out even though it matches what was shared.
+        val p = MotionPolicy()
+        val t = now
+        p.add(LocationSample(41.0, 16.0, 6f, 0f, null, t))
+        p.markPublished(t)
+        p.requestRefresh(t + 20, always = true)
+        p.add(LocationSample(41.00001, 16.0, 6f, 0f, null, t + 23))
+        assertTrue(p.shouldPublish(t + 23))
+        p.markPublished(t + 23)
+
+        // No accurate fix in time: the best one there is still goes out.
+        p.requestRefresh(t + 60, always = true)
+        p.add(LocationSample(41.00001, 16.0, 120f, null, null, t + 62))
+        assertFalse(p.shouldPublish(t + 62))
+        p.add(LocationSample(41.00001, 16.0, 120f, null, null, t + 60 + MotionPolicy.REFRESH_SECONDS + 1))
+        assertTrue(p.shouldPublish(t + 60 + MotionPolicy.REFRESH_SECONDS + 1))
+    }
+
+    @Test
     fun motionHintSwitchesToGpsBeforeAnyFixMoves() {
         val p = MotionPolicy()
         p.add(sample(now, 41.0, 0f))
@@ -389,6 +410,7 @@ class ProtocolTest {
             ProfileBody(me.publicHex, now, "Ana", pub = "dd".repeat(32)),
             RosterBody(me.publicHex, now, rc.copy(v = 1, day = 0, ctl = null)),
             JoinRefusedBody(me.publicHex, now, "c1", to = "ee".repeat(32), invite = "ff".repeat(32), reason = JoinRefusedBody.USED),
+            LocationRequestBody(me.publicHex, now, "c1"),
         )
         bodies.forEach { assertEquals(it, Envelopes.open(Envelopes.seal(me, it))) }
     }
