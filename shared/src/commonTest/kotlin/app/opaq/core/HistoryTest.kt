@@ -66,7 +66,7 @@ class HistoryTest {
         h.record(key, ben, at(t + 600, 41.02, Activity.WALKING).copy(speed = 1.4f))
         assertEquals(null, h.read(key, ben, t0, t0 + 3600).last().v)
         val drive = HistorySegments.build(h.read(key, ben, t0, t0 + 3600)).first { it.activity == Activity.DRIVING }
-        assertEquals(20f, drive.topSpeed)
+        assertEquals(20.0, drive.topSpeed!!.toDouble(), 0.1, "the fastest kept speed, reported or worked out from the path")
     }
 
     @Test
