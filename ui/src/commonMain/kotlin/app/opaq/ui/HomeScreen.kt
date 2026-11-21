@@ -158,7 +158,9 @@ fun HomeScreen(
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
-        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, now) {
+        // Everything a face is drawn from, so a new photo, name or colour shows on the map at once,
+        // stacked or not.
+        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, state.myPhoto, state.myName, state.showPhotos, now) {
             circle.members.mapNotNull { m ->
                 val l = locs[m.pubkey] ?: return@mapNotNull null
                 val info = avatarFor(state, m.pubkey, me, m.name)
