@@ -219,8 +219,9 @@ class CreateCircleTest {
         shot("invite")
         // The buttons are below the QR code. Cancel the invite early: back to "Create invite".
         device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
-        waitFor("Share link")
-        waitFor("Cancel this invite").click()
+        // Below the QR code, so a small screen has to scroll to them.
+        scrollTo("Share link")
+        scrollTo("Cancel this invite").click()
         waitFor("Create invite")
         device.pressBack()
 
