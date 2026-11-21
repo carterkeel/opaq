@@ -125,7 +125,8 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
         val ground = MaterialTheme.colorScheme.background
         Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
         Column(
-            Modifier.fillMaxSize().verticalScroll(scroll).padding(top = 12.dp, bottom = 24.dp),
+            // Room above the name field for its label, which sits on the field's top edge.
+            Modifier.fillMaxSize().verticalScroll(scroll).padding(top = 18.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             OutlinedTextField(
