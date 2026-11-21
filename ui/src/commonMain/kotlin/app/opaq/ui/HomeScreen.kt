@@ -1,5 +1,6 @@
 package app.opaq.ui
 
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -671,7 +672,7 @@ private fun SharingIcon(sharing: Boolean, color: Color, modifier: Modifier) {
         val arrow = androidx.compose.ui.graphics.Path().apply {
             moveTo(12f * u, 2.5f * u); lineTo(19.5f * u, 20.5f * u); lineTo(12f * u, 16.5f * u); lineTo(4.5f * u, 20.5f * u); close()
         }
-        androidx.compose.ui.graphics.drawscope.rotate(25f) { drawPath(arrow, color) }
+        rotate(25f) { drawPath(arrow, color) }
         if (slash > 0f) {
             val from = androidx.compose.ui.geometry.Offset(3.5f * u, 3.5f * u)
             val to = androidx.compose.ui.geometry.Offset((3.5f + 17f * slash) * u, (3.5f + 17f * slash) * u)
