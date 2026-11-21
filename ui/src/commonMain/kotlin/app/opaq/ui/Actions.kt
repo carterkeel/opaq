@@ -51,6 +51,12 @@ class Actions(
 
     fun setHistoryDays(days: Int) = launchAction { engine.setHistoryDays(days) }
 
+    /** Saves an alert area (#151); [done] runs once it's saved, [failed] if it couldn't be. */
+    fun savePlace(place: app.opaq.core.model.Place, done: () -> Unit, failed: () -> Unit = {}) =
+        launchAction(after = done, failed = failed) { engine.savePlace(place) }
+
+    fun deletePlace(id: String, done: () -> Unit) = launchAction(after = done) { engine.deletePlace(id) }
+
     /** Asks [pubkey] for their location now (#149) and says so. */
     fun requestLocation(circleId: String, pubkey: String, name: String) = launchAction {
         val sent = engine.requestLocation(circleId, pubkey)

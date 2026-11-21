@@ -80,6 +80,11 @@ class OpaqApp : Application() {
                 description = "When someone joins or leaves a circle, and monthly reminders that you're sharing"
             },
         )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_PLACES, "Place alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "When someone arrives at or leaves a place you set up. Worked out on this phone."
+            },
+        )
         engine // start relays
         // Start sharing the moment you're let into a circle (or create one), not the next time
         // the app comes to the front.
@@ -161,7 +166,8 @@ class OpaqApp : Application() {
     private fun notify(n: Notice) {
         if (!NotificationManagerCompat.from(this).areNotificationsEnabled()) return
         val open = PendingIntent.getActivity(this, 2, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notification = NotificationCompat.Builder(this, CHANNEL_CIRCLES)
+        val channel = if (n.kind == Notice.PLACE) CHANNEL_PLACES else CHANNEL_CIRCLES
+        val notification = NotificationCompat.Builder(this, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(n.title)
             .setContentText(n.text)
@@ -178,6 +184,7 @@ class OpaqApp : Application() {
     companion object {
         const val CHANNEL_SHARING = "sharing"
         const val CHANNEL_CIRCLES = "circles"
+        const val CHANNEL_PLACES = "places"
         fun from(context: Context): OpaqApp = context.applicationContext as OpaqApp
     }
 }

@@ -272,6 +272,8 @@ fun HomeScreen(
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
                     onGroupClick = { together = it },
+                    // Alert areas (#151) watching this circle, only on this phone.
+                    places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
             }
 

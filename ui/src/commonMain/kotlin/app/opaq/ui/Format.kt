@@ -30,6 +30,14 @@ object Format {
         return "$text $unit"
     }
 
+    /** The size of an alert area (#151): "100 ft", "0.5 mi", "30 m" or "1.2 km". */
+    fun radius(meters: Double): String = when {
+        usesMiles && meters < 400 -> "${(round(meters * 3.28084 / 10) * 10).toLong()} ft"
+        usesMiles -> "${round(meters / 1609.344 * 10) / 10} mi"
+        meters < 1000 -> "${(round(meters / 5) * 5).toLong()} m"
+        else -> "${round(meters / 100) / 10} km"
+    }
+
     /** "25 min", "3 h 10 min". */
     fun duration(seconds: Long): String {
         val m = (seconds + 30) / 60

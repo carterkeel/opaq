@@ -595,6 +595,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onEditProfile: () -> Unit,
     onSection: (SettingsSection) -> Unit,
+    onPlaces: () -> Unit = {},
 ) {
     ScreenScaffold("Settings", onBack) {
         Row(
@@ -615,6 +616,8 @@ fun SettingsScreen(
                 HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
             }
             SettingsRow(section.title, icon = section.icon, onClick = { onSection(section) })
+            // Alert areas (#151) sit with sharing and circles.
+            if (section == SettingsSection.Circles) SettingsRow("Place alerts", icon = AppIcons.Radius, onClick = onPlaces)
         }
         Caption("Opaq · open source", Gutter.padding(top = 24.dp))
     }

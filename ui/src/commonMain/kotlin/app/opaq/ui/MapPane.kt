@@ -33,6 +33,7 @@ import app.opaq.core.Roads
 import app.opaq.core.Track
 import app.opaq.core.model.Activity
 import app.opaq.core.model.MemberLocation
+import app.opaq.core.model.Place
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
@@ -68,6 +69,7 @@ import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.interaction.ClickResult
 import org.maplibre.compose.interaction.MapInteractions
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.FillLayer
 import org.maplibre.compose.layers.LineLayer
 import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.CameraConstraints
@@ -137,6 +139,7 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  *   separate, or, for people in the same spot, calls [onGroupClick] with their ids.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
+ * - [places] (alert areas, #151) are drawn as faint circles, true to scale, under the people.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home and history screens.
  */
 @Composable
@@ -150,6 +153,7 @@ fun MapPane(
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
     onGroupClick: (ids: List<String>) -> Unit = {},
+    places: List<Place> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
     val onPerson by rememberUpdatedState(onPersonClick)
@@ -204,7 +208,22 @@ fun MapPane(
             ClickResult.Consume
         }
     }
+    val placesGeo = remember(places) { placesToGeoJson(places) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
+        // Alert areas, only on this phone's map.
+        val areas = rememberGeoJsonSource(GeoJsonData.JsonString(placesGeo))
+        FillLayer(id = "places-fill", source = areas, color = const(Palette.Ultramarine), opacity = const(0.12f))
+        LineLayer(id = "places-edge", source = areas, color = const(Palette.Ultramarine), width = const(1.5.dp), opacity = const(0.7f))
+        SymbolLayer(
+            id = "places-name",
+            source = areas,
+            textField = format(span(feature["name"].asString())),
+            textFont = const(listOf("Noto Sans Bold")),
+            textSize = const(12.sp),
+            textColor = const(Palette.Ultramarine),
+            textHaloColor = const(Color.White),
+            textHaloWidth = const(1.5.dp),
+        )
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson))
         val isGroup = feature.has("group")
         // One dot per person.
@@ -317,6 +336,44 @@ fun MapPane(
     }
 }
 
+/**
+ * The map on the alert area screen (#151): the area stays in the middle, true to scale, while
+ * you move the map under it. [onCenter] gets the point under the middle as the map moves.
+ */
+@Composable
+fun PlacePickerMap(startLat: Double, startLon: Double, radius: Double, darkMap: Boolean, onCenter: (lat: Double, lon: Double) -> Unit, modifier: Modifier = Modifier) {
+    val mapState = rememberMapState(baseStyle = mapStyle(darkMap))
+    val report by rememberUpdatedState(onCenter)
+    BoxWithConstraints(modifier) {
+        val widthDp = maxWidth.value.toDouble()
+        LaunchedEffect(mapState) {
+            // Open with the area about a third of the map's width across.
+            val metersPerDp = radius * 2 / (widthDp / 3)
+            val zoom = kotlin.math.log2(40_075_016.686 * cos(startLat * PI / 180) / (512.0 * metersPerDp)).coerceIn(2.0, 18.0)
+            mapState.setCameraPosition(CameraPosition(center = Position(startLon, startLat), zoom = zoom))
+            snapshotFlow { mapState.cameraPosition.center }.collect { report(it.latitude, it.longitude) }
+        }
+        MaplibreMap(
+            modifier = Modifier.fillMaxSize(),
+            state = mapState,
+            cameraConstraints = worldFills(maxHeight),
+            interactions = Interactions,
+            overlay = {},
+        )
+        val camera = mapState.cameraPosition
+        val metersPerDp = 40_075_016.686 * cos(camera.center.latitude * PI / 180) / (512.0 * kotlin.math.exp(camera.zoom * ln(2.0)))
+        val ring = (radius / metersPerDp).toFloat()
+        val accent = Palette.Ultramarine
+        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+            val r = ring * density
+            drawCircle(accent.copy(alpha = 0.15f), r, center)
+            drawCircle(accent, r, center, style = androidx.compose.ui.graphics.drawscope.Stroke(2 * density))
+            drawCircle(Color.White, 7 * density, center)
+            drawCircle(accent, 5 * density, center)
+        }
+    }
+}
+
 /** Below this zoom, people aren't moved along roads (the tiles' road shapes are too coarse). */
 private const val ROAD_ZOOM = 12.0
 
@@ -386,6 +443,35 @@ private fun rememberMovingMarkers(markers: List<MapMarker>, roads: Roads?): List
         }
     }
     return shown
+}
+
+/** Alert areas as circles of 64 points, true to scale on the map. */
+private fun placesToGeoJson(places: List<Place>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        places.filter { it.enabled }.forEach { p ->
+            addJsonObject {
+                put("type", "Feature")
+                putJsonObject("geometry") {
+                    put("type", "Polygon")
+                    putJsonArray("coordinates") {
+                        addJsonArray { circlePoints(p.lat, p.lon, p.radius).forEach { (lat, lon) -> addJsonArray { add(lon); add(lat) } } }
+                    }
+                }
+                putJsonObject("properties") { put("name", p.name) }
+            }
+        }
+    }
+}.toString()
+
+/** A closed ring of points [radius] metres round a centre, as (lat, lon). */
+internal fun circlePoints(lat: Double, lon: Double, radius: Double, steps: Int = 64): List<Pair<Double, Double>> {
+    val dLat = radius / 111_320.0
+    val dLon = radius / (111_320.0 * cos(lat * PI / 180).coerceAtLeast(0.01))
+    return (0..steps).map { i ->
+        val a = 2 * PI * i / steps
+        (lat + dLat * kotlin.math.sin(a)) to (lon + dLon * cos(a))
+    }
 }
 
 /** Identifies a group's picture: who's in it, in order, and how each of them looks. */
