@@ -127,9 +127,14 @@ fun HomeScreen(
 ) {
     val gate = LocalPinGate.current
     val haptics = rememberHaptics()
-    val circle = state.circles.firstOrNull { it.id == selectedCircleId }
+    // "Everyone" (#147) is offered once there are two circles to combine.
+    val everyone = remember(state.circles) { if (state.circles.size >= 2) everyoneCircle(state) else null }
+    val circle = everyone?.takeIf { selectedCircleId == EVERYONE }
+        ?: state.circles.firstOrNull { it.id == selectedCircleId }
         ?: state.circles.firstOrNull { it.id == state.lastCircleId }
         ?: state.circles.firstOrNull()
+    val isEveryone = circle?.id == EVERYONE
+    var everyoneInfo by remember { mutableStateOf(false) }
     var showCreate by remember { mutableStateOf(false) }
     var showCircles by remember { mutableStateOf(false) }
     var reviewing by remember { mutableStateOf<JoinRequest?>(null) }
@@ -143,7 +148,9 @@ fun HomeScreen(
         var focusSeq by remember { mutableIntStateOf(0) }
         // People in one spot, tapped on the map (#146).
         var together by remember { mutableStateOf<List<String>?>(null) }
-        val locs = state.locations[circle.id].orEmpty()
+        val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
+        // In Everyone, a profile opens in the circle where the person was seen most recently.
+        val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
         val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, now) {
             circle.members.mapNotNull { m ->
                 val l = locs[m.pubkey] ?: return@mapNotNull null
@@ -263,7 +270,7 @@ fun HomeScreen(
                     endInset = if (landscape) with(density) { panelW.toDp() } else 0.dp,
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
-                    onPersonClick = { onOpenProfile(circle.id, it) },
+                    onPersonClick = openProfile,
                     onGroupClick = { together = it },
                 )
             }
@@ -332,7 +339,7 @@ fun HomeScreen(
                     me = me,
                     circle = circle,
                     now = now,
-                    shareStatus = actions.shareStatus(circle),
+                    shareStatus = if (isEveryone) ShareStatus.OK else actions.shareStatus(circle),
                     sharingBlocked = sharingBlocked,
                     onFixSharing = onFixSharing,
                     onStartSharing = { gate.require { haptics.confirm(); actions.confirmCircle(circle.id) } },
@@ -342,7 +349,7 @@ fun HomeScreen(
                     onReview = { reviewing = it },
                     onDismissRefusal = { actions.dismissJoinRefusal(it) },
                     onPerson = onPerson,
-                    onProfile = { onOpenProfile(circle.id, it) },
+                    onProfile = openProfile,
                 )
             }
             // The locate button also checks where you are (#115): the phone takes a fresh GPS fix and
@@ -418,8 +425,8 @@ fun HomeScreen(
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(4.dp).height(36.dp)) {}
                         }
                         Column(Modifier.weight(1f).padding(top = 8.dp)) {
-                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
-                            people { pubkey -> if (!flyTo(pubkey)) onOpenProfile(circle.id, pubkey) }
+                            SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, onInfo = if (isEveryone) ({ everyoneInfo = true }) else null)
+                            people { pubkey -> if (!flyTo(pubkey)) openProfile(pubkey) }
                         }
                     }
                 }
@@ -485,13 +492,13 @@ fun HomeScreen(
                         Box(Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 6.dp), contentAlignment = Alignment.Center) {
                             Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.outline, modifier = Modifier.width(36.dp).height(4.dp)) {}
                         }
-                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) })
+                        SheetHeader(circle, me, actions, onInvite = { onAdd(circle.id) }, onInfo = if (isEveryone) ({ everyoneInfo = true }) else null)
                     }
                     people { pubkey ->
                         if (flyTo(pubkey)) {
                             if (sheetY < defaultY - 2f) settle(0f, defaultY)
                         } else {
-                            onOpenProfile(circle.id, pubkey)
+                            openProfile(pubkey)
                         }
                     }
                 }
@@ -518,11 +525,13 @@ fun HomeScreen(
                 now = now,
                 location = { locs[it] },
                 name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
-                onProfile = { together = null; onOpenProfile(circle.id, it) },
+                onProfile = { together = null; openProfile(it) },
                 onDismiss = { together = null },
             )
         }
     }
+
+    if (everyoneInfo) EveryoneInfoSheet(onDismiss = { everyoneInfo = false })
 
     if (showCircles) {
         CirclePicker(
@@ -582,15 +591,33 @@ fun HomeScreen(
 }
 
 @Composable
-private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit) {
+private fun SheetHeader(circle: Circle, me: String, actions: Actions, onInvite: () -> Unit, onInfo: (() -> Unit)? = null) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text(circle.name, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}")
+            Caption("${circle.members.size} ${if (circle.members.size == 1) "person" else "people"}" + if (onInfo != null) " from all your circles" else "")
         }
-        if (circle.adminPubkey == me || me in circle.managers) TonalButton("Invite", onInvite, icon = AppIcons.Add)
+        // Everyone (#147) has no invite of its own; the info button says what it shows instead.
+        if (onInfo != null) IconButton(onClick = onInfo) { Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+        else if (circle.adminPubkey == me || me in circle.managers) TonalButton("Invite", onInvite, icon = AppIcons.Add)
     }
 }
+
+/** What the Everyone view shows (#147). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EveryoneInfoSheet(onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Everyone", style = MaterialTheme.typography.titleLarge)
+            Text(EVERYONE_INFO, style = MaterialTheme.typography.bodyLarge)
+            Caption("Invites, pausing and circle settings stay with each circle. Pick a circle to use them.")
+            PrimaryButton("OK", onDismiss, Modifier.fillMaxWidth())
+        }
+    }
+}
+
+private const val EVERYONE_INFO = "Shows the people from all your circles on one map. Someone in more than one circle appears once, at their newest location."
 
 /** Tap to turn sharing on or off. */
 @Composable
@@ -636,7 +663,7 @@ private fun PeopleList(
     onProfile: (String) -> Unit,
 ) {
     val requests = state.joinRequests.filter { it.circleId == circle.id }
-    val locs = state.locations[circle.id].orEmpty()
+    val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
     LazyColumn(Modifier.fillMaxWidth()) {
         item(key = "banners") {
             Column {
@@ -757,10 +784,29 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) -> Unit, onNew: () -> Unit, onJoin: () -> Unit, onDismiss: () -> Unit) {
+    var explain by remember { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
       // Scrolls when there are many circles or the phone is sideways.
       Column(Modifier.verticalScroll(rememberScrollState())) {
         Text("Your circles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+        // Everyone from every circle on one map (#147), once there's more than one circle.
+        if (state.circles.size >= 2) {
+            val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
+            SettingsRow(
+                title = "Everyone",
+                subtitle = "$people people from all your circles",
+                icon = AppIcons.People,
+                onClick = { onSelect(EVERYONE) },
+            ) {
+                IconButton(onClick = { explain = !explain }) {
+                    Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+            }
+            AnimatedVisibility(explain) {
+                Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+            }
+        }
         state.circles.forEach { c ->
             SettingsRow(
                 title = c.name,
