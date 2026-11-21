@@ -128,14 +128,15 @@ class CreateCircleTest {
 
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
     private fun scrollTo(text: String): UiObject2 {
-        repeat(6) {
+        // A list under a map is short, so each scroll moves it only a little: allow plenty.
+        repeat(15) {
             device.findObject(By.text(text))?.let { return it }
             // Scroll the scrollable part, keeping clear of the screen's bottom edge: a swipe that
             // starts there is the system's "go home" gesture and sends the app to the background.
             // The map counts as scrollable too; the screen's list is the one reaching lowest.
             device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
                 list.setGestureMargin((device.displayHeight * 0.15).toInt())
-                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
+                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
         }
