@@ -16,12 +16,14 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.opaq.core.GeoPoint
+import app.opaq.core.Grouping
 import app.opaq.core.HistoryPoint
 import app.opaq.core.HistorySegment
 import app.opaq.core.LocationHistory
@@ -33,6 +35,8 @@ import app.opaq.core.model.Activity
 import app.opaq.core.model.MemberLocation
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.max
 import kotlin.math.ln
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -127,8 +131,10 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - It opens at city level around you, and [focus] glides the camera to a point (yourself for the
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
- * - People close together merge into one bubble with a count, and separate as you zoom in.
- * - Tapping a person's dot calls [onPersonClick] with their id; tapping a bubble zooms in on it.
+ * - People whose dots would overlap are drawn as one group of their faces ([Grouping], [GroupPainter]),
+ *   which separates as you zoom in (#146).
+ * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group zooms in until they
+ *   separate, or, for people in the same spot, calls [onGroupClick] with their ids.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - The built-in scale bar, compass and logo are off; [MAP_ATTRIBUTION] is shown by the home and history screens.
@@ -143,9 +149,11 @@ fun MapPane(
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
+    onGroupClick: (ids: List<String>) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val onPerson by rememberUpdatedState(onPersonClick)
+    val onGroup by rememberUpdatedState(onGroupClick)
     // Roads in the tiles on screen, for drawing travelling people along them. Nothing is sent anywhere.
     var roads by remember { mutableStateOf<Roads?>(null) }
     val shown = rememberMovingMarkers(markers, roads)
@@ -155,58 +163,55 @@ fun MapPane(
         photos.mapNotNull { (id, b64) -> PhotoCache.get(b64)?.let { id to CirclePhotoPainter(it) } }
     }
     val photoIds = remember(photoIcons) { photoIcons.map { it.first }.toSet() }
-    val geoJson = remember(shown, photoIds) { markersToGeoJson(shown, photoIds) }
-    // Set just below; the bubble handler only runs on a tap, after the map exists.
+    // People whose dots would overlap at this zoom, regrouped every half zoom level (#146). You come
+    // first, then people online, so your face is in front and your group doesn't move as others pass.
+    var groupZoom by remember { mutableStateOf(CITY_ZOOM) }
+    val groups = remember(shown, groupZoom) {
+        val ordered = shown.sortedWith(compareBy({ it.kind.ordinal }, { it.id }))
+        Grouping.group(ordered.map { it.lat to it.lon }, groupZoom).map { g -> g.map { ordered[it] } }
+    }
+    val measurer = rememberTextMeasurer()
+    val accent = Palette.Ultramarine
+    val groupIcons = remember(groups.filter { it.size > 1 }.map(::groupKey).toSet()) {
+        groups.filter { it.size > 1 }.associate { g ->
+            val (faces, more) = groupFaces(g)
+            val drawn = faces.map { m ->
+                val offline = m.kind == MapMarker.Kind.OFFLINE
+                GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline)
+            }
+            groupKey(g) to (GroupPainter(drawn, more, measurer, accent) to groupIconSize(faces.size, more))
+        }.toList()
+    }
+    val geoJson = remember(groups, photoIds) { markersToGeoJson(groups, photoIds) }
+    // Set just below; the group handler only runs on a tap, after the map exists.
     var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
     val personTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
         val id = features.firstNotNullOfOrNull { it.properties?.get("id")?.jsonPrimitive?.content }
         if (id != null) { onPerson(id); ClickResult.Consume } else ClickResult.Pass
     }
-    // A bubble of people close together: zoom in on it until they separate.
-    val bubbleTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
-        val at = (features.firstOrNull()?.geometry as? Point)?.coordinates
+    // A group of people close together: zoom in until they separate, or list them if they're in one spot.
+    val groupTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
+        val ids = features.firstNotNullOfOrNull { it.properties?.get("ids")?.jsonPrimitive?.content }?.split(",")
+        val people = ids?.mapNotNull { id -> shown.firstOrNull { it.id == id } }.orEmpty()
         val map = stateRef
-        if (at != null && map != null) {
-            val zoom = (map.cameraPosition.zoom + 2).coerceAtMost(CLUSTER_MAX_ZOOM + 1.0)
-            scope.launch { map.animateCamera(CameraUpdate(center = at, zoom = zoom)) }
+        if (people.size < 2 || map == null) ClickResult.Pass else {
+            val split = Grouping.splitZoom(people.map { it.lat to it.lon })
+            if (split == null) onGroup(people.map { it.id }) else {
+                val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
+                val zoom = max(split, map.cameraPosition.zoom + 1)
+                scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
+            }
             ClickResult.Consume
-        } else ClickResult.Pass
+        }
     }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
-        val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson)) {
-            cluster = true
-            clusterRadius = 36
-            clusterMaxZoom = CLUSTER_MAX_ZOOM
-        }
-        val isCluster = feature.has("point_count")
-        // Merged bubble for people standing close together.
-        CircleLayer(
-            id = "people-cluster",
-            source = people,
-            filter = isCluster,
-            radius = const(18.dp),
-            color = const(Palette.Ultramarine),
-            strokeColor = const(Color.White),
-            strokeWidth = const(3.dp),
-            onClick = bubbleTapped,
-        )
-        SymbolLayer(
-            id = "people-cluster-count",
-            source = people,
-            filter = isCluster,
-            textField = format(span(feature["point_count_abbreviated"].asString())),
-            textFont = const(listOf("Noto Sans Bold")),
-            textSize = const(13.sp),
-            textColor = const(Color.White),
-            textAllowOverlap = const(true),
-            textIgnorePlacement = const(true),
-            onClick = bubbleTapped,
-        )
+        val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson))
+        val isGroup = feature.has("group")
         // One dot per person.
         CircleLayer(
             id = "people-dot",
             source = people,
-            filter = !isCluster,
+            filter = !isGroup,
             radius = const(15.dp),
             color = feature["color"].convertToColor(),
             strokeColor = const(Color.White),
@@ -216,7 +221,7 @@ fun MapPane(
         SymbolLayer(
             id = "people-initial",
             source = people,
-            filter = !isCluster,
+            filter = !isGroup,
             textField = format(span(feature["initial"].asString())),
             textFont = const(listOf("Noto Sans Bold")),
             textSize = const(13.sp),
@@ -240,9 +245,27 @@ fun MapPane(
                 onClick = personTapped,
             )
         }
+        // Groups go on top, so their faces aren't hidden under someone's dot nearby.
+        if (groupIcons.isNotEmpty()) {
+            val icons = groupIcons.map { (key, icon) -> key to image(icon.first, size = icon.second) }
+            SymbolLayer(
+                id = "people-group",
+                source = people,
+                filter = isGroup,
+                iconImage = switch(feature["group"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
+                iconAllowOverlap = const(true),
+                iconIgnorePlacement = const(true),
+                onClick = groupTapped,
+            )
+        }
     }
 
     SideEffect { stateRef = mapState }
+
+    // Regroup every half zoom level, as the map zooms.
+    LaunchedEffect(mapState) {
+        snapshotFlow { floor(mapState.cameraPosition.zoom * 2) / 2 }.collect { groupZoom = it }
+    }
 
     // Open once per circle at city level around me (or whoever has a location first).
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
@@ -293,9 +316,6 @@ fun MapPane(
         )
     }
 }
-
-/** People close together merge into one bubble up to this zoom. */
-private const val CLUSTER_MAX_ZOOM = 16
 
 /** Below this zoom, people aren't moved along roads (the tiles' road shapes are too coarse). */
 private const val ROAD_ZOOM = 12.0
@@ -368,10 +388,16 @@ private fun rememberMovingMarkers(markers: List<MapMarker>, roads: Roads?): List
     return shown
 }
 
-private fun markersToGeoJson(markers: List<MapMarker>, photoIds: Set<String>): String = buildJsonObject {
+/** Identifies a group's picture: who's in it, in order, and how each of them looks. */
+private fun groupKey(group: List<MapMarker>): String =
+    group.joinToString("|") { "${it.id}:${it.kind.ordinal}:${it.color}:${it.initial}:${it.photo?.hashCode() ?: 0}" }
+
+/** One feature per person on their own, and one per group, at the group's first person. */
+private fun markersToGeoJson(groups: List<List<MapMarker>>, photoIds: Set<String>): String = buildJsonObject {
     put("type", "FeatureCollection")
     putJsonArray("features") {
-        markers.forEach { mk ->
+        groups.forEach { group ->
+            val mk = group.first()
             addJsonObject {
                 put("type", "Feature")
                 putJsonObject("geometry") {
@@ -379,6 +405,11 @@ private fun markersToGeoJson(markers: List<MapMarker>, photoIds: Set<String>): S
                     putJsonArray("coordinates") { add(mk.lon); add(mk.lat) }
                 }
                 putJsonObject("properties") {
+                    if (group.size > 1) {
+                        put("group", groupKey(group))
+                        put("ids", group.joinToString(",") { it.id })
+                        return@putJsonObject
+                    }
                     put("id", mk.id)
                     val offline = mk.kind == MapMarker.Kind.OFFLINE
                     if (mk.id in photoIds) {

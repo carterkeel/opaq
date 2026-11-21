@@ -88,6 +88,7 @@ import app.opaq.core.ShareStatus
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Circle
 import app.opaq.core.model.JoinRequest
+import app.opaq.core.model.MemberLocation
 import app.opaq.core.protocol.DeviceCode
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -140,6 +141,8 @@ fun HomeScreen(
         val now = rememberNow()
         var focus by remember { mutableStateOf<MapFocus?>(null) }
         var focusSeq by remember { mutableIntStateOf(0) }
+        // People in one spot, tapped on the map (#146).
+        var together by remember { mutableStateOf<List<String>?>(null) }
         val locs = state.locations[circle.id].orEmpty()
         val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, now) {
             circle.members.mapNotNull { m ->
@@ -261,6 +264,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = { onOpenProfile(circle.id, it) },
+                    onGroupClick = { together = it },
                 )
             }
 
@@ -505,6 +509,18 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
             )
             }
+        }
+        together?.let { ids ->
+            TogetherSheet(
+                state = state,
+                me = me,
+                ids = ids,
+                now = now,
+                location = { locs[it] },
+                name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
+                onProfile = { together = null; onOpenProfile(circle.id, it) },
+                onDismiss = { together = null },
+            )
         }
     }
 
@@ -793,5 +809,33 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
             TonalButton("Join a circle", onJoin, Modifier.fillMaxWidth(), icon = AppIcons.ScanQr)
         }
     }
+    }
+}
+
+/** People in the same spot on the map (#146): tap one to open their profile. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onProfile: (String) -> Unit, onDismiss: () -> Unit) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+            ids.forEach { id ->
+                val info = avatarFor(state, id, me, name(id))
+                val loc = location(id)
+                val offline = id != me && Format.isOffline(loc, now)
+                Row(
+                    Modifier.fillMaxWidth().clickable(onClickLabel = "Open profile") { onProfile(id) }.padding(horizontal = 24.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Avatar(info, size = 48.dp, dimmed = offline)
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(if (id == me) "You" else info.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(Format.status(loc, now), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+            Spacer(Modifier.height(24.dp))
+        }
     }
 }
