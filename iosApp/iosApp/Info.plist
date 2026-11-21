@@ -41,6 +41,10 @@
 	<false/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>comgooglemaps</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Opaq uses the camera only to scan invite codes. Nothing is recorded.</string>
 	<key>NSFaceIDUsageDescription</key>

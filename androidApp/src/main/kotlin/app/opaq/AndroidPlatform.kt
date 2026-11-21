@@ -1,5 +1,6 @@
 package app.opaq
 
+import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -70,6 +71,28 @@ class AndroidPlatform(
 
     override fun refreshMyLocation() = app.refreshMyLocation()
 
+    override val directionsApps = listOf(GOOGLE_MAPS, OTHER_MAPS)
+
+    override fun openDirections(app: String, lat: Double, lon: Double, name: String) {
+        val to = "$lat,$lon"
+        val intent = when (app) {
+            // Google Maps' directions link: the app if it's installed, otherwise the browser.
+            GOOGLE_MAPS -> Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$to"))
+                .setPackage("com.google.android.apps.maps")
+            // Any map app on the phone, with the spot marked and named.
+            else -> Intent.createChooser(Intent(Intent.ACTION_VIEW, Uri.parse("geo:$to?q=$to(${Uri.encode(name)})")), "Directions to $name")
+        }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            try {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$to")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } catch (_: ActivityNotFoundException) {
+                showMessage("No map app can open this")
+            }
+        }
+    }
+
     override val supportsTor: Boolean get() = true
 
     /** The manifest's launcher entries (activity-alias), by app icon id. "white" is enabled by default. */
@@ -138,5 +161,10 @@ class AndroidPlatform(
                 }
             },
         )
+    }
+
+    private companion object {
+        const val GOOGLE_MAPS = "Google Maps"
+        const val OTHER_MAPS = "Another map app"
     }
 }

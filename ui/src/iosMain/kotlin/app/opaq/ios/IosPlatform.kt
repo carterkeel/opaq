@@ -50,6 +50,20 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
 
     override fun refreshMyLocation() = location.refreshNow()
 
+    override val directionsApps = listOf("Apple Maps", "Google Maps")
+
+    override fun openDirections(app: String, lat: Double, lon: Double, name: String) {
+        val to = "$lat,$lon"
+        val urls = when (app) {
+            // The Google Maps app if it's installed (needs comgooglemaps in LSApplicationQueriesSchemes), otherwise the web.
+            "Google Maps" -> listOf("comgooglemaps://?daddr=$to&directionsmode=driving", "https://www.google.com/maps/dir/?api=1&destination=$to")
+            else -> listOf("https://maps.apple.com/?daddr=$to&dirflg=d")
+        }
+        val application = UIApplication.sharedApplication
+        val url = urls.mapNotNull { NSURL.URLWithString(it) }.firstOrNull { application.canOpenURL(it) } ?: return
+        application.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+    }
+
     private val biometrics = IosBiometrics()
 
     override val biometricName: String? get() = biometrics.name
