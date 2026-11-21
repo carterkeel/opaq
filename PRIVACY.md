@@ -13,6 +13,7 @@ Phones exchange encrypted messages through public [Nostr](https://nostr.com) rel
 | When you publish, and how often | Updates go out about every 10 seconds while moving and every 5 minutes while still, plus one when you start or stop moving. A relay can tell roughly whether you're moving. Timestamps it sees are blurred by up to 15 seconds. |
 | The size of each event | Location updates are padded to one fixed size, so their size reveals nothing. |
 | When a circle changes | Key rotations, joins and removals send a burst of messages. |
+| That an update was probably asked for | Anyone in a circle can ask a member's phone for a fresh update. The request is a sealed message, and the update that answers it follows shortly after, so a relay can guess the two are linked. It can't read either. Phones answer only while already sharing with that circle, at most once every 2 minutes per person and 20 times an hour. |
 
 A relay **can't** see where you are, your name or photo, who sent a message (messages are signed by throwaway or hourly keys, and addressed to rotating inbox tags rather than your public key), your activity, speed or battery, or whether you share exactly or approximately.
 
@@ -46,6 +47,14 @@ An invite link contains your name, the circle's name, your relays, your public k
 Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time and activity (still, walking, cycling, driving), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
 
 How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Opaq deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Opaq can't prevent that.
+
+## Place alerts
+
+Anyone in a circle can draw an area on their own map (a place alert) and get a notification when someone in the circle arrives or leaves. It's worked out on their phone from the updates it already receives: nothing new is sent, the area is never published or logged, and it isn't put in backups. Only the person who made it can see it, and the people it watches aren't told. It needs no more than they already share with that circle; pausing or sharing only your area stops it working.
+
+## Directions
+
+A profile can open Google Maps or Apple Maps with directions to that person's last shared spot. The map app then knows the destination, as with any trip you plan there. Opaq sends it nothing else.
 
 ## Backups
 

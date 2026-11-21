@@ -71,9 +71,11 @@ Runs on Android 8.0+ and iOS 17+ (iPhone and iPad) from one shared Kotlin Multip
 |---|---|
 | Location updates | Encrypted once per circle (NIP-44 v2 with a circle key that ratchets forward daily and is replaced weekly), padded to a fixed size, and published as a replaceable Nostr event. Relays keep only the newest one. |
 | Unlinkability | The signing key and the event tag both change every hour, and come from secrets the relay doesn't have, so relays can't tie a member's updates together across hours. Each update is also signed inside the encryption by the sender's real key, so circle members know who sent it. |
-| Send rhythm | Two fixed rates with jitter: about every 10 seconds while moving, about every five minutes while still. Relays can tell at most whether someone is moving. Walking, driving and speed are inside the encryption. |
+| Send rhythm | Two fixed rates with jitter: about every 10 seconds while moving, about every five minutes while still, plus a fresh update when someone in the circle asks for one (at most every 2 minutes per person, and only while you're already sharing with them). Relays can tell at most whether someone is moving, and that a request was probably followed by an update; they can't read either. Walking, driving and speed are inside the encryption. |
 | Invites and approvals | Sealed one-to-one messages (kind 1059) signed by a throwaway key and encrypted to the recipient. |
 | Removing someone | The admin rotates the circle key and sends it only to remaining members. |
+| Place alerts | Worked out on the phone that set them up, from updates it already receives. Nothing is sent, places aren't in backups, and only their maker sees them; the people in the circle aren't told. |
+| Directions | Handed to Google Maps or Apple Maps, which then know the destination. |
 | Storage | App state, including your private key, is encrypted with an Android Keystore key (iOS: the Keychain) and excluded from cloud and device backups. Location history uses its own key that never leaves the phone. |
 | Map | MapLibre (via maplibre-compose, on Android and iOS) with OpenFreeMap tiles. The tile server sees roughly which area you're viewing, never anyone's position. |
 
