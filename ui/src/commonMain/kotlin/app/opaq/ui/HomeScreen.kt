@@ -797,7 +797,7 @@ private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) 
             SettingsRow(
                 title = "Everyone",
                 subtitle = "$people people from all your circles",
-                icon = AppIcons.People,
+                icon = AppIcons.Globe,
                 onClick = { onSelect(EVERYONE) },
             ) {
                 IconButton(onClick = { explain = !explain }) {

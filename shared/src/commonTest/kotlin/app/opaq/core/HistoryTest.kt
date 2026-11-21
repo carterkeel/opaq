@@ -51,6 +51,25 @@ class HistoryTest {
     }
 
     @Test
+    fun drivesKeepTheirSpeedAndCyclingCountsAsDriving() = runTest {
+        val h = LocationHistory(MemoryHistoryFiles())
+        // 20 m/s (about 45 mph), with a path point 300 m back 15 s earlier.
+        val t = t0 + 60
+        h.record(key, ben, at(t, 41.0, Activity.DRIVING, points = listOf(Point(41.0 - 0.0027, -87.6, t - 15))).copy(speed = 20f))
+        val got = h.read(key, ben, t0, t0 + 3600)
+        assertEquals(20f, got.last().v)
+        assertEquals(20.0, got.first().v!!.toDouble(), 1.0)
+        // An older phone's "cycling" is stored as driving.
+        h.record(key, ben, at(t + 120, 41.01, Activity.CYCLING).copy(speed = 6f))
+        assertEquals(Activity.DRIVING, h.read(key, ben, t0, t0 + 3600).last().a)
+        // Walking keeps no speed.
+        h.record(key, ben, at(t + 600, 41.02, Activity.WALKING).copy(speed = 1.4f))
+        assertEquals(null, h.read(key, ben, t0, t0 + 3600).last().v)
+        val drive = HistorySegments.build(h.read(key, ben, t0, t0 + 3600)).first { it.activity == Activity.DRIVING }
+        assertEquals(20f, drive.topSpeed)
+    }
+
+    @Test
     fun filesAreEncryptedAndDontNameThePerson() = runTest {
         val files = MemoryHistoryFiles()
         val h = LocationHistory(files)

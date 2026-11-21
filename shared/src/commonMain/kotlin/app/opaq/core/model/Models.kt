@@ -94,7 +94,7 @@ data class AppState(
     val historyDays: Int = 7,
     /** Key for the history files. Never in backups: a restored phone starts its history afresh. */
     val historyKeyHex: String? = null,
-    /** Alert areas drawn on this phone's map (#151). Never sent anywhere, and left out of backups. */
+    /** Alert areas drawn on this phone's map (#151). Never sent anywhere; included in backups. */
     val places: List<Place> = emptyList(),
     /** Who's inside each place right now, by place id, so a restart doesn't announce them again. */
     val placeInside: Map<String, List<String>> = emptyMap(),

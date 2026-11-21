@@ -267,7 +267,7 @@ class CreateCircleTest {
         // Place alerts (#151): add one where the map is, see it listed, then delete it.
         waitFor("Place alerts").click()
         waitFor("Add a place").click()
-        waitFor("Move the map to put the place in the middle.")
+        waitFor("Move the map and tap where the place should be.")
         val placeName = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no place name field")
         placeName.click()
         placeName.text = "Home"

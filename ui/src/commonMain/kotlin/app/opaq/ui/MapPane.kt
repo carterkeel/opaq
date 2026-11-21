@@ -55,6 +55,7 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraUpdate
+import org.maplibre.compose.expressions.dsl.asDpOffset
 import org.maplibre.compose.expressions.dsl.asNumber
 import org.maplibre.compose.expressions.dsl.asString
 import org.maplibre.compose.expressions.dsl.case
@@ -133,8 +134,8 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - It opens at city level around you, and [focus] glides the camera to a point (yourself for the
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
- * - People whose dots would overlap are drawn as one group of their faces ([Grouping], [GroupPainter]),
- *   which separates as you zoom in (#146).
+ * - People whose dots would overlap are stacked, their faces side by side and closer together the
+ *   more there are ([Grouping], [stackStep]). Faces glide into and out of a stack as you zoom (#146).
  * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group zooms in until they
  *   separate, or, for people in the same spot, calls [onGroupClick] with their ids.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
@@ -161,12 +162,6 @@ fun MapPane(
     // Roads in the tiles on screen, for drawing travelling people along them. Nothing is sent anywhere.
     var roads by remember { mutableStateOf<Roads?>(null) }
     val shown = rememberMovingMarkers(markers, roads)
-    // Profile photos, cropped to circles. Remembered per photo so the map registers each image once.
-    val photos = markers.mapNotNull { m -> m.photo?.let { m.id to it } }
-    val photoIcons = remember(photos) {
-        photos.mapNotNull { (id, b64) -> PhotoCache.get(b64)?.let { id to CirclePhotoPainter(it) } }
-    }
-    val photoIds = remember(photoIcons) { photoIcons.map { it.first }.toSet() }
     // People whose dots would overlap at this zoom, regrouped every half zoom level (#146). You come
     // first, then people online, so your face is in front and your group doesn't move as others pass.
     var groupZoom by remember { mutableStateOf(CITY_ZOOM) }
@@ -174,38 +169,39 @@ fun MapPane(
         val ordered = shown.sortedWith(compareBy({ it.kind.ordinal }, { it.id }))
         Grouping.group(ordered.map { it.lat to it.lon }, groupZoom).map { g -> g.map { ordered[it] } }
     }
+    // Each face glides into its place in a stack, and back out, rather than jumping.
+    val faces = rememberStackedFaces(groups)
+    // One picture per person: their photo or initial in a white ring, dimmed when offline.
     val measurer = rememberTextMeasurer()
-    val accent = Palette.Ultramarine
-    val groupIcons = remember(groups.filter { it.size > 1 }.map(::groupKey).toSet()) {
-        groups.filter { it.size > 1 }.associate { g ->
-            val (faces, more) = groupFaces(g)
-            val drawn = faces.map { m ->
-                val offline = m.kind == MapMarker.Kind.OFFLINE
-                GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline)
-            }
-            groupKey(g) to (GroupPainter(drawn, more, measurer, accent) to groupIconSize(faces.size, more))
-        }.toList()
+    val faceIcons = remember(shown.map(::faceKey).toSet()) {
+        shown.distinctBy { it.id }.map { m ->
+            val offline = m.kind == MapMarker.Kind.OFFLINE
+            faceKey(m) to FacePainter(GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline), measurer)
+        }
     }
-    val geoJson = remember(groups, photoIds) { markersToGeoJson(groups, photoIds) }
-    // Set just below; the group handler only runs on a tap, after the map exists.
+    val geoJson = remember(faces) { facesToGeoJson(faces) }
+    // Set just below; the tap handler only runs on a tap, after the map exists.
     var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
-    val personTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
-        val id = features.firstNotNullOfOrNull { it.properties?.get("id")?.jsonPrimitive?.content }
-        if (id != null) { onPerson(id); ClickResult.Consume } else ClickResult.Pass
-    }
-    // A group of people close together: zoom in until they separate, or list them if they're in one spot.
-    val groupTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
-        val ids = features.firstNotNullOfOrNull { it.properties?.get("ids")?.jsonPrimitive?.content }?.split(",")
-        val people = ids?.mapNotNull { id -> shown.firstOrNull { it.id == id } }.orEmpty()
+    // A person on their own opens their profile. In a stack: zoom in until they separate, or list
+    // them if they're in one spot.
+    val faceTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
+        val props = features.firstOrNull()?.properties
+        val ids = props?.get("ids")?.jsonPrimitive?.content?.split(",")
+        val id = props?.get("id")?.jsonPrimitive?.content
         val map = stateRef
-        if (people.size < 2 || map == null) ClickResult.Pass else {
-            val split = Grouping.splitZoom(people.map { it.lat to it.lon })
-            if (split == null) onGroup(people.map { it.id }) else {
-                val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
-                val zoom = max(split, map.cameraPosition.zoom + 1)
-                scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
+        when {
+            ids != null && ids.size > 1 && map != null -> {
+                val people = ids.mapNotNull { i -> shown.firstOrNull { it.id == i } }
+                val split = Grouping.splitZoom(people.map { it.lat to it.lon })
+                if (split == null) onGroup(people.map { it.id }) else {
+                    val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
+                    val zoom = max(split, map.cameraPosition.zoom + 1)
+                    scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
+                }
+                ClickResult.Consume
             }
-            ClickResult.Consume
+            id != null -> { onPerson(id); ClickResult.Consume }
+            else -> ClickResult.Pass
         }
     }
     val placesGeo = remember(places) { placesToGeoJson(places) }
@@ -225,56 +221,19 @@ fun MapPane(
             textHaloWidth = const(1.5.dp),
         )
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson))
-        val isGroup = feature.has("group")
-        // One dot per person.
-        CircleLayer(
-            id = "people-dot",
-            source = people,
-            filter = !isGroup,
-            radius = const(15.dp),
-            color = feature["color"].convertToColor(),
-            strokeColor = const(Color.White),
-            strokeWidth = const(3.dp),
-            onClick = personTapped,
-        )
-        SymbolLayer(
-            id = "people-initial",
-            source = people,
-            filter = !isGroup,
-            textField = format(span(feature["initial"].asString())),
-            textFont = const(listOf("Noto Sans Bold")),
-            textSize = const(13.sp),
-            // From the feature, like the dot colour: const(Color.White) rendered magenta here (#63).
-            textColor = feature["textColor"].convertToColor(),
-            textAllowOverlap = const(true),
-            textIgnorePlacement = const(true),
-            onClick = personTapped,
-        )
-        // A profile photo fills the dot, inside its white ring, in place of the initial.
-        if (photoIcons.isNotEmpty()) {
-            val icons = photoIcons.map { (id, painter) -> id to image(painter, size = DpSize(30.dp, 30.dp)) }
+        if (faceIcons.isNotEmpty()) {
+            val icons = faceIcons.map { (key, painter) -> key to image(painter, size = DpSize(FACE_DP.dp, FACE_DP.dp)) }
             SymbolLayer(
-                id = "people-photo",
+                id = "people-face",
                 source = people,
-                filter = feature.has("photo"),
-                iconImage = switch(feature["photo"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
-                iconOpacity = feature["photoOpacity"].asNumber(const(1f)),
+                iconImage = switch(feature["face"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
+                // Where the face sits in its stack, in dp from the stack's centre.
+                iconOffset = feature["off"].asDpOffset(),
+                // The front face of a stack (and you) on top.
+                sortKey = feature["order"].asNumber(),
                 iconAllowOverlap = const(true),
                 iconIgnorePlacement = const(true),
-                onClick = personTapped,
-            )
-        }
-        // Groups go on top, so their faces aren't hidden under someone's dot nearby.
-        if (groupIcons.isNotEmpty()) {
-            val icons = groupIcons.map { (key, icon) -> key to image(icon.first, size = icon.second) }
-            SymbolLayer(
-                id = "people-group",
-                source = people,
-                filter = isGroup,
-                iconImage = switch(feature["group"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
-                iconAllowOverlap = const(true),
-                iconIgnorePlacement = const(true),
-                onClick = groupTapped,
+                onClick = faceTapped,
             )
         }
     }
@@ -337,40 +296,61 @@ fun MapPane(
 }
 
 /**
- * The map on the alert area screen (#151): the area stays in the middle, true to scale, while
- * you move the map under it. [onCenter] gets the point under the middle as the map moves.
+ * The map on the place alert screen (#151). Move and zoom it freely; a tap puts the place there
+ * ([onPick]). The area is drawn true to scale round [lat], [lon].
  */
 @Composable
-fun PlacePickerMap(startLat: Double, startLon: Double, radius: Double, darkMap: Boolean, onCenter: (lat: Double, lon: Double) -> Unit, modifier: Modifier = Modifier) {
-    val mapState = rememberMapState(baseStyle = mapStyle(darkMap))
-    val report by rememberUpdatedState(onCenter)
+fun PlacePickerMap(lat: Double, lon: Double, radius: Double, darkMap: Boolean, onPick: (lat: Double, lon: Double) -> Unit, modifier: Modifier = Modifier) {
+    val pick by rememberUpdatedState(onPick)
+    val interactions = remember {
+        MapInteractions(MapInteractions.Standard) {
+            camera { rotate { enabled = false } }
+            callbacks {
+                click {
+                    onEvent { e ->
+                        val at = e.position
+                        if (at != null) pick(at.latitude, ((at.longitude + 540.0) % 360.0) - 180.0)
+                        ClickResult.Consume
+                    }
+                }
+            }
+        }
+    }
+    val area = remember(lat, lon, radius) { placesToGeoJson(listOf(Place("", "", lat, lon, radius))) }
+    val spot = remember(lat, lon) {
+        buildJsonObject {
+            put("type", "Point")
+            putJsonArray("coordinates") { add(lon); add(lat) }
+        }.toString()
+    }
+    val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
+        val areaSource = rememberGeoJsonSource(GeoJsonData.JsonString(area))
+        FillLayer(id = "pick-fill", source = areaSource, color = const(Palette.Ultramarine), opacity = const(0.15f))
+        LineLayer(id = "pick-edge", source = areaSource, color = const(Palette.Ultramarine), width = const(2.dp))
+        CircleLayer(
+            id = "pick-spot",
+            source = rememberGeoJsonSource(GeoJsonData.JsonString(spot)),
+            radius = const(5.dp),
+            color = const(Palette.Ultramarine),
+            strokeColor = const(Color.White),
+            strokeWidth = const(2.dp),
+        )
+    }
     BoxWithConstraints(modifier) {
         val widthDp = maxWidth.value.toDouble()
         LaunchedEffect(mapState) {
-            // Open with the area about a third of the map's width across.
+            // Open on the place, with the area about a third of the map's width across.
             val metersPerDp = radius * 2 / (widthDp / 3)
-            val zoom = kotlin.math.log2(40_075_016.686 * cos(startLat * PI / 180) / (512.0 * metersPerDp)).coerceIn(2.0, 18.0)
-            mapState.setCameraPosition(CameraPosition(center = Position(startLon, startLat), zoom = zoom))
-            snapshotFlow { mapState.cameraPosition.center }.collect { report(it.latitude, it.longitude) }
+            val zoom = kotlin.math.log2(40_075_016.686 * cos(lat * PI / 180) / (512.0 * metersPerDp)).coerceIn(2.0, 18.0)
+            mapState.setCameraPosition(CameraPosition(center = Position(lon, lat), zoom = zoom))
         }
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
             cameraConstraints = worldFills(maxHeight),
-            interactions = Interactions,
+            interactions = interactions,
             overlay = {},
         )
-        val camera = mapState.cameraPosition
-        val metersPerDp = 40_075_016.686 * cos(camera.center.latitude * PI / 180) / (512.0 * kotlin.math.exp(camera.zoom * ln(2.0)))
-        val ring = (radius / metersPerDp).toFloat()
-        val accent = Palette.Ultramarine
-        androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
-            val r = ring * density
-            drawCircle(accent.copy(alpha = 0.15f), r, center)
-            drawCircle(accent, r, center, style = androidx.compose.ui.graphics.drawscope.Stroke(2 * density))
-            drawCircle(Color.White, 7 * density, center)
-            drawCircle(accent, 5 * density, center)
-        }
     }
 }
 
@@ -474,48 +454,93 @@ internal fun circlePoints(lat: Double, lon: Double, radius: Double, steps: Int =
     }
 }
 
-/** Identifies a group's picture: who's in it, in order, and how each of them looks. */
-private fun groupKey(group: List<MapMarker>): String =
-    group.joinToString("|") { "${it.id}:${it.kind.ordinal}:${it.color}:${it.initial}:${it.photo?.hashCode() ?: 0}" }
+/** Identifies a person's picture: who, and how they look right now. */
+private fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.color}:${m.initial}:${m.photo?.hashCode() ?: 0}"
 
-/** One feature per person on their own, and one per group, at the group's first person. */
-private fun markersToGeoJson(groups: List<List<MapMarker>>, photoIds: Set<String>): String = buildJsonObject {
+/** One feature per face: where it's drawn, its place in a stack, and who's in that stack. */
+private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
     put("type", "FeatureCollection")
     putJsonArray("features") {
-        groups.forEach { group ->
-            val mk = group.first()
+        faces.forEach { f ->
             addJsonObject {
                 put("type", "Feature")
                 putJsonObject("geometry") {
                     put("type", "Point")
-                    putJsonArray("coordinates") { add(mk.lon); add(mk.lat) }
+                    putJsonArray("coordinates") { add(f.lon); add(f.lat) }
                 }
                 putJsonObject("properties") {
-                    if (group.size > 1) {
-                        put("group", groupKey(group))
-                        put("ids", group.joinToString(",") { it.id })
-                        return@putJsonObject
-                    }
-                    put("id", mk.id)
-                    val offline = mk.kind == MapMarker.Kind.OFFLINE
-                    if (mk.id in photoIds) {
-                        // The photo layer picks the image by id; offline people's photos are dimmed.
-                        put("photo", mk.id)
-                        put("photoOpacity", if (offline) 0.45 else 1.0)
-                        put("initial", "")
-                    } else {
-                        put("initial", mk.initial)
-                    }
-                    put("textColor", "#FFFFFF")
-                    put("color", if (offline) "#9E9E9E" else mk.color)
+                    put("id", f.marker.id)
+                    put("face", faceKey(f.marker))
+                    putJsonArray("off") { add(f.dx); add(0.0) }
+                    put("order", f.order)
+                    if (f.ids != null) put("ids", f.ids)
                 }
             }
         }
     }
 }.toString()
 
+/** A face as drawn: where, how far along its stack (dp), its drawing order, and its stack's people. */
+private data class StackedFace(val marker: MapMarker, val lat: Double, val lon: Double, val dx: Double, val order: Int, val ids: String?)
+
+/** How long a face takes to glide into or out of a stack. */
+private const val STACK_MILLIS = 350.0
+
+/** Where each face belongs: alone at its own spot, or in its group's stack at the first person's spot. */
+private fun stackTargets(groups: List<List<MapMarker>>): List<StackedFace> = groups.flatMap { g ->
+    val anchor = g.first()
+    val step = stackStep(g.size)
+    val ids = if (g.size > 1) g.joinToString(",") { it.id } else null
+    g.mapIndexed { i, m ->
+        val lat = if (g.size > 1) anchor.lat else m.lat
+        val lon = if (g.size > 1) anchor.lon else m.lon
+        StackedFace(m, lat, lon, (i - (g.size - 1) / 2.0) * step, g.size - i, ids)
+    }
+}
+
 /**
- * A day of someone's history: the path coloured by activity (driving, cycling, walking) and a
+ * The faces as they should be drawn right now (#146). When someone joins or leaves a stack (the map
+ * zoomed, or they moved), their face glides from where it was drawn to its new place over
+ * [STACK_MILLIS], instead of jumping.
+ */
+@Composable
+private fun rememberStackedFaces(groups: List<List<MapMarker>>): List<StackedFace> {
+    val clock = remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    var out by remember { mutableStateOf(stackTargets(groups)) }
+    val drawn = remember { HashMap<String, StackedFace>() }
+    val places = remember { HashMap<String, String>() }
+    val glides = remember { HashMap<String, Pair<StackedFace, Double>>() }
+    LaunchedEffect(groups) {
+        val targets = stackTargets(groups)
+        val start = clock.elapsedNow().inWholeMilliseconds.toDouble()
+        targets.forEach { f ->
+            // Which stack and slot it's in; a change starts a glide from where it's drawn now.
+            val place = "${f.ids}|${f.dx}"
+            val was = places[f.marker.id]
+            if (was != null && was != place) drawn[f.marker.id]?.let { glides[f.marker.id] = it to start }
+            places[f.marker.id] = place
+        }
+        val ids = targets.map { it.marker.id }.toSet()
+        listOf(drawn, places, glides).forEach { it.keys.retainAll(ids) }
+        fun frame(now: Double): List<StackedFace> = targets.map { f ->
+            val glide = glides[f.marker.id] ?: return@map f
+            val t = ((now - glide.second) / STACK_MILLIS).coerceIn(0.0, 1.0)
+            if (t >= 1.0) { glides.remove(f.marker.id); return@map f }
+            val e = 1 - (1 - t) * (1 - t) * (1 - t) // ease out
+            val from = glide.first
+            f.copy(lat = from.lat + (f.lat - from.lat) * e, lon = from.lon + (f.lon - from.lon) * e, dx = from.dx + (f.dx - from.dx) * e)
+        }.also { list -> list.forEach { drawn[it.marker.id] = it } }
+        out = frame(start)
+        while (glides.isNotEmpty()) {
+            withFrameMillis { }
+            out = frame(clock.elapsedNow().inWholeMilliseconds.toDouble())
+        }
+    }
+    return out
+}
+
+/**
+ * A day of someone's history: the path coloured by activity (driving, walking) and a
  * dot where they stayed put. Frames the whole day, or [focus] (one tapped stretch) when set.
  *
  * The path is lined up with roads it runs close to ([RoadSnap]), using the roads in the map tiles

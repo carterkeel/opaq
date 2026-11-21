@@ -201,7 +201,8 @@ class ProtocolTest {
         assertEquals(Activity.STILL, MotionPolicy.classify(0.2f, Activity.UNKNOWN))
         assertEquals(Activity.WALKING, MotionPolicy.classify(1.4f, Activity.STILL))
         assertEquals(Activity.WALKING, MotionPolicy.classify(2.6f, Activity.WALKING), "just over the boundary keeps walking")
-        assertEquals(Activity.CYCLING, MotionPolicy.classify(4f, Activity.WALKING))
+        assertEquals(Activity.WALKING, MotionPolicy.classify(3.5f, Activity.WALKING), "a run is still walking")
+        assertEquals(Activity.DRIVING, MotionPolicy.classify(5f, Activity.WALKING), "no cycling: faster is driving")
         assertEquals(Activity.DRIVING, MotionPolicy.classify(6.5f, Activity.DRIVING), "slowing in traffic stays driving")
         assertEquals(Activity.DRIVING, MotionPolicy.classify(18f, Activity.STILL))
     }

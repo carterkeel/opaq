@@ -236,9 +236,10 @@ class MotionPolicy {
         /** A fix older than this when it arrives is a cached one, not where the phone is now. */
         const val MAX_FIX_AGE = 120L
 
-        // Upper speed bounds in m/s: still < 1.8 km/h, walking < 9 km/h, cycling < 25 km/h.
+        // Upper speed bounds in m/s: still < 1.8 km/h, walking (running too) < 14.4 km/h (9 mph),
+        // driving above. There's no cycling: speed alone can't tell it from slow traffic or a run.
         private const val STILL_SPEED = 0.5f
-        private val BOUNDS = listOf(Activity.STILL to STILL_SPEED, Activity.WALKING to 2.5f, Activity.CYCLING to 7f)
+        private val BOUNDS = listOf(Activity.STILL to STILL_SPEED, Activity.WALKING to 4f)
 
         /** Classifies speed, with 15% hysteresis so a reading near a boundary doesn't flip back and forth. */
         fun classify(speed: Float?, previous: Activity): Activity {

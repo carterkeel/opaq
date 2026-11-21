@@ -26,6 +26,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import app.opaq.core.PlaceAlerts
@@ -49,7 +51,7 @@ fun PlacesScreen(state: AppState, onBack: () -> Unit, onOpen: (placeId: String?)
             SettingsRow("Add a place", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = { onOpen(null) })
         }
         Caption(
-            "$PLACES_PRIVATE They arrive while Opaq is running and connected, usually within a minute. Places aren't included in backups.",
+            "$PLACES_PRIVATE They arrive while Opaq is running and connected, usually within a minute.",
             Gutter.padding(top = 16.dp),
         )
     }
@@ -105,13 +107,19 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
     Column(Modifier.fillMaxSize()) {
         TopBar(if (existing == null) "New place" else "Edit place", onBack)
         Box(Modifier.fillMaxWidth().height(260.dp).padding(horizontal = 16.dp).clip(RoundedCornerShape(20.dp))) {
-            PlacePickerMap(start.first, start.second, radius, state.darkMap, onCenter = { lat, lon -> at = lat to lon }, modifier = Modifier.fillMaxSize())
+            PlacePickerMap(at.first, at.second, radius, state.darkMap, onPick = { lat, lon -> at = lat to lon }, modifier = Modifier.fillMaxSize())
         }
-        Caption("Move the map to put the place in the middle.", Gutter.padding(top = 8.dp))
+        val scroll = rememberScrollState()
         Column(
-            Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(top = 8.dp, bottom = 24.dp),
+            // Clipped, so fields scrolling up go under the map's edge rather than over the caption.
+            Modifier.fillMaxWidth().weight(1f).clipToBounds().verticalScroll(scroll).padding(top = 8.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
+            // The hint scrolls away with the rest, fading as it goes.
+            Caption(
+                "Move the map and tap where the place should be.",
+                Gutter.padding(bottom = 8.dp).graphicsLayer { alpha = (1f - scroll.value / 120f).coerceIn(0f, 1f) },
+            )
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it.take(40) },

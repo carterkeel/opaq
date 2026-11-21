@@ -61,6 +61,7 @@ class EngineTest {
         a.setMyName("Mom")
         a.setShowPhotos(false)
         val circle = a.createCircle("Family")
+        val home = a.savePlace(app.opaq.core.model.Place("", "Home", 41.0, -87.6, radius = 60.0, circleId = circle.id, onLeave = true))
         a.setPin("2468")
         val backup = a.exportBackup("correct horse battery")
         assertTrue(backup.startsWith(Backups.HEADER))
@@ -74,6 +75,7 @@ class EngineTest {
         assertFalse(b.state.value.showPhotos)
         assertFalse(b.state.value.sharing, "sharing starts paused after a restore")
         assertTrue(b.state.value.setupDone)
+        assertEquals(listOf(home), b.state.value.places, "place alerts come back too (#151)")
     }
 
     @Test

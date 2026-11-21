@@ -261,6 +261,14 @@ object AppIcons {
         moveTo(13f, 8f); lineTo(15f, 10f); lineTo(13f, 12f)
     }
 
+    /** A globe: everyone from every circle (#147). */
+    val Globe: ImageVector = stroke("Globe") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(3f, 12f); lineTo(21f, 12f)
+        moveTo(12f, 3f); quadTo(16f, 7.5f, 16f, 12f); quadTo(16f, 16.5f, 12f, 21f)
+        moveTo(12f, 3f); quadTo(8f, 7.5f, 8f, 12f); quadTo(8f, 16.5f, 12f, 21f)
+    }
+
     /** A bell: notifications. */
     val Bell: ImageVector = stroke("Bell") {
         moveTo(6f, 16f); lineTo(6f, 11f); quadTo(6f, 5f, 12f, 5f); quadTo(18f, 5f, 18f, 11f); lineTo(18f, 16f); lineTo(19.5f, 17.5f); lineTo(4.5f, 17.5f); close()

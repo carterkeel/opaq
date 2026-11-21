@@ -62,7 +62,8 @@ object Format {
     fun activity(a: Activity): String = when (a) {
         Activity.STILL -> "Still"
         Activity.WALKING -> "Walking"
-        Activity.CYCLING -> "Cycling"
+        // Older versions reported cycling; it's shown as driving now.
+        Activity.CYCLING -> "Driving"
         Activity.DRIVING -> "Driving"
         Activity.UNKNOWN -> "Moving"
     }

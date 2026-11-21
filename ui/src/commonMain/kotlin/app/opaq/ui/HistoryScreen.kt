@@ -50,8 +50,7 @@ import app.opaq.core.model.AppState
 
 /** Colour of an activity on the history map and in the list. */
 internal fun activityColorHex(a: Activity): String = when (a) {
-    Activity.DRIVING -> "#2C6BED"
-    Activity.CYCLING -> "#B45309"
+    Activity.DRIVING, Activity.CYCLING -> "#2C6BED"
     Activity.WALKING -> "#0B8A3E"
     Activity.STILL, Activity.UNKNOWN -> "#8A8D96"
 }
@@ -189,8 +188,13 @@ private fun SegmentRow(seg: HistorySegment, selected: Boolean, onClick: () -> Un
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )
+            // A drive also says how fast it went: average, and top speed when known.
+            val speeds = listOfNotNull(
+                seg.averageSpeed?.let { "avg ${Format.speed(it)}" },
+                seg.topSpeed?.let { "top ${Format.speed(it)}" },
+            )
             Text(
-                "${formatClock(seg.start)} – ${formatClock(seg.end)} · ${Format.duration(seg.end - seg.start)}",
+                (listOf("${formatClock(seg.start)} – ${formatClock(seg.end)}", Format.duration(seg.end - seg.start)) + speeds).joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
