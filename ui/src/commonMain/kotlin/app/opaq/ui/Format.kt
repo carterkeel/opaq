@@ -19,6 +19,22 @@ object Format {
 
     fun isOffline(loc: MemberLocation?, now: Long): Boolean = loc == null || now - loc.time > Engine.OFFLINE_AFTER_SECONDS
 
+    /**
+     * What the ring round someone's picture says: exact, approximate (neighbourhood or city), or
+     * offline (also paused, or no location yet).
+     */
+    fun ring(loc: MemberLocation?, now: Long, paused: Boolean = false): Ring = when {
+        paused || loc == null || loc.status == MemberLocation.PAUSED || isOffline(loc, now) -> Ring.OFFLINE
+        loc.precision == Precision.NEIGHBORHOOD || loc.precision == Precision.CITY -> Ring.APPROXIMATE
+        else -> Ring.EXACT
+    }
+
+    enum class Ring { EXACT, APPROXIMATE, OFFLINE }
+
+    /** The battery to show beside someone's status, if they share it and are online. */
+    fun battery(loc: MemberLocation?, now: Long): Int? =
+        loc?.battery?.takeIf { loc.status != MemberLocation.PAUSED && !isOffline(loc, now) }
+
     fun speed(mps: Float): String =
         if (usesMiles) "${(mps * 2.23694f).toInt()} mph" else "${(mps * 3.6f).toInt()} km/h"
 
@@ -71,12 +87,13 @@ object Format {
     private fun isMovingActivity(a: Activity) = a == Activity.WALKING || a == Activity.CYCLING || a == Activity.DRIVING
 
     /**
-     * "Driving · 42 mph · just now", "Still · 64% · 3 min ago", or "Offline · last seen 2 h ago".
+     * "Driving · 42 mph · just now", "Still · 3 min ago", or "Offline · last seen 2 h ago". The battery
+     * is drawn beside it as a [BatteryBadge] ([battery]); [showBattery] puts it in the text instead.
      *
      * A moving update older than about two send intervals is shown as "Was driving" without a
      * speed, since the person may well have stopped since.
      */
-    fun status(loc: MemberLocation?, now: Long, showBattery: Boolean = true): String {
+    fun status(loc: MemberLocation?, now: Long, showBattery: Boolean = false): String {
         if (loc == null) return "No location yet"
         val age = (now - loc.time).coerceAtLeast(0)
         if (loc.status == MemberLocation.PAUSED) return "Sharing paused · ${ago(age)}"
@@ -93,16 +110,23 @@ object Format {
             // so say nothing rather than guess "Moving".
             if (loc.activity != Activity.UNKNOWN) parts += activity(loc.activity)
             val s = loc.speed
-            if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += speed(s)
+            // A drive held through a stop at lights (#155) says so rather than "0 mph".
+            if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += if (s < 1f) "stopped" else speed(s)
         }
         if (showBattery) loc.battery?.let { parts += "$it%" }
-        when (loc.precision) {
-            Precision.NEIGHBORHOOD -> parts += "area only"
-            Precision.CITY -> parts += "city only"
-            else -> Unit
-        }
+        // Shared roughly (#157): say so, with how far off it could be.
+        approximate(loc)?.let { parts += it }
         parts += ago(age)
         return parts.joinToString(" · ")
+    }
+
+    /**
+     * "Approximate" when [loc] was shared as a neighbourhood or city only, so nobody
+     * takes the dot for where the person really is (#157). Null for an exact location.
+     */
+    fun approximate(loc: MemberLocation): String? = when (loc.precision) {
+        Precision.NEIGHBORHOOD, Precision.CITY -> "Approximate"
+        else -> null
     }
 
     fun initial(name: String): String = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"

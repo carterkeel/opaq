@@ -35,6 +35,11 @@ internal object RelayReplies {
 
     private fun prefix(message: String): String = message.substringBefore(':').trim().lowercase()
 
-    /** Some relays say "banned: ..." or put it after "error:", outside the standard prefixes. */
-    private fun isBan(message: String): Boolean = message.contains("banned", ignoreCase = true)
+    /**
+     * Some relays say "banned: ..." or put it after "error:", outside the standard prefixes, and some
+     * only accept people they already know ("Policy violated and pubkey is not in our web of trust"),
+     * which Opaq's fresh hourly keys never are, so asking again soon is pointless.
+     */
+    private fun isBan(message: String): Boolean =
+        listOf("banned", "web of trust", "policy violated", "not allowed", "whitelist", "allowlist", "paid relay", "pay to").any { message.contains(it, ignoreCase = true) }
 }

@@ -70,6 +70,21 @@ class HistoryTest {
     }
 
     @Test
+    fun pausesShowInHistory() = runTest {
+        // #156: still at home, sharing paused for two hours, then a walk.
+        val h = LocationHistory(MemoryHistoryFiles())
+        h.record(key, ben, at(t0, 41.0, Activity.STILL))
+        h.record(key, ben, at(t0 + 600, 41.0, Activity.STILL).copy(status = MemberLocation.PAUSED))
+        h.record(key, ben, at(t0 + 600 + 7200, 41.0, Activity.STILL))
+        h.record(key, ben, at(t0 + 600 + 7300, 41.002, Activity.WALKING))
+        val segments = HistorySegments.build(h.read(key, ben, t0, t0 + 86_400))
+        val pause = segments.single { it.paused }
+        assertEquals(t0 + 600, pause.start)
+        assertEquals(t0 + 600 + 7200, pause.end, "the pause lasts until the next update")
+        assertEquals(listOf(false, true, false, false), segments.map { it.paused })
+    }
+
+    @Test
     fun filesAreEncryptedAndDontNameThePerson() = runTest {
         val files = MemoryHistoryFiles()
         val h = LocationHistory(files)

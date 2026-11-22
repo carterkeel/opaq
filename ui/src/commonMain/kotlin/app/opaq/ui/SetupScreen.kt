@@ -121,7 +121,12 @@ fun SetupScreen(
                         onJoinLink = onJoinLink,
                         onScan = onScan,
                     )
-                    SetupStep.Location -> LocationStep(hasLocationPermission, onRequestLocation, backgroundSettings, onDone = { actions.setSetupDone() })
+                    SetupStep.Location -> LocationStep(
+                        hasLocationPermission, onRequestLocation, backgroundSettings,
+                        sharing = state.sharing,
+                        onShare = { actions.setSharing(true) },
+                        onDone = { actions.setSetupDone() },
+                    )
                 }
             }
         }
@@ -241,42 +246,85 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
 }
 
 @Composable
-private fun ColumnScope.LocationStep(hasPermission: Boolean, onRequest: () -> Unit, background: List<SettingItem>, onDone: () -> Unit) {
+private fun ColumnScope.LocationStep(
+    hasPermission: Boolean,
+    onRequest: () -> Unit,
+    background: List<SettingItem>,
+    sharing: Boolean,
+    onShare: () -> Unit,
+    onDone: () -> Unit,
+) {
     Spacer(Modifier.height(8.dp))
     BigIcon(AppIcons.LocationPin)
     StepTitle(
         "Share your location",
         "Opaq needs location access to show you to your circle. Your location is encrypted on this phone before it goes anywhere.",
     )
+    // Everything sharing depends on, in one checklist (#158): location access, the phone settings
+    // that keep it going in the background (#131; on Android "Allow all the time" and no battery
+    // saver) and sharing itself. Each shows a tick once done. Optional switches (like iOS's blue
+    // pill) stay in Settings.
+    val needed = background.filter { it.checked == null }
+    val done = hasPermission && sharing && needed.all { it.action == null }
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text("Opaq needs these to work properly", style = MaterialTheme.typography.titleSmall)
+        Caption("Without them, your circle can stop seeing you when Opaq is closed or the phone is resting.")
+        NeedRow(
+            "Location access",
+            if (hasPermission) "Allowed." else "Lets Opaq see where you are.",
+            ok = hasPermission,
+            action = "Allow",
+            onAction = onRequest,
+        )
+        needed.forEach { item ->
+            NeedRow(
+                item.title,
+                if (!hasPermission) "After location access." else item.detail,
+                ok = hasPermission && item.action == null,
+                action = item.action,
+                onAction = item.onAction,
+                enabled = hasPermission,
+            )
+        }
+        NeedRow(
+            "Sharing on",
+            if (sharing) "On. Pause any time from the map." else "Off, so nobody sees you.",
+            ok = sharing,
+            action = "Turn on",
+            onAction = onShare,
+        )
+    }
     InfoCard {
         Text("You're always in control", style = MaterialTheme.typography.titleSmall)
         Caption("${LocalPlatform.current.sharingIndicatorText}, and you can pause sharing with one tap on the map.")
     }
-    // Once location is allowed, the phone settings that keep sharing going in the background (#131):
-    // on Android, "Allow all the time" and no battery saver. Each row goes away once it's done.
-    val todo = background.filter { it.action != null }
-    AnimatedVisibility(hasPermission && todo.isNotEmpty(), enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-        Column(Modifier.padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Keep sharing when Opaq is closed", style = MaterialTheme.typography.titleSmall)
-            todo.forEach { item ->
-                InfoCard {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Column(Modifier.weight(1f)) {
-                            Text(item.title, style = MaterialTheme.typography.titleSmall)
-                            Caption(item.detail)
-                        }
-                        TonalButton(item.action ?: "", item.onAction)
-                    }
-                }
-            }
-        }
-    }
-    Spacer(Modifier.height(24.dp))
+    Spacer(Modifier.height(8.dp))
     if (hasPermission) {
         PrimaryButton("Open the map", onDone)
+        if (!done) Caption("You can finish these later in Settings → Sharing.", Modifier.fillMaxWidth())
     } else {
         PrimaryButton("Allow location", onRequest)
         TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
+    }
+}
+
+/** One thing sharing needs: a tick once it's done, otherwise a button to do it. */
+@Composable
+private fun NeedRow(title: String, detail: String, ok: Boolean, action: String?, onAction: () -> Unit, enabled: Boolean = true) {
+    InfoCard {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Caption(detail)
+            }
+            AnimatedContent(ok, label = "need") { isOk ->
+                if (isOk) {
+                    Icon(AppIcons.Check, contentDescription = "Done", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                } else if (action != null) {
+                    TonalButton(action, onAction, enabled = enabled)
+                }
+            }
+        }
     }
 }
 

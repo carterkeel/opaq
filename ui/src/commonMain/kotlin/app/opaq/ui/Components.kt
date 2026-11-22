@@ -1,6 +1,18 @@
 package app.opaq.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -141,6 +154,86 @@ fun SettingsRow(
         if (trailing != null) {
             Spacer(Modifier.width(12.dp))
             trailing()
+        }
+    }
+}
+
+/**
+ * Someone's status with their battery beside it, as a small battery shape (like the one in a
+ * phone's status bar) so the number reads as battery at a glance.
+ */
+@Composable
+fun StatusLine(text: String, battery: Int?, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant, style: TextStyle = MaterialTheme.typography.bodyMedium) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (battery != null) {
+            Spacer(Modifier.width(8.dp))
+            BatteryBadge(battery)
+        }
+    }
+}
+
+/**
+ * A battery with the percentage inside it: dark on a light screen, white on a dark one, and red
+ * at 20% or below.
+ */
+@Composable
+fun BatteryBadge(percent: Int, modifier: Modifier = Modifier) {
+    val low = percent <= 20
+    val body = if (low) Palette.Red else MaterialTheme.colorScheme.onSurface
+    val digits = if (low) Color.White else MaterialTheme.colorScheme.surface
+    Row(modifier.clearAndSetSemantics { contentDescription = "Battery $percent%" }, verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.heightIn(min = 15.dp).widthIn(min = 25.dp).clip(RoundedCornerShape(4.5.dp)).background(body).padding(horizontal = 3.dp, vertical = 1.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                percent.coerceIn(0, 100).toString(),
+                color = digits,
+                style = TextStyle(
+                    fontSize = 10.5.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+                ),
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(1.dp))
+        Box(Modifier.width(2.dp).height(5.dp).clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp)).background(body))
+    }
+}
+
+/** How choices in a list move between rows: a spring that settles without bouncing. */
+fun <T> choiceSpring() = spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * One row in a list where a single choice is picked. The picked row's icon and title turn the
+ * accent colour and a check grows in at the end, while the row you left fades back and its check
+ * shrinks away, so you see the choice move.
+ */
+@Composable
+fun ChoiceRow(title: String, subtitle: String? = null, icon: ImageVector? = null, selected: Boolean, onClick: () -> Unit) {
+    val tint by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        choiceSpring(),
+        label = "choice colour",
+    )
+    SettingsRow(title, subtitle, icon, titleColor = tint, onClick = onClick) { SelectedCheck(selected) }
+}
+
+/** The check at the end of a picked row. It keeps its space either way, so the text never shifts. */
+@Composable
+fun SelectedCheck(selected: Boolean) {
+    val shown by animateFloatAsState(if (selected) 1f else 0f, choiceSpring(), label = "check")
+    Box(Modifier.size(24.dp)) {
+        if (shown > 0.01f) {
+            Icon(
+                AppIcons.Check,
+                contentDescription = if (selected) "Selected" else null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp).graphicsLayer { scaleX = shown; scaleY = shown; alpha = shown },
+            )
         }
     }
 }
@@ -259,6 +352,149 @@ object AppIcons {
         moveTo(12f, 2.5f); lineTo(21.5f, 12f); lineTo(12f, 21.5f); lineTo(2.5f, 12f); close()
         moveTo(9f, 15f); lineTo(9f, 12f); quadTo(9f, 10f, 11f, 10f); lineTo(15f, 10f)
         moveTo(13f, 8f); lineTo(15f, 10f); lineTo(13f, 12f)
+    }
+
+    /** A bullseye: an exact location. */
+    val Target: ImageVector = stroke("Target") {
+        moveTo(20f, 12f); arcTo(8f, 8f, 0f, true, true, 4f, 12f); arcTo(8f, 8f, 0f, true, true, 20f, 12f); close()
+        moveTo(15f, 12f); arcTo(3f, 3f, 0f, true, true, 9f, 12f); arcTo(3f, 3f, 0f, true, true, 15f, 12f); close()
+        moveTo(12f, 12f); lineTo(12.01f, 12f)
+    }
+
+    /** Two houses: roughly which part of town. */
+    val Houses: ImageVector = stroke("Houses") {
+        moveTo(2.5f, 20f); lineTo(21.5f, 20f)
+        moveTo(3.5f, 20f); lineTo(3.5f, 12f); lineTo(8f, 8f); lineTo(12.5f, 12f); lineTo(12.5f, 20f)
+        moveTo(14.5f, 10f); lineTo(16.5f, 8.2f); lineTo(20.5f, 11.8f); lineTo(20.5f, 20f)
+        moveTo(8f, 20f); lineTo(8f, 16f)
+    }
+
+    /** Tall buildings: roughly which city. */
+    val City: ImageVector = stroke("City") {
+        moveTo(2.5f, 21f); lineTo(21.5f, 21f)
+        moveTo(4f, 21f); lineTo(4f, 11f); lineTo(9f, 11f)
+        moveTo(9f, 21f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 21f)
+        moveTo(15f, 13f); lineTo(20f, 13f); lineTo(20f, 21f)
+        moveTo(12f, 8f); lineTo(12.01f, 8f); moveTo(12f, 12f); lineTo(12.01f, 12f); moveTo(12f, 16f); lineTo(12.01f, 16f)
+    }
+
+    /** A winding path between two spots: your recent path. */
+    val Route: ImageVector = stroke("Route") {
+        moveTo(8f, 18f); arcTo(2f, 2f, 0f, true, true, 4f, 18f); arcTo(2f, 2f, 0f, true, true, 8f, 18f); close()
+        moveTo(20f, 6f); arcTo(2f, 2f, 0f, true, true, 16f, 6f); arcTo(2f, 2f, 0f, true, true, 20f, 6f); close()
+        moveTo(8f, 18f); lineTo(13f, 18f); quadTo(16f, 18f, 16f, 15f); quadTo(16f, 12f, 12f, 12f); quadTo(8f, 12f, 8f, 9f); quadTo(8f, 6f, 11f, 6f); lineTo(16f, 6f)
+    }
+
+    /** An arrow coming down into an area: someone arrives. */
+    val Arrive: ImageVector = stroke("Arrive") {
+        moveTo(19f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 5f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 19f, 18.5f); close()
+        moveTo(12f, 3f); lineTo(12f, 15f)
+        moveTo(8f, 11f); lineTo(12f, 15f); lineTo(16f, 11f)
+    }
+
+    /** An arrow going up out of an area: someone leaves. */
+    val Depart: ImageVector = stroke("Depart") {
+        moveTo(19f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 5f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 19f, 18.5f); close()
+        moveTo(12f, 15f); lineTo(12f, 3f)
+        moveTo(8f, 7f); lineTo(12f, 3f); lineTo(16f, 7f)
+    }
+
+    /** A folded paper map: any map app. */
+    val Map: ImageVector = stroke("Map") {
+        moveTo(3f, 6f); lineTo(9f, 4f); lineTo(15f, 6f); lineTo(21f, 4f); lineTo(21f, 18f); lineTo(15f, 20f); lineTo(9f, 18f); lineTo(3f, 20f); close()
+        moveTo(9f, 4f); lineTo(9f, 18f); moveTo(15f, 6f); lineTo(15f, 20f)
+    }
+
+    /** A heartbeat line: diagnostic logs. */
+    val Pulse: ImageVector = stroke("Pulse") {
+        moveTo(2f, 12f); lineTo(6f, 12f); lineTo(9f, 5f); lineTo(14f, 19f); lineTo(17f, 12f); lineTo(22f, 12f)
+    }
+
+    /** A page with a folded corner: terms of use. */
+    val Document: ImageVector = stroke("Document") {
+        moveTo(6f, 3f); lineTo(14f, 3f); lineTo(19f, 8f); lineTo(19f, 21f); lineTo(6f, 21f); close()
+        moveTo(14f, 3f); lineTo(14f, 8f); lineTo(19f, 8f)
+        moveTo(9f, 13f); lineTo(16f, 13f); moveTo(9f, 17f); lineTo(16f, 17f)
+    }
+
+    /** An eye, crossed out: privacy policy. */
+    val EyeOff: ImageVector = stroke("EyeOff") {
+        moveTo(2f, 12f); quadTo(12f, 2.5f, 22f, 12f); quadTo(12f, 21.5f, 2f, 12f); close()
+        moveTo(15f, 12f); arcTo(3f, 3f, 0f, true, true, 9f, 12f); arcTo(3f, 3f, 0f, true, true, 15f, 12f); close()
+        moveTo(4f, 4f); lineTo(20f, 20f)
+    }
+
+    /** A key: your identity key, or a circle's key. */
+    val Key: ImageVector = stroke("Key") {
+        moveTo(11f, 12f); arcTo(3.5f, 3.5f, 0f, true, true, 4f, 12f); arcTo(3.5f, 3.5f, 0f, true, true, 11f, 12f); close()
+        moveTo(11f, 12f); lineTo(21f, 12f)
+        moveTo(17f, 12f); lineTo(17f, 15f); moveTo(20f, 12f); lineTo(20f, 14.5f)
+    }
+
+    /** Lines of a list: a log. */
+    val Log: ImageVector = stroke("Log") {
+        moveTo(4f, 6f); lineTo(4.01f, 6f); moveTo(8f, 6f); lineTo(20f, 6f)
+        moveTo(4f, 12f); lineTo(4.01f, 12f); moveTo(8f, 12f); lineTo(20f, 12f)
+        moveTo(4f, 18f); lineTo(4.01f, 18f); moveTo(8f, 18f); lineTo(20f, 18f)
+    }
+
+    /** An arrow up out of a tray: making a backup. */
+    val Upload: ImageVector = stroke("Upload") {
+        moveTo(4f, 15f); lineTo(4f, 20f); lineTo(20f, 20f); lineTo(20f, 15f)
+        moveTo(12f, 16f); lineTo(12f, 4f)
+        moveTo(7.5f, 8.5f); lineTo(12f, 4f); lineTo(16.5f, 8.5f)
+    }
+
+    /** An arrow down into a tray: restoring a backup. */
+    val Download: ImageVector = stroke("Download") {
+        moveTo(4f, 15f); lineTo(4f, 20f); lineTo(20f, 20f); lineTo(20f, 15f)
+        moveTo(12f, 4f); lineTo(12f, 16f)
+        moveTo(7.5f, 11.5f); lineTo(12f, 16f); lineTo(16.5f, 11.5f)
+    }
+
+    /** A storage box: backups. */
+    val Archive: ImageVector = stroke("Archive") {
+        moveTo(3f, 4f); lineTo(21f, 4f); lineTo(21f, 8f); lineTo(3f, 8f); close()
+        moveTo(5f, 8f); lineTo(5f, 20f); lineTo(19f, 20f); lineTo(19f, 8f)
+        moveTo(10f, 12f); lineTo(14f, 12f)
+    }
+
+    /** A leaf: the phone's battery saver. */
+    val Leaf: ImageVector = stroke("Leaf") {
+        moveTo(5f, 19f); curveTo(4f, 10f, 10f, 4.5f, 20f, 4f); curveTo(20.5f, 14f, 14f, 20f, 5f, 19f); close()
+        moveTo(5f, 19f); lineTo(13f, 11f)
+    }
+
+    /** A clock: all the time, in the background. */
+    val Clock: ImageVector = stroke("Clock") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(12f, 7f); lineTo(12f, 12f); lineTo(15.5f, 14f)
+    }
+
+    /** A pill shape with a dot: the location indicator at the top of the screen. */
+    val Pill: ImageVector = stroke("Pill") {
+        moveTo(8f, 8f); lineTo(16f, 8f); arcTo(4f, 4f, 0f, false, true, 16f, 16f); lineTo(8f, 16f); arcTo(4f, 4f, 0f, false, true, 8f, 8f); close()
+        moveTo(9f, 12f); lineTo(9.01f, 12f)
+    }
+
+    /** A person with a plus: someone joined, or make them a manager. */
+    val PersonAdd: ImageVector = stroke("PersonAdd") {
+        moveTo(12.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 5.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 12.5f, 8f); close()
+        moveTo(2f, 20f); curveTo(2f, 16f, 5f, 14f, 9f, 14f); curveTo(13f, 14f, 16f, 16f, 16f, 20f)
+        moveTo(19f, 8f); lineTo(19f, 14f); moveTo(16f, 11f); lineTo(22f, 11f)
+    }
+
+    /** A person with a minus: someone left, or no longer a manager. */
+    val PersonRemove: ImageVector = stroke("PersonRemove") {
+        moveTo(12.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 5.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 12.5f, 8f); close()
+        moveTo(2f, 20f); curveTo(2f, 16f, 5f, 14f, 9f, 14f); curveTo(13f, 14f, 16f, 16f, 16f, 20f)
+        moveTo(16f, 11f); lineTo(22f, 11f)
+    }
+
+    /** A flag on a pole: report a problem. */
+    val Flag: ImageVector = stroke("Flag") {
+        moveTo(5f, 21f); lineTo(5f, 3.5f)
+        moveTo(5f, 4f); quadTo(8.5f, 2.5f, 12f, 4f); quadTo(15.5f, 5.5f, 19f, 4f); lineTo(19f, 13f); quadTo(15.5f, 14.5f, 12f, 13f); quadTo(8.5f, 11.5f, 5f, 13f)
     }
 
     /** A globe: everyone from every circle (#147). */
@@ -466,6 +702,26 @@ object AppIcons {
  * [onDismiss] runs when the sheet is swiped away, closed with back or tapped outside; the
  * [dismiss] button runs [onSecondary] if given (a real answer, like "Deny"), else [onDismiss].
  */
+/** A short explanation in a sheet, with one button to close it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InfoSheet(title: String, text: String, onDismiss: () -> Unit, points: List<String> = emptyList()) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            points.forEach { point ->
+                Row {
+                    Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(20.dp))
+                    Text(point, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.heightIn(min = 4.dp))
+            PrimaryButton("OK", onDismiss)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmSheet(

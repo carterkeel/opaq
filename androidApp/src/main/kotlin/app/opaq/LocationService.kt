@@ -65,6 +65,7 @@ class LocationService : LifecycleService(), LocationListener {
     private val motionListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent?) {
             policy.motionHint(nowSeconds())
+            diag("Motion sensor: started moving")
             adjustAccuracy()
             armMotionSensor() // one-shot sensor: re-arm for the next time
         }
@@ -75,25 +76,31 @@ class LocationService : LifecycleService(), LocationListener {
         locationManager = getSystemService(LocationManager::class.java)!!
         sensorManager = getSystemService(SensorManager::class.java)
         significantMotion = sensorManager?.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
-        startInForeground(0)
         val app = OpaqApp.from(this)
+        diag("Sharing service started. ${permissionSummary()}. ${powerSummary()}")
+        startInForeground(0)
 
         lifecycleScope.launch {
             app.engine.state
                 .map { s -> Triple(s.sharing, s.circles.isEmpty(), app.sharingWithCount(s)) }
                 .distinctUntilChanged()
                 .collect { (sharing, noCircles, people) ->
-                    if (!sharing || noCircles) stopSelf() else startInForeground(people.coerceAtLeast(0))
+                    if (!sharing || noCircles) {
+                        diag(if (noCircles) "Sharing service stopping: no circles" else "Sharing service stopping: sharing paused")
+                        stopSelf()
+                    } else {
+                        startInForeground(people.coerceAtLeast(0))
+                    }
                 }
         }
 
-        // Joined a circle and tapped Start sharing (#148), someone new arrived, or a circle paused or resumed: send our location now instead of at the next
+        // Joined a circle and tapped Start sharing (#148), someone new arrived, a circle paused or resumed, or what a circle sees changed: send our location now instead of at the next
         // interval (up to 5 minutes away while still).
         lifecycleScope.launch {
             app.engine.state
-                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed) } }
+                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed, c.precision, c.shareTrail) } }
                 .distinctUntilChanged()
-                .collect { policy.publishSoon() }
+                .collect { policy.publishSoon(); wake.trySend(Unit) }
         }
         // Someone in a circle asked where we are (#149): GPS now, and the fresh fix goes out at once.
         lifecycleScope.launch {
@@ -112,6 +119,7 @@ class LocationService : LifecycleService(), LocationListener {
                 // Never share without the visible notification: if it was turned off, stop.
                 if (!app.canShowSharingNotification()) {
                     app.markSharingBlocked()
+                    diag("Sharing service stopping: the sharing notification is turned off")
                     stopSelf()
                     break
                 }
@@ -122,6 +130,7 @@ class LocationService : LifecycleService(), LocationListener {
                 // No fixes for a while means the phone stopped: report it, don't keep saying "Driving".
                 policy.refresh(now)
                 adjustAccuracy()
+                notePower()
                 // An update that reached no relay is replaced as soon as one would get through, rather
                 // than at the next interval: the relays never saw the missed one.
                 if (policy.shouldPublish(now) || (missed && app.engine.canPublishNow())) {
@@ -157,13 +166,20 @@ class LocationService : LifecycleService(), LocationListener {
             // On the app's scope, not the service's: stopSelf() below cancels the service's scope,
             // which could otherwise drop this before sharing is actually turned off.
             val app = OpaqApp.from(this)
+            diag("Sharing paused from the notification")
             app.scope.launch { app.engine.setSharing(false) }
             stopSelf()
         }
         return START_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        diag("Opaq was swiped away from recent apps")
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
+        diag("Sharing service stopped")
         connectivity?.let { runCatching { it.unregisterNetworkCallback(networkCallback) } }
         locationManager.removeUpdates(this)
         significantMotion?.let { sensorManager?.cancelTriggerSensor(motionListener, it) }
@@ -192,8 +208,8 @@ class LocationService : LifecycleService(), LocationListener {
 
     @Deprecated("Required on older Android versions")
     override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) = Unit
-    override fun onProviderEnabled(provider: String) = Unit
-    override fun onProviderDisabled(provider: String) = Unit
+    override fun onProviderEnabled(provider: String) = diag("Location provider $provider turned on")
+    override fun onProviderDisabled(provider: String) = diag("Location provider $provider turned off")
 
     private fun armMotionSensor() {
         significantMotion?.let { sensorManager?.requestTriggerSensor(motionListener, it) }
@@ -220,10 +236,56 @@ class LocationService : LifecycleService(), LocationListener {
                 locationManager.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, if (highAccuracy) 15_000L else 30_000L, 0f, this, Looper.getMainLooper())
             }
             locationManager.requestLocationUpdates(LocationManager.PASSIVE_PROVIDER, 0L, 0f, this, Looper.getMainLooper())
+            diag(
+                when {
+                    !hasGps && !hasNetwork -> "Location: no provider is on (location turned off in phone settings?)"
+                    hasGps && (highAccuracy || !hasNetwork) -> if (highAccuracy) "Location: GPS (moving)" else "Location: GPS only (no network location)"
+                    else -> "Location: network (still)"
+                },
+            )
         } catch (_: SecurityException) {
+            diag("Sharing service stopping: location permission was removed. ${permissionSummary()}")
             stopSelf()
         }
     }
+
+    /** Adds an event to the diagnostic log (#154): events and reasons only, never a location. */
+    private fun diag(event: String) = OpaqApp.from(this).engine.diagnostic(event)
+
+    private fun permissionSummary(): String {
+        fun granted(p: String) = checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        val fine = granted(android.Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = granted(android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        val background = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || granted(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        val access = when {
+            fine -> "precise"
+            coarse -> "approximate only"
+            else -> "none"
+        }
+        return "Location permission: $access, ${if (background) "all the time" else "only while in use"}"
+    }
+
+    private fun powerSummary(): String {
+        val power = getSystemService(android.os.PowerManager::class.java)
+        val optimised = power?.isIgnoringBatteryOptimizations(packageName) != true
+        return "Battery saver for Opaq ${if (optimised) "on" else "off"}, power saving mode ${if (power?.isPowerSaveMode == true) "on" else "off"}" +
+            (batteryPercent()?.let { ", battery ${band(it)}" } ?: "")
+    }
+
+    private var loggedBand: Int? = null
+    private var loggedPowerSave: Boolean? = null
+
+    /** Battery in 20% bands, and power saving mode, logged when they change. */
+    private fun notePower() {
+        val band = batteryPercent()?.let { it / 20 }
+        val powerSave = getSystemService(android.os.PowerManager::class.java)?.isPowerSaveMode
+        if (band != null && loggedBand != null && band != loggedBand) diag("Battery ${band(band * 20)}")
+        if (powerSave != null && loggedPowerSave != null && powerSave != loggedPowerSave) diag("Power saving mode ${if (powerSave) "on" else "off"}")
+        if (band != null) loggedBand = band
+        if (powerSave != null) loggedPowerSave = powerSave
+    }
+
+    private fun band(percent: Int): String = (percent / 20 * 20).coerceAtMost(80).let { "$it–${it + 20}%" }
 
     private fun batteryPercent(): Int? =
         getSystemService(BatteryManager::class.java)?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
@@ -232,7 +294,8 @@ class LocationService : LifecycleService(), LocationListener {
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION else 0
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(people), type)
-        } catch (_: Throwable) {
+        } catch (e: Throwable) {
+            diag("Sharing service couldn't start in the foreground (${e::class.simpleName})")
             stopSelf()
         }
     }

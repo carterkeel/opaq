@@ -33,6 +33,15 @@ interface PlatformBridge {
     /** Opens [app] (one of [directionsApps]) with directions to [lat], [lon], labelled [name] where the app allows. */
     fun openDirections(app: String, lat: Double, lon: Double, name: String) {}
 
+    /** [app]'s own icon as installed on this phone, if the platform can read it; null draws a plain one. */
+    fun directionsAppIcon(app: String): androidx.compose.ui.graphics.ImageBitmap? = null
+
+    /** First line of an exported diagnostic log (#154): app version and phone model, nothing personal. */
+    val diagnosticsHeader: String get() = "Opaq"
+
+    /** Opens a web page in the browser, such as the privacy policy (#159). */
+    fun openUrl(url: String) {}
+
     /**
      * Lets the user pick a photo, then crops it square and shrinks it to a small JPEG
      * (under [app.opaq.core.protocol.CircleCrypto.MAX_PHOTO_CHARS] once base64-encoded).
@@ -125,6 +134,8 @@ data class SettingItem(
     val action: String?,
     /** When set, the row shows a switch in this position instead of a button. */
     val checked: Boolean? = null,
+    /** The row's icon; each row in a list gets its own. Before the lambdas, so a trailing lambda is still [onAction]. */
+    val icon: androidx.compose.ui.graphics.vector.ImageVector = AppIcons.Info,
     val onCheckedChange: (Boolean) -> Unit = {},
     val onAction: () -> Unit = {},
 )
@@ -133,6 +144,13 @@ val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No Platfor
 
 /** Seconds since the Unix epoch. */
 expect fun epochSeconds(): Long
+
+/**
+ * Map options for every map in the app: on Android the map draws through a TextureView, shown in
+ * the same frame as the rest of the screen. Faces drawn over it keep up while it pans, rounded
+ * corners clip it, and it slides and scrolls with the screen it's on (a SurfaceView does none of these).
+ */
+expect fun overlayMapUiOptions(): org.maplibre.compose.map.MapUiOptions
 
 /** Milliseconds since the Unix epoch, for smooth animation. */
 expect fun epochMillis(): Long

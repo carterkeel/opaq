@@ -33,6 +33,8 @@ data class HistoryPoint(
     val acc: Float? = null,
     /** Speed in m/s, kept while driving. Missing in older files. */
     val v: Float? = null,
+    /** Sharing was paused here (#156): the person's last update before a pause. */
+    val p: Boolean = false,
 )
 
 /**
@@ -55,6 +57,14 @@ class LocationHistory(private val files: HistoryFiles) {
         if (loc.precision != null && loc.precision != Precision.EXACT) return@withLock
         val prefix = prefix(pubkey)
         var last = lastKept.getOrPut(pubkey) { latestStored(key, prefix) }
+        // Sharing paused (#156): one marker point, so history shows how long the pause lasted.
+        if (loc.status == MemberLocation.PAUSED) {
+            val pause = HistoryPoint(loc.time, loc.lat, loc.lon, Activity.STILL, loc.accuracy, p = true)
+            if (last?.p == true || (last != null && pause.t <= last.t)) return@withLock
+            lastKept[pubkey] = pause
+            files.append("$prefix${day(pause.t)}", Nip44.encrypt(json.encodeToString(points, listOf(pause)), conversationKey(key)))
+            return@withLock
+        }
         val activity = drivingIfCycling(loc.activity)
         val sorted = (loc.points.map { HistoryPoint(it.t, it.lat, it.lon, activity) } +
             HistoryPoint(loc.time, loc.lat, loc.lon, activity, loc.accuracy, loc.speed)).sortedBy { it.t }
@@ -113,7 +123,7 @@ class LocationHistory(private val files: HistoryFiles) {
     private fun keep(last: HistoryPoint?, p: HistoryPoint): Boolean {
         if (last == null) return true
         if (p.t <= last.t) return false
-        if (p.a != last.a) return true
+        if (p.a != last.a || p.p != last.p) return true
         val moved = MotionPolicy.distanceMeters(last.lat, last.lon, p.lat, p.lon)
         val dt = p.t - last.t
         return if (moving(p.a)) moved >= MOVING_STEP_METERS || dt >= MOVING_EVERY_SECONDS
@@ -152,6 +162,9 @@ class LocationHistory(private val files: HistoryFiles) {
 
 /** A stretch of history with one activity: "Driving 8:02–8:25", "Still 8:25–12:10". */
 data class HistorySegment(val activity: Activity, val start: Long, val end: Long, val meters: Double, val points: List<HistoryPoint>) {
+    /** Sharing was paused for this stretch (#156); it ends when the next update came. */
+    val paused: Boolean get() = points.firstOrNull()?.p == true
+
     /** Fastest speed kept for a drive, in m/s. */
     val topSpeed: Float? get() = if (activity == Activity.DRIVING) points.mapNotNull { it.v }.maxOrNull() else null
 
@@ -169,14 +182,16 @@ object HistorySegments {
         val runs = mutableListOf<MutableList<HistoryPoint>>()
         for (p in points) {
             val run = runs.lastOrNull()
-            if (run != null && group(run.first().a) == group(p.a)) run += p else runs += mutableListOf(p)
+            if (run != null && key(run.first()) == key(p)) run += p else runs += mutableListOf(p)
         }
         // A short stop inside a drive (a red light), or a short move inside a stay (GPS drift), is
         // folded into what surrounds it, so it doesn't split the stretch in three.
         // Shortest first (then fewest points), so a red light goes before the drive around it.
         while (true) {
             val candidates = (1 until runs.size - 1).filter { k ->
-                runs[k + 1].first().t - runs[k].first().t < MIN_SECONDS && group(runs[k - 1].first().a) == group(runs[k + 1].first().a)
+                // A pause is never folded away, and never swallows what's around it.
+                !runs[k].first().p && !runs[k - 1].first().p &&
+                    runs[k + 1].first().t - runs[k].first().t < MIN_SECONDS && key(runs[k - 1].first()) == key(runs[k + 1].first())
             }
             val k = candidates.minWithOrNull(compareBy({ runs[it + 1].first().t - runs[it].first().t }, { runs[it].size })) ?: break
             runs[k - 1] += runs[k] + runs[k + 1]
@@ -193,6 +208,8 @@ object HistorySegments {
         }
     }
 
-    /** Still and unknown count as one "staying put" group; each way of moving is its own. */
+    /** Still and unknown count as one "staying put" group; each way of moving is its own; a pause is its own. */
     private fun group(a: Activity) = if (LocationHistory.moving(a)) a else Activity.STILL
+
+    private fun key(p: HistoryPoint): String = if (p.p) "paused" else group(p.a).name
 }

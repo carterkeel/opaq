@@ -1,5 +1,10 @@
 package app.opaq.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +28,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -349,14 +355,19 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
             Precision.CITY to "Only roughly which city (about 20 km)",
         ).forEach { (p, detail) ->
             val selected = circle.precision == p
-            SettingsRow(
+            ChoiceRow(
                 title = when (p) {
                     Precision.EXACT -> "Exact location"
                     Precision.NEIGHBORHOOD -> "Neighbourhood"
                     Precision.CITY -> "City"
                 },
                 subtitle = detail,
-                icon = if (selected) AppIcons.Check else AppIcons.LocationPin,
+                icon = when (p) {
+                    Precision.EXACT -> AppIcons.Target
+                    Precision.NEIGHBORHOOD -> AppIcons.Houses
+                    Precision.CITY -> AppIcons.City
+                },
+                selected = selected,
                 onClick = {
                     // Sharing less needs nothing; sharing more precisely needs the PIN.
                     if (p.ordinal < circle.precision.ordinal) gate.require { actions.setCirclePrecision(circle.id, p) }
@@ -364,8 +375,14 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
                 },
             )
         }
-        if (circle.precision == Precision.EXACT) {
-            SwitchRow("Recent path", "Send your last few points with each update", circle.shareTrail, AppIcons.Circles) { on ->
+        // Approximate locations never carry a path, so the switch folds away (and comes back) as
+        // the choice above changes, rather than vanishing in one frame.
+        AnimatedVisibility(
+            visible = circle.precision == Precision.EXACT,
+            enter = expandVertically(choiceSpring(), expandFrom = Alignment.Top) + fadeIn(choiceSpring()),
+            exit = shrinkVertically(choiceSpring(), shrinkTowards = Alignment.Top) + fadeOut(choiceSpring()),
+        ) {
+            SwitchRow("Recent path", "Send your last few points with each update", circle.shareTrail, AppIcons.Route) { on ->
                 if (on) gate.require { actions.setCircleTrail(circle.id, true) } else actions.setCircleTrail(circle.id, false)
             }
         }
@@ -376,7 +393,7 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
 
         SectionHeader("Who can see you")
         circle.members.filter { it.pubkey != me }.forEach { m ->
-            SettingsRow(avatarFor(state, m.pubkey, me, m.name).name, if (m.pubkey == circle.adminPubkey) "Admin" else null, AppIcons.Person)
+            SettingsRow(avatarFor(state, m.pubkey, me, m.name).name, if (m.pubkey == circle.adminPubkey) "Admin" else null, if (m.pubkey == circle.adminPubkey) AppIcons.Star else AppIcons.Person)
         }
         if (circle.members.size <= 1) SettingsRow("Nobody else yet", null, AppIcons.Person)
 
@@ -391,7 +408,16 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
                 MembershipChange.NEW_ADMIN -> "$who became the admin"
             }
             val by = e.by?.takeIf { it != e.pubkey && e.change != MembershipChange.CREATED }?.let { if (it == me) "by you" else "by ${nameOf(it)}" }
-            SettingsRow(title, listOfNotNull(Format.ago(now - e.at), by).joinToString(" · "), AppIcons.Circles)
+            SettingsRow(
+                title,
+                listOfNotNull(Format.ago(now - e.at), by).joinToString(" · "),
+                when (e.change) {
+                    MembershipChange.CREATED -> AppIcons.Circles
+                    MembershipChange.JOINED -> AppIcons.PersonAdd
+                    MembershipChange.LEFT -> AppIcons.PersonRemove
+                    MembershipChange.NEW_ADMIN -> AppIcons.Star
+                },
+            )
         }
         Caption("Kept on this phone only.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
     }

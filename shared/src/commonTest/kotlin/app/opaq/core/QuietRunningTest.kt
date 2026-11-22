@@ -46,10 +46,13 @@ class QuietRunningTest {
         d.add(LocationSample(41.001, -87.0, 5f, 16f, null, now + 5))
         d.markPublished(now + 5)
         assertTrue(d.isMoving(now + 5))
+        // A stop is held as driving for a while (a red light, #155), then counts.
         d.refresh(now + 70)
-        assertEquals(MotionPolicy.FAST_CHECK_MILLIS, d.nextCheckMillis(now + 70), "the stop isn't out yet")
-        d.markPublished(now + 70)
-        assertEquals(30_000L, d.nextCheckMillis(now + 71), "stop published: back to waiting")
+        val parked = now + 70 + MotionPolicy.STOP_TAKEOVER_SECONDS
+        d.refresh(parked)
+        assertEquals(MotionPolicy.FAST_CHECK_MILLIS, d.nextCheckMillis(parked), "the stop isn't out yet")
+        d.markPublished(parked)
+        assertEquals(30_000L, d.nextCheckMillis(parked + 1), "stop published: back to waiting")
     }
 
     @Test
@@ -72,6 +75,8 @@ class QuietRunningTest {
         assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("banned: too many rate-limit violations, try again later"))
         assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("blocked: you are not allowed"))
         assertEquals(RelayReplies.SHORT_HOLD_MILLIS, RelayReplies.publishHoldMillis("rate-limited: slow down"))
+        // A relay that only takes people it knows never takes Opaq's hourly keys: seen in a diagnostic log.
+        assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("Policy violated and pubkey is not in our web of trust."))
         assertNull(RelayReplies.publishHoldMillis("duplicate: already have this event"))
         assertNull(RelayReplies.publishHoldMillis("invalid: bad signature"))
     }

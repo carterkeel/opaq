@@ -75,7 +75,8 @@ class LiveUpdatesTest {
     @Test
     fun askingForSomeonesLocationWakesTheirPhoneOnlyWhileTheyShare() = runTest {
         // #149: Ana asks Ben where he is. His phone is told once; asking again straight away sends
-        // nothing, and a paused circle never answers.
+        // nothing, a paused or approximate circle never answers, and nobody is asked for an update
+        // they sent a moment ago.
         val a = Phone("Ana"); val b = Phone("Ben")
         val id = circleWith(a, b)
         val asked = mutableListOf<String>()
@@ -93,6 +94,26 @@ class LiveUpdatesTest {
         net.flush()
         kotlinx.coroutines.yield()
         assertEquals(listOf(id), asked, "paused: no answer")
+
+        // Someone who sent an update a moment ago isn't asked: there's nothing to nudge.
+        b.engine.setCirclePaused(id, false)
+        clock += Engine.LOCATION_REQUEST_GAP_SECONDS + 1
+        b.engine.publishLocation(loc(41.0))
+        net.flush()
+        assertFalse(a.engine.requestLocation(id, b.me), "updated just now")
+
+        // Ten minutes on, Ben's phone answers again, but not once he shares only roughly.
+        clock += Engine.LOCATION_REQUEST_AFTER_SECONDS + 1
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id, id), asked)
+        b.engine.setCirclePrecision(id, app.opaq.core.model.Precision.NEIGHBORHOOD)
+        clock += Engine.LOCATION_REQUEST_AFTER_SECONDS + 1
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id, id), asked, "approximate: no answer")
         watch.cancel()
     }
 
@@ -102,16 +123,19 @@ class LiveUpdatesTest {
         // arrives and leaves; Ben's phone hears nothing about it.
         val a = Phone("Ana"); val b = Phone("Ben")
         val id = circleWith(a, b)
+        // Only place alerts: other notices (someone joining) can still arrive from setting up the circle.
         val seen = mutableListOf<Notice>()
         val heard = mutableListOf<Notice>()
-        val watchA = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { seen += it } }
+        val watchA = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { if (it.kind == Notice.PLACE) seen += it } }
         val watchB = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { b.engine.notices.collect { heard += it } }
 
         b.engine.publishLocation(loc(41.01))
         net.flush()
         a.engine.savePlace(app.opaq.core.model.Place("", "Home", 41.0, -87.6, radius = 30.0, onLeave = true))
-        assertTrue(seen.isEmpty())
+        assertTrue(seen.isEmpty(), seen.toString())
 
+        // A later update than the first, so it's never taken for the same one.
+        clock += 10
         b.engine.publishLocation(loc(41.0001))
         net.flush()
         assertEquals(listOf("Ben arrived at Home"), seen.map { it.title })

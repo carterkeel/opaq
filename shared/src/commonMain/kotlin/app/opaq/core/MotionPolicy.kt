@@ -45,6 +45,13 @@ class MotionPolicy {
     private var lastFixAt: Long? = null
 
     /**
+     * Holding a drive through a stop (#155): when a driver first went below driving speed, and when
+     * an unbroken run of walking pace began. Null while driving at speed.
+     */
+    private var slowSince: Long? = null
+    private var walkingSince: Long? = null
+
+    /**
      * Adds a fix that arrived at [receivedAt] (this phone's clock) and was [ageSeconds] old then.
      * A fix already older than [MAX_FIX_AGE] (a cached position from before sharing started, maybe
      * somewhere else) is ignored rather than shared. The age is passed in rather than worked out
@@ -58,7 +65,7 @@ class MotionPolicy {
         buffer.addLast(sample)
         val cutoff = sample.time - BUFFER_SECONDS
         while (buffer.isNotEmpty() && buffer.first().time < cutoff) buffer.removeFirst()
-        activity = classify(estimateSpeed(), activity)
+        settle(classify(estimateSpeed(), activity), receivedAt)
         checkRefresh(sample, receivedAt)
     }
 
@@ -99,7 +106,32 @@ class MotionPolicy {
      * moving any more: classify it as still, so the stop is published instead of "Driving" forever.
      */
     fun refresh(now: Long) {
-        if (quiet(now)) activity = classify(0f, activity)
+        if (quiet(now)) settle(classify(0f, activity), now)
+    }
+
+    /**
+     * Takes the activity [raw] from speed alone, except that a drive isn't given up at the first
+     * slowdown (#155). Waiting at lights, creeping in traffic and pulling away all look like
+     * walking or standing still for a while. So once driving, it stays driving (shown as stopped
+     * when the speed is near zero) until [WALK_TAKEOVER_SECONDS] of steady walking pace, which is
+     * someone who parked and walked off, or [STOP_TAKEOVER_SECONDS] below driving speed in all,
+     * which is someone who parked and stayed.
+     */
+    private fun settle(raw: Activity, at: Long) {
+        if (activity != Activity.DRIVING || raw == Activity.DRIVING) {
+            slowSince = null
+            walkingSince = null
+            activity = raw
+            return
+        }
+        val slow = slowSince ?: at.also { slowSince = it }
+        walkingSince = if (raw == Activity.WALKING) walkingSince ?: at else null
+        val walkedOff = walkingSince?.let { at - it >= WALK_TAKEOVER_SECONDS } == true
+        if (walkedOff || at - slow >= STOP_TAKEOVER_SECONDS) {
+            slowSince = null
+            walkingSince = null
+            activity = raw
+        }
     }
 
     /** No fix has arrived for [QUIET_SECONDS]. */
@@ -232,6 +264,12 @@ class MotionPolicy {
 
         /** No fix for this long means the phone has stopped (moving phones get one every few seconds). */
         const val QUIET_SECONDS = 60L
+
+        /** A drive becomes walking after this long at steady walking pace (#155). */
+        const val WALK_TAKEOVER_SECONDS = 120L
+
+        /** A drive becomes still (or walking) after this long below driving speed in all (#155). */
+        const val STOP_TAKEOVER_SECONDS = 240L
 
         /** A fix older than this when it arrives is a cached one, not where the phone is now. */
         const val MAX_FIX_AGE = 120L

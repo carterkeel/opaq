@@ -12,6 +12,8 @@ import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.ui.graphics.asImageBitmap
+import app.opaq.ui.AppIcons
 import app.opaq.ui.BiometricResult
 import app.opaq.ui.PlatformBridge
 import app.opaq.ui.SettingItem
@@ -73,12 +75,36 @@ class AndroidPlatform(
 
     override val directionsApps = listOf(GOOGLE_MAPS, OTHER_MAPS)
 
+    override val diagnosticsHeader: String
+        get() = "Opaq ${app.appVersion()} on Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+
+    override fun openUrl(url: String) {
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: ActivityNotFoundException) {
+            showMessage("No browser can open this")
+        }
+    }
+
+    override fun directionsAppIcon(app: String): androidx.compose.ui.graphics.ImageBitmap? {
+        if (app != GOOGLE_MAPS) return null
+        return try {
+            val icon = context.packageManager.getApplicationIcon(GOOGLE_MAPS_PACKAGE)
+            val bitmap = android.graphics.Bitmap.createBitmap(96, 96, android.graphics.Bitmap.Config.ARGB_8888)
+            icon.setBounds(0, 0, 96, 96)
+            icon.draw(android.graphics.Canvas(bitmap))
+            bitmap.asImageBitmap()
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
+
     override fun openDirections(app: String, lat: Double, lon: Double, name: String) {
         val to = "$lat,$lon"
         val intent = when (app) {
             // Google Maps' directions link: the app if it's installed, otherwise the browser.
             GOOGLE_MAPS -> Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=$to"))
-                .setPackage("com.google.android.apps.maps")
+                .setPackage(GOOGLE_MAPS_PACKAGE)
             // Any map app on the phone, with the spot marked and named.
             else -> Intent.createChooser(Intent(Intent.ACTION_VIEW, Uri.parse("geo:$to?q=$to(${Uri.encode(name)})")), "Directions to $name")
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -146,6 +172,7 @@ class AndroidPlatform(
                 if (hasBackgroundPermission) "On. Sharing keeps going in the background and after a restart."
                 else "Off. Tap Turn on, then choose “Allow all the time” on the next screen.",
                 if (hasBackgroundPermission) null else "Turn on",
+                icon = AppIcons.Clock,
             ) {
                 requestBackgroundLocation()
             },
@@ -153,6 +180,7 @@ class AndroidPlatform(
                 "Battery saver for Opaq",
                 if (ignoringBattery) "Off. Updates stay reliable." else "On, so some phones pause updates. Tap Turn off, then choose “Allow”.",
                 if (ignoringBattery) null else "Turn off",
+                icon = AppIcons.Leaf,
             ) {
                 try {
                     context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
@@ -166,5 +194,6 @@ class AndroidPlatform(
     private companion object {
         const val GOOGLE_MAPS = "Google Maps"
         const val OTHER_MAPS = "Another map app"
+        const val GOOGLE_MAPS_PACKAGE = "com.google.android.apps.maps"
     }
 }

@@ -94,6 +94,8 @@ data class AppState(
     val historyDays: Int = 7,
     /** Key for the history files. Never in backups: a restored phone starts its history afresh. */
     val historyKeyHex: String? = null,
+    /** Keep a diagnostic log on this phone (#154). Events only; never sent unless exported. */
+    val keepDiagnostics: Boolean = true,
     /** Alert areas drawn on this phone's map (#151). Never sent anywhere; included in backups. */
     val places: List<Place> = emptyList(),
     /** Who's inside each place right now, by place id, so a restart doesn't announce them again. */

@@ -126,16 +126,29 @@ class CreateCircleTest {
         }
     }
 
+    /** Pinches the map several times, from the middle of the screen, to zoom far out. */
+    private fun zoomMapOut() {
+        repeat(5) {
+            device.findObject(By.res("android:id/content"))?.let { root ->
+                root.setGestureMargins(0, device.displayHeight / 5, 0, device.displayHeight / 2)
+                root.pinchClose(0.9f)
+            }
+            Thread.sleep(400)
+        }
+        Thread.sleep(1_000)
+    }
+
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
-    private fun scrollTo(text: String): UiObject2 {
-        repeat(6) {
+    private fun scrollTo(text: String, up: Boolean = false): UiObject2 {
+        // A list under a map is short, so each scroll moves it only a little: allow plenty.
+        repeat(15) {
             device.findObject(By.text(text))?.let { return it }
             // Scroll the scrollable part, keeping clear of the screen's bottom edge: a swipe that
             // starts there is the system's "go home" gesture and sends the app to the background.
             // The map counts as scrollable too; the screen's list is the one reaching lowest.
             device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
                 list.setGestureMargin((device.displayHeight * 0.15).toInt())
-                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.6f)
+                list.scroll(if (up) androidx.test.uiautomator.Direction.UP else androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
         }
@@ -206,15 +219,15 @@ class CreateCircleTest {
         // Step 4: create a circle.
         waitFor("Create a circle")
         shot("setup-circle")
-        waitFor("Create a circle").click()
+        // A tap while the step is still sliding in can be lost, so tap until the next screen shows.
+        tapUntil("Create a circle", "Create")
         waitFor("Create").click()
 
-        // Step 5: location (already granted by the test rule). Background location and the battery
-        // saver aren't, so their prompts (#131) show too, and may push the button below the screen.
-        waitFor("Keep sharing when Opaq is closed")
+        // Step 5: location (already granted by the test rule). The checklist of what Opaq needs (#158)
+        // shows background location and the battery saver still to do, and pushes the button down.
+        waitFor("Opaq needs these to work properly")
         shot("setup-location")
-        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
-        waitFor("Open the map").click()
+        scrollTo("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
         waitFor("Invite", 30_000)
@@ -260,6 +273,28 @@ class CreateCircleTest {
         shot("join-incomplete")
         device.pressBack()
 
+        // A second circle, then Everyone and back while zoomed far out: switching like this once
+        // crashed the map (a face's glide was worked out at the wrong zoom, far off screen).
+        waitFor("Invite")
+        tapDescUntil("Switch circle", expected = "New circle")
+        waitFor("New circle").click()
+        val circleName = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no circle name field")
+        circleName.text = "Friends"
+        waitFor("Create").click()
+        waitFor("Invite")
+        zoomMapOut()
+        tapDescUntil("Switch circle", expected = "Everyone")
+        waitFor("Everyone").click()
+        waitFor("people from all your circles")
+        Thread.sleep(3_000)
+        shot("everyone")
+        zoomMapOut()
+        tapDescUntil("Switch circle", expected = "Family")
+        waitFor("Family").click()
+        waitFor("Invite")
+        Thread.sleep(3_000)
+        assertNotNull("The map crashed switching circles while zoomed out", device.findObject(By.text("Invite")))
+
         // Settings, then back to the map.
         waitFor("Invite")
         (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
@@ -291,16 +326,30 @@ class CreateCircleTest {
         device.pressBack() // close the keyboard
         Thread.sleep(2_000) // let the map load
         shot("place-new")
-        scrollTo("Add place").click()
+        waitFor("Add place").click() // pinned under the settings, no scrolling needed
         waitFor("Add a place")
         waitFor("Home")
         shot("places")
         waitFor("Home").click()
         waitFor("Edit place")
-        scrollTo("Delete place").click()
+        (device.wait(Until.findObject(By.desc("Delete place")), 10_000) ?: error("no Delete place button")).click()
         waitFor("Delete").click()
         waitFor("Add a place")
         device.pressBack()
+        waitFor("Appearance")
+
+        // Diagnostic logs (#154), near the end of Settings.
+        scrollTo("Diagnostic logs").click()
+        waitFor("Export logs")
+        waitFor("Latest events")
+        shot("diagnostics")
+        // Back to the map and into Settings again, which opens at the top, rather than scrolling
+        // all the way back up.
+        device.pressBack()
+        waitFor("Diagnostic logs")
+        device.pressBack()
+        waitFor("Invite")
+        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
         waitFor("Appearance")
 
         // The app's own theme, then back to following the phone.

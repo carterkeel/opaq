@@ -14,10 +14,28 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Brush
+import app.opaq.core.HistorySegments
+import app.opaq.core.HistoryPoint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,6 +74,9 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.opaq.core.model.Precision
+import app.opaq.core.model.MemberLocation
+import app.opaq.core.Engine
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Invite
 import app.opaq.core.model.THEME_DARK
@@ -78,12 +99,13 @@ internal val Gutter = Modifier.padding(horizontal = 24.dp)
  * camera badge sits outside the avatar's circle so it isn't cropped.
  */
 @Composable
-private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, onAvatarClick: (() -> Unit)? = null, editBadge: Boolean = false) {
+private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, onAvatarClick: (() -> Unit)? = null, editBadge: Boolean = false, ring: Format.Ring? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(124.dp)) {
             Avatar(
                 info,
-                size = 112.dp,
+                size = if (ring != null) 120.dp else 112.dp,
+                ring = ring,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .then(if (onAvatarClick != null) Modifier.clip(CircleShape).clickable(onClick = onAvatarClick) else Modifier),
@@ -113,6 +135,75 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 // Someone's profile
 // -------------------------------------------------------------------------------------------------
 
+/**
+ * Their map behind the top of their profile: today's path where this phone keeps history, or else
+ * where they are now. It shows through faintly round the photo and is fully faded by the name, so the text below stays on a plain background. It's only a picture: touches go to the
+ * page, so it scrolls as usual.
+ */
+@Composable
+private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation?, actions: Actions, content: @Composable () -> Unit) {
+    val today = remember { localDayStart(epochSeconds()) }
+    var points by remember(pubkey) { mutableStateOf<List<HistoryPoint>>(emptyList()) }
+    LaunchedEffect(pubkey, state.historyDays, loc?.time) {
+        if (state.historyDays > 0) actions.history(pubkey, today, localDayStart(today + 25 * 3600)) { points = it }
+    }
+    val shown = remember(points, loc) { points.ifEmpty { listOfNotNull(loc?.let { HistoryPoint(it.time, it.lat, it.lon) }) } }
+    val segments = remember(shown) { HistorySegments.build(shown) }
+    val ground = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxWidth()) {
+        if (shown.isNotEmpty()) {
+            key(state.darkMap) { HistoryMap(shown, segments, null, Modifier.matchParentSize(), darkMap = state.darkMap, animate = false, showStops = false) }
+            Box(
+                Modifier.matchParentSize()
+                    .background(Brush.verticalGradient(0f to ground.copy(alpha = 0.25f), 0.3f to ground.copy(alpha = 0.5f), 0.55f to ground.copy(alpha = 0.88f), 0.7f to ground))
+                    // Takes touches before the map can, without using them, so the page still scrolls.
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+            )
+        }
+        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(top = 56.dp)) { content() }
+    }
+}
+
+/**
+ * Someone's profile: their map reaches the top of the screen behind the status bar, with the same
+ * soft fade as the home screen so the clock, signal and battery stay readable. The back button
+ * floats over it, and a plain bar fades in behind it once the page scrolls.
+ */
+@Composable
+private fun ProfileScaffold(onBack: () -> Unit, darkMap: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    val scroll = rememberScrollState()
+    val ground = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(bottom = 24.dp),
+            content = content,
+        )
+        val solid = (scroll.value / 160f).coerceIn(0f, 1f)
+        Box(
+            Modifier.fillMaxWidth()
+                .background(ground.copy(alpha = solid))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                .height(64.dp),
+        )
+        // The status bar fade, as on the home screen: stronger when a dark theme sits over a light map.
+        val clash = LocalDarkTheme.current && !darkMap
+        Column(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.safeDrawing).background(ground.copy(alpha = if (clash) 0.92f else 0.72f)))
+            Box(
+                Modifier.fillMaxWidth().height(if (clash) 36.dp else 28.dp)
+                    .background(Brush.verticalGradient(listOf(ground.copy(alpha = if (clash) 0.92f else 0.72f), ground.copy(alpha = if (clash) 0.6f else 0.35f), ground.copy(alpha = 0f)))),
+            )
+        }
+        Row(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).height(64.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), shadowElevation = (2f * (1f - solid)).dp) {
+                IconButton(onClick = onBack) { Icon(AppIcons.ArrowBack, contentDescription = "Back") }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit, onHistory: () -> Unit = {}) {
@@ -131,6 +222,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val published = state.profiles[pubkey]?.name?.ifBlank { null } ?: member.name
     val loc = state.locations[circleId]?.get(pubkey)
     var renaming by remember { mutableStateOf(false) }
+    var askInfo by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
     var directions by remember { mutableStateOf(false) }
@@ -138,27 +230,57 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val haptics = rememberHaptics()
     val platform = LocalPlatform.current
 
-    ScreenScaffold("", onBack) {
+    ProfileScaffold(onBack, state.darkMap) {
         val subtitle = when {
             isMe -> "This is you"
             contact?.label != null && published.isNotBlank() && published != contact.label -> "Calls themself “$published”"
             else -> null
         }
-        ProfileHeader(info, info.name, subtitle)
+        val myPaused = isMe && (!state.sharing || circle.paused)
+        // The same ring as in the people list: your own follows what this circle is set to see.
+        val ring = when {
+            !isMe -> Format.ring(loc, now)
+            myPaused -> Format.Ring.OFFLINE
+            circle.precision != Precision.EXACT -> Format.Ring.APPROXIMATE
+            else -> Format.Ring.EXACT
+        }
+        ProfileBackdrop(state, pubkey, loc, actions) { ProfileHeader(info, info.name, subtitle, ring = ring) }
 
         SettingsRow(
-            title = if (isMe && !state.sharing) "Sharing paused" else Format.status(loc, now),
-            subtitle = loc?.let { "Accurate to about ${it.accuracy.toInt()} m" },
+            title = if (myPaused) "Sharing paused" else Format.status(loc, now),
+            // Shared roughly (#157): spell out that the dot is only the middle of an area.
+            subtitle = loc?.let { l ->
+                when (l.precision) {
+                    Precision.NEIGHBORHOOD -> "Approximate: only roughly which part of town"
+                    Precision.CITY -> "Approximate: only roughly which city"
+                    else -> "Accurate to about ${Format.radius(l.accuracy.toDouble())}"
+                }
+            },
             icon = AppIcons.LocationPin,
+            trailing = Format.battery(loc, now)?.takeIf { !myPaused }?.let { b -> { BatteryBadge(b) } },
         )
-        // Ask their phone for a fresh update (#149). It only answers if they're sharing with this circle.
+        // Nudge a phone that's gone quiet to send its location (#149). Their phone answers on its own,
+        // and they see nothing but their location going out, so it only works while they're online,
+        // sharing with this circle and sharing exactly; and only once their update is 5 minutes old.
         if (!isMe && circle.confirmed) {
+            val age = loc?.let { now - it.time }
+            val why = when {
+                loc?.status == MemberLocation.PAUSED -> "${info.name} paused sharing, so their phone won't answer"
+                loc?.precision == Precision.NEIGHBORHOOD || loc?.precision == Precision.CITY -> "${info.name} shares only roughly where they are, so their phone won't answer"
+                age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 5 minutes old"
+                else -> null
+            }
             SettingsRow(
                 "Ask for their location",
-                "Their phone sends a fresh update if they're sharing",
+                why ?: "Their phone sends a fresh update if it's online",
                 AppIcons.Refresh,
-                onClick = { haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) },
-            )
+                titleColor = if (why == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = if (why == null) ({ haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) }) else null,
+            ) {
+                IconButton(onClick = { askInfo = true }) {
+                    Icon(AppIcons.Info, contentDescription = "About asking for a location", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         // Directions to where they are (#150), from their last shared position.
         if (!isMe && loc != null && platform.directionsApps.isNotEmpty()) {
@@ -179,7 +301,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             SettingsRow(
                 "Hasn't received the circle's new key",
                 "Their phone may be off or offline. Opaq keeps resending it for two weeks.",
-                AppIcons.Lock,
+                AppIcons.Key,
             )
         }
         if (!isMe) SettingsRow("Rename", "Only changes the name on your phone", AppIcons.Edit, onClick = { renaming = true })
@@ -214,7 +336,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             SettingsRow(
                 if (isManager) "Remove as manager" else "Make a manager",
                 if (isManager) "They'll no longer be able to invite people" else "They can invite and approve people",
-                AppIcons.Person,
+                if (isManager) AppIcons.PersonRemove else AppIcons.PersonAdd,
                 onClick = { gate.require { actions.setManager(circleId, pubkey, !isManager) } },
             )
             SettingsRow("Make admin", "Hand over ${circle.name}. You'll become a regular member.", AppIcons.Star, onClick = { confirmAdmin = true })
@@ -230,10 +352,30 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 Gutter.padding(top = 4.dp, bottom = 8.dp),
             )
             platform.directionsApps.forEach { app ->
-                SettingsRow(app, icon = AppIcons.Directions, onClick = {
-                    directions = false
-                    platform.openDirections(app, loc.lat, loc.lon, info.name)
-                })
+                // The app's own icon where the phone lets us read it; otherwise a turn arrow for
+                // Google Maps and a folded map for any other app, so the rows never look alike.
+                val appIcon = remember(app) { platform.directionsAppIcon(app) }
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        directions = false
+                        platform.openDirections(app, loc.lat, loc.lon, info.name)
+                    }.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                        if (appIcon != null) {
+                            Image(appIcon, contentDescription = null, modifier = Modifier.requiredSize(30.dp))
+                        } else {
+                            Icon(
+                                if ("Google" in app) AppIcons.Directions else AppIcons.Map,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(24.dp))
+                    Text(app, style = MaterialTheme.typography.bodyLarge)
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -242,6 +384,19 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         TextSheet("Rename", "Name shown on your phone", contact?.label ?: published, "Save", { renaming = false }) {
             actions.setLabel(pubkey, it); renaming = false
         }
+    }
+    if (askInfo) {
+        InfoSheet(
+            title = "Asking for a location",
+            text = "If ${info.name}'s location hasn't updated in a while, this reminds their phone to send it now. " +
+                "All they see is their location being shared, as usual.",
+            points = listOf(
+                "It works only if their phone is online.",
+                "It doesn't work if they've paused sharing, or share only roughly which part of town or city they're in.",
+                "You can ask once their last update is 5 minutes old.",
+            ),
+            onDismiss = { askInfo = false },
+        )
     }
     if (confirmRemove) {
         ConfirmSheet(
@@ -582,7 +737,7 @@ enum class SettingsSection(val title: String) {
             Appearance -> AppIcons.Appearance
             Privacy -> AppIcons.Lock
             Security -> AppIcons.Shield
-            Backups -> AppIcons.History
+            Backups -> AppIcons.Archive
             Connection -> AppIcons.Relay
         }
 }
@@ -596,6 +751,7 @@ fun SettingsScreen(
     onEditProfile: () -> Unit,
     onSection: (SettingsSection) -> Unit,
     onPlaces: () -> Unit = {},
+    onDiagnostics: () -> Unit = {},
 ) {
     ScreenScaffold("Settings", onBack) {
         Row(
@@ -619,6 +775,14 @@ fun SettingsScreen(
             // Alert areas (#151) sit with sharing and circles.
             if (section == SettingsSection.Circles) SettingsRow("Place alerts", icon = AppIcons.Radius, onClick = onPlaces)
         }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        // Diagnostics (#154), and the legal pages on the website (#159).
+        val platform = LocalPlatform.current
+        // The website's report form (opaq.me/report); the app itself never contacts the form service.
+        SettingsRow("Report a problem", "Tell the developer what went wrong", AppIcons.Flag, onClick = { platform.openUrl(REPORT_URL) })
+        SettingsRow("Diagnostic logs", "Find out why sharing stopped", AppIcons.Pulse, onClick = onDiagnostics)
+        SettingsRow("Privacy policy", icon = AppIcons.EyeOff, onClick = { platform.openUrl(PRIVACY_URL) })
+        SettingsRow("Terms of use", icon = AppIcons.Document, onClick = { platform.openUrl(TERMS_URL) })
         Caption("Opaq · open source", Gutter.padding(top = 24.dp))
     }
 }
@@ -658,9 +822,9 @@ fun SettingsSectionScreen(
                 SwitchRow("Share battery level", "Shown next to your status", state.shareBattery, AppIcons.Battery) { actions.setShareBattery(it) }
                 sharingSettings.forEach { item ->
                     if (item.checked != null) {
-                        SwitchRow(item.title, item.detail, item.checked, AppIcons.Info, item.onCheckedChange)
+                        SwitchRow(item.title, item.detail, item.checked, item.icon, item.onCheckedChange)
                     } else {
-                        SettingsRow(item.title, item.detail, AppIcons.Info, onClick = if (item.action != null) item.onAction else null) {
+                        SettingsRow(item.title, item.detail, item.icon, onClick = if (item.action != null) item.onAction else null) {
                             if (item.action != null) TextButton(onClick = item.onAction) { Text(item.action) }
                         }
                     }
@@ -726,8 +890,8 @@ fun SettingsSectionScreen(
                     SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { platform.forgetBiometrics(); actions.removePin() } })
                     BiometricSwitch(state, actions)
                 }
-                SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
-                SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Lock)
+                SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Log, onClick = onSecurityLog)
+                SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Key)
                 SettingsRow(
                     "Get a new device code",
                     "If someone may have copied this phone's identity",
@@ -738,8 +902,8 @@ fun SettingsSectionScreen(
             }
 
             SettingsSection.Backups -> {
-                SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
-                SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
+                SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Upload, onClick = onBackup)
+                SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Download, onClick = onRestore)
             }
 
             SettingsSection.Connection -> {
@@ -1047,3 +1211,8 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
         }
     }
 }
+
+/** The website's legal pages (#159), also linked from the store listings. */
+const val PRIVACY_URL = "https://opaq.me/privacy"
+const val TERMS_URL = "https://opaq.me/terms"
+const val REPORT_URL = "https://opaq.me/report"

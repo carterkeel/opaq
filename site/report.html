@@ -6,8 +6,8 @@
 <title>Report a problem · Opaq</title>
 <meta name="description" content="Tell the Opaq developer about a bug or anything that isn't working.">
 <meta name="theme-color" content="#0F172A">
-<!-- The form posts to Web3Forms, which emails the report on; nothing else is contacted. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src https://api.web3forms.com; object-src 'none'; base-uri 'none'; form-action https://api.web3forms.com">
+<!-- The form posts to Web3Forms, which emails the report on. The background map loads sf-map.json from this site; nothing else is contacted. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://api.web3forms.com; object-src 'none'; base-uri 'none'; form-action https://api.web3forms.com">
 <meta name="referrer" content="no-referrer">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366F1'/%3E%3Csvg x='14' y='14' width='72' height='72' viewBox='-11 6 78 78'%3E%3CclipPath id='fs'%3E%3Cpath d='M-10 0 H66 V61.74 L30.82 80.68 Q28 82.2 25.18 80.68 L-10 61.74 Z'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23fs%29'%3E%3Crect x='11' y='42' width='34' height='43' fill='%23FFFFFF'/%3E%3Cpath d='M2 85 V38 C2 20 14 12 28 12 C42 12 54 20 54 38 V85 H42 V38 C42 25 36 19 28 19 C20 19 14 25 14 38 V85 Z' fill='%23FFFFFF'/%3E%3C/g%3E%3C/svg%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -16,26 +16,57 @@
 <style>
 :root {
   --ink: #0F172A; --indigo: #6366F1; --slate: #475569;
-  --bg: #FFFFFF; --fg: var(--ink); --muted: var(--slate); --line: #E2E6EC; --field: #FFFFFF; --ok: #0B8A3E; --no: #B42318;
+  --bg: #FFFFFF; --fg: var(--ink); --muted: var(--slate); --line: #E2E6EC; --field: #FFFFFF; --surface: #FFFFFF; --ok: #0B8A3E; --no: #B42318;
+  --ink-band: #0F172A; --on-ink-muted: #A7B1C2;
   --font-display: "Fraunces", Georgia, "Times New Roman", serif;
   --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #0F172A; --fg: #F1F5F9; --muted: #94A3B8; --line: #26324A; --field: #16203A; --ok: #5BD68A; --no: #FF8A80; color-scheme: dark; }
+  :root { --ink-band: #070C18; --bg: #0F172A; --fg: #F1F5F9; --muted: #94A3B8; --line: #26324A; --field: #16203A; --surface: #111A2E; --ok: #5BD68A; --no: #FF8A80; color-scheme: dark; }
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); -webkit-font-smoothing: antialiased; }
-.wrap { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-header { background: #0F172A; color: #FFFFFF; border-bottom: 1px solid #26324A; padding-top: env(safe-area-inset-top, 0px); }
-header .wrap { max-width: 1120px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
-header a { color: inherit; line-height: 0; }
-header svg { height: 22px; width: auto; }
-header .back { font-size: 15px; font-weight: 600; color: #A7B1C2; text-decoration: none; line-height: 1; }
-header .back:hover { color: #FFFFFF; }
-main { padding-block: 72px 96px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 30; background: var(--ink-band); }
+.wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+
+/* The header, as on the home page: Ink, with a dotted route from the pin in the wordmark to Get Opaq. */
+.ink { --bg: var(--ink-band); --fg: #FFFFFF; --muted: var(--on-ink-muted); --line: #2A3651; background: var(--bg); color: var(--fg); color-scheme: dark; }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; border-bottom: 1px solid var(--line); }
+.top .wrap { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 24px; height: 80px; padding-bottom: 12px; }
+.navroute { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.navroute path { fill: none; stroke: var(--indigo); stroke-opacity: .75; stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 1 7; animation: routeflow 7s linear infinite; }
+@keyframes routeflow { to { stroke-dashoffset: -64; } }
+.wordmark { display: block; color: var(--fg); line-height: 0; }
+.wordmark svg { height: 24px; width: auto; }
+.nav { display: flex; align-items: center; gap: 28px; }
+.nav a:not(.btn) { color: var(--muted); text-decoration: none; font-size: 15px; font-weight: 600; padding: 12px 0; }
+.nav a:not(.btn):hover { color: var(--fg); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 46px; padding: 0 22px; border-radius: 10px; border: 1px solid transparent; font: 600 15px/1 var(--font-body); text-decoration: none; cursor: pointer; white-space: nowrap; }
+.btn-primary { background: var(--indigo); color: #FFFFFF; }
+.btn-primary:hover { background: #5458E6; }
+.btn-small { height: 36px; padding: 0 16px; font-size: 14px; border-radius: 8px; }
+.btn-pin { position: relative; }
+.btn-pin::after { content: ""; position: absolute; left: 50%; bottom: -5px; width: 10px; height: 10px; background: inherit; border-radius: 0 0 2px 0; transform: translateX(-50%) rotate(45deg); }
+@media (max-width: 720px) { .nav { gap: 18px; } .nav a:not(.btn) { font-size: 14px; } .nav .btn { display: none; } }
+
+/* The home page's map, with its people moving, behind the form. It fades into the page at the top and bottom. */
+.scene { position: relative; overflow: hidden; }
+.bgmap { position: absolute; inset: 0; pointer-events: none; background: #F4F1EB; }
+.bgmap canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.bgmap .who { position: absolute; left: 0; top: 0; width: 34px; height: 34px; margin: -17px 0 0 -17px; border-radius: 50%; border: 3px solid #FFFFFF; display: grid; place-items: center; font: 600 13px/1 var(--font-body); color: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, .35); will-change: transform; }
+.bgmap .who.offline { filter: grayscale(1); opacity: .7; }
+.scene .fade { position: absolute; left: 0; right: 0; height: 220px; pointer-events: none; }
+.scene .fade-top { top: 0; background: linear-gradient(var(--bg), color-mix(in srgb, var(--bg) 85%, transparent) 30%, color-mix(in srgb, var(--bg) 45%, transparent) 65%, transparent); }
+.scene .fade-bottom { bottom: 0; background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 45%, transparent) 35%, color-mix(in srgb, var(--bg) 85%, transparent) 70%, var(--bg)); }
+@media (max-width: 640px) { .scene .fade { height: 120px; } }
+
+main { position: relative; z-index: 1; padding-block: 96px 120px; }
+.card { max-width: 640px; margin: 0 auto; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 40px 36px; box-shadow: 0 1px 2px rgba(15, 23, 42, .06), 0 24px 48px -20px rgba(15, 23, 42, .35); }
+@media (max-width: 640px) { main { padding-block: 56px 72px; } .card { padding: 28px 20px; } }
 h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(34px, 6vw, 48px); line-height: 1.08; letter-spacing: -0.018em; margin: 0 0 16px; }
-.lead { color: var(--muted); margin: 0 0 40px; }
+.lead { color: var(--muted); margin: 0 0 32px; }
 form { display: grid; gap: 22px; }
 label { display: grid; gap: 8px; font-weight: 600; font-size: 15px; }
 label small { font-weight: 400; color: var(--muted); }
@@ -44,20 +75,38 @@ textarea { min-height: 160px; resize: vertical; }
 input:focus, textarea:focus { outline: 2px solid var(--indigo); outline-offset: 1px; border-color: transparent; }
 .hp { position: absolute; left: -9999px; }
 .note { font-size: 14px; color: var(--muted); margin: 0; }
-button { justify-self: start; height: 48px; padding: 0 24px; border: 0; border-radius: 10px; background: var(--indigo); color: #FFFFFF; font: 600 16px/1 var(--font-body); cursor: pointer; }
-button:hover { background: #5458E6; }
+button[type=submit] { justify-self: start; height: 48px; padding: 0 24px; border: 0; border-radius: 10px; background: var(--indigo); color: #FFFFFF; font: 600 16px/1 var(--font-body); cursor: pointer; }
+button[type=submit]:hover { background: #5458E6; }
 button:disabled { opacity: .6; cursor: default; }
-:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
 .status { margin: 0; font-weight: 600; }
 .status.ok { color: var(--ok); } .status.no { color: var(--no); }
 .status a { color: inherit; }
+footer { border-top: 1px solid var(--line); padding-block: 28px; font-size: 14px; color: var(--muted); }
+footer a { color: inherit; }
+@media (prefers-reduced-motion: reduce) { .navroute path { animation: none; } }
 </style>
 </head>
 <body>
-<header><div class="wrap"><a href="./" aria-label="Opaq home"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="-6.2 -154.5 605 197"><path d="M73.3 -142.1Q88.7 -142.1 101.3 -136.8Q113.9 -131.6 123 -122Q132.1 -112.4 137 -99.2Q141.9 -86.1 141.9 -70.4Q141.9 -54.2 137 -40.8Q132.1 -27.4 123.1 -17.8Q114.1 -8.3 101.7 -3.1Q89.3 2.1 74.3 2.1Q58.9 2.1 46.3 -3.1Q33.7 -8.4 24.6 -18Q15.6 -27.7 10.7 -41Q5.8 -54.4 5.8 -70.6Q5.8 -86.5 10.7 -99.6Q15.7 -112.8 24.7 -122.2Q33.8 -131.7 46.1 -136.9Q58.5 -142.1 73.3 -142.1ZM113.2 -49.3Q113.2 -63.6 110.8 -76.9Q108.4 -90.2 104 -101.5Q99.7 -112.8 93.8 -121.2Q87.9 -129.7 81 -134.4Q74.1 -139 66.5 -139Q56.9 -139 49.7 -133.6Q42.4 -128.2 38.4 -117.6Q34.4 -107.1 34.4 -91.8Q34.4 -77.3 36.8 -63.8Q39.2 -50.3 43.6 -38.9Q47.9 -27.5 53.8 -19Q59.6 -10.4 66.6 -5.7Q73.6 -0.9 81.2 -0.9Q91 -0.9 98.2 -6.3Q105.4 -11.7 109.3 -22.4Q113.2 -33.1 113.2 -49.3Z M276.3 -87.4Q276.3 -73.9 270.1 -63.9Q263.8 -53.9 252.7 -48.5Q241.5 -43 226.9 -43Q215.9 -43 207.8 -45.5Q199.6 -48 192.8 -53L193.3 -54.9Q197.8 -51.7 202.1 -49.8Q206.3 -48 210.4 -47.2Q214.5 -46.4 218.5 -46.4Q227.1 -46.4 233.9 -51.3Q240.7 -56.1 244.8 -65.5Q248.8 -74.8 248.8 -87.9Q248.8 -103.8 243.8 -114.9Q238.8 -126 230.2 -131.8Q221.6 -137.6 210.6 -137.6H202.1V-6.2Q202.1 -5 203.1 -4.3Q204 -3.6 205.8 -3.2L214.4 -1.9Q215.1 -1.8 215.4 -1.6Q215.7 -1.3 215.7 -0.9Q215.7 -0.5 215.4 -0.3Q215.1 0 214.4 0H162Q161.4 0 161 -0.3Q160.7 -0.5 160.7 -1Q160.7 -1.7 162 -1.9L170.4 -3.3Q172.2 -3.6 173.1 -4.3Q174 -5.1 174 -6.1V-133.5Q174 -134.8 173.1 -135.6Q172.3 -136.4 170.6 -136.7L161.8 -138.1Q160.7 -138.3 160.7 -139Q160.7 -139.5 161 -139.8Q161.3 -140 162 -140H210.7Q230.3 -140 245.1 -133.4Q259.9 -126.8 268.1 -115Q276.3 -103.1 276.3 -87.4Z" fill="currentColor"/><g transform="translate(290.1 -175) scale(2.5)"><clipPath id="wm1"><path d="M-10 0 H66 V61.7 L30.8 80.7 Q28 82.2 25.2 80.7 L-10 61.7 Z"/></clipPath><g clip-path="url(#wm1)"><rect x="9" y="40" width="38" height="45" fill="var(--indigo)"/><path d="M2 85 V38 C2 21 14 13 28 13 C42 13 54 21 54 38 V85 H44 V38 C44 23.5 38 15 28 15 C18 15 12 23.5 12 38 V85 Z" fill="currentColor"/><rect x="9" y="38.5" width="38" height="3.5" fill="currentColor"/></g><g fill="#0F172A"><circle cx="28" cy="50" r="3.4"/><path d="M26.5 52.5 L25 60 H31 L29.5 52.5 Z"/></g></g><path d="M512.3 -142.1Q527.6 -142.1 540.3 -136.8Q553 -131.6 562.3 -122Q571.6 -112.4 576.7 -99.2Q581.7 -86.1 581.7 -70.4Q581.7 -54.2 576.7 -40.8Q571.8 -27.4 562.7 -17.8Q553.6 -8.3 541 -3.1Q528.5 2.1 513.3 2.1Q497.4 2.1 484.6 -3.1Q471.8 -8.3 462.7 -17.9Q453.5 -27.5 448.7 -40.8Q443.8 -54.2 443.8 -70.6Q443.8 -86.5 448.8 -99.6Q453.9 -112.8 463 -122.2Q472.1 -131.7 484.7 -136.9Q497.3 -142.1 512.3 -142.1ZM552.5 -49.3Q552.5 -63.7 550.1 -77Q547.6 -90.4 543.2 -101.7Q538.8 -113.1 532.9 -121.6Q527 -130.1 520 -134.8Q512.9 -139.5 505.3 -139.5Q495.6 -139.5 488.3 -134Q481 -128.6 477 -117.9Q473 -107.3 473 -91.8Q473 -77.2 475.4 -63.7Q477.8 -50.1 482.2 -38.6Q486.6 -27.1 492.6 -18.6Q498.5 -10 505.5 -5.2Q512.6 -0.4 520.3 -0.4Q530.2 -0.4 537.4 -5.8Q544.6 -11.3 548.6 -22.1Q552.5 -33 552.5 -49.3ZM519.3 -37.5Q519.1 -38.2 519.3 -38.6Q519.4 -39.1 519.9 -39.2Q520.3 -39.3 520.7 -39Q521 -38.6 521.2 -37.9Q525.4 -22 530.2 -12Q535 -2 540.7 3.5Q546.3 9 553 11.1Q559.7 13.2 567.7 13.2Q573 13.2 576.2 12.6Q579.4 12 581.3 10.8Q583.2 9.6 584.6 8Q585.1 7.4 585.6 7.3Q586.1 7.2 586.4 7.5Q586.8 7.7 586.7 8.3Q586.7 8.9 586.1 9.8L576.5 25.2Q575.3 27.2 573.2 28.2Q571.1 29.3 567.8 29.3Q559.8 29.3 553.1 25.8Q546.3 22.4 540.3 14.7Q534.4 6.9 529.2 -5.9Q524 -18.7 519.3 -37.5Z" fill="currentColor"/></svg></a><a class="back" href="./">Back to the site</a></div></header>
-<main class="wrap">
-  <h1>Report a problem</h1>
-  <p class="lead">Something not working, or not working the way you expected? Tell us what happened and we'll look into it.</p>
+<header class="top ink">
+  <svg class="navroute" id="navroute" aria-hidden="true"><path id="navpath"/></svg>
+  <div class="wrap">
+    <a class="wordmark" href="./" aria-label="Opaq home"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="-6.2 -154.5 605 197"><path d="M73.3 -142.1Q88.7 -142.1 101.3 -136.8Q113.9 -131.6 123 -122Q132.1 -112.4 137 -99.2Q141.9 -86.1 141.9 -70.4Q141.9 -54.2 137 -40.8Q132.1 -27.4 123.1 -17.8Q114.1 -8.3 101.7 -3.1Q89.3 2.1 74.3 2.1Q58.9 2.1 46.3 -3.1Q33.7 -8.4 24.6 -18Q15.6 -27.7 10.7 -41Q5.8 -54.4 5.8 -70.6Q5.8 -86.5 10.7 -99.6Q15.7 -112.8 24.7 -122.2Q33.8 -131.7 46.1 -136.9Q58.5 -142.1 73.3 -142.1ZM113.2 -49.3Q113.2 -63.6 110.8 -76.9Q108.4 -90.2 104 -101.5Q99.7 -112.8 93.8 -121.2Q87.9 -129.7 81 -134.4Q74.1 -139 66.5 -139Q56.9 -139 49.7 -133.6Q42.4 -128.2 38.4 -117.6Q34.4 -107.1 34.4 -91.8Q34.4 -77.3 36.8 -63.8Q39.2 -50.3 43.6 -38.9Q47.9 -27.5 53.8 -19Q59.6 -10.4 66.6 -5.7Q73.6 -0.9 81.2 -0.9Q91 -0.9 98.2 -6.3Q105.4 -11.7 109.3 -22.4Q113.2 -33.1 113.2 -49.3Z M276.3 -87.4Q276.3 -73.9 270.1 -63.9Q263.8 -53.9 252.7 -48.5Q241.5 -43 226.9 -43Q215.9 -43 207.8 -45.5Q199.6 -48 192.8 -53L193.3 -54.9Q197.8 -51.7 202.1 -49.8Q206.3 -48 210.4 -47.2Q214.5 -46.4 218.5 -46.4Q227.1 -46.4 233.9 -51.3Q240.7 -56.1 244.8 -65.5Q248.8 -74.8 248.8 -87.9Q248.8 -103.8 243.8 -114.9Q238.8 -126 230.2 -131.8Q221.6 -137.6 210.6 -137.6H202.1V-6.2Q202.1 -5 203.1 -4.3Q204 -3.6 205.8 -3.2L214.4 -1.9Q215.1 -1.8 215.4 -1.6Q215.7 -1.3 215.7 -0.9Q215.7 -0.5 215.4 -0.3Q215.1 0 214.4 0H162Q161.4 0 161 -0.3Q160.7 -0.5 160.7 -1Q160.7 -1.7 162 -1.9L170.4 -3.3Q172.2 -3.6 173.1 -4.3Q174 -5.1 174 -6.1V-133.5Q174 -134.8 173.1 -135.6Q172.3 -136.4 170.6 -136.7L161.8 -138.1Q160.7 -138.3 160.7 -139Q160.7 -139.5 161 -139.8Q161.3 -140 162 -140H210.7Q230.3 -140 245.1 -133.4Q259.9 -126.8 268.1 -115Q276.3 -103.1 276.3 -87.4Z" fill="currentColor"/><g transform="translate(290.1 -175) scale(2.5)"><clipPath id="wm1"><path d="M-10 0 H66 V61.7 L30.8 80.7 Q28 82.2 25.2 80.7 L-10 61.7 Z"/></clipPath><g clip-path="url(#wm1)"><rect x="9" y="40" width="38" height="45" fill="var(--indigo)"/><path d="M2 85 V38 C2 21 14 13 28 13 C42 13 54 21 54 38 V85 H44 V38 C44 23.5 38 15 28 15 C18 15 12 23.5 12 38 V85 Z" fill="currentColor"/><rect x="9" y="38.5" width="38" height="3.5" fill="currentColor"/></g><g fill="#0F172A"><circle cx="28" cy="50" r="3.4"/><path d="M26.5 52.5 L25 60 H31 L29.5 52.5 Z"/></g></g><path d="M512.3 -142.1Q527.6 -142.1 540.3 -136.8Q553 -131.6 562.3 -122Q571.6 -112.4 576.7 -99.2Q581.7 -86.1 581.7 -70.4Q581.7 -54.2 576.7 -40.8Q571.8 -27.4 562.7 -17.8Q553.6 -8.3 541 -3.1Q528.5 2.1 513.3 2.1Q497.4 2.1 484.6 -3.1Q471.8 -8.3 462.7 -17.9Q453.5 -27.5 448.7 -40.8Q443.8 -54.2 443.8 -70.6Q443.8 -86.5 448.8 -99.6Q453.9 -112.8 463 -122.2Q472.1 -131.7 484.7 -136.9Q497.3 -142.1 512.3 -142.1ZM552.5 -49.3Q552.5 -63.7 550.1 -77Q547.6 -90.4 543.2 -101.7Q538.8 -113.1 532.9 -121.6Q527 -130.1 520 -134.8Q512.9 -139.5 505.3 -139.5Q495.6 -139.5 488.3 -134Q481 -128.6 477 -117.9Q473 -107.3 473 -91.8Q473 -77.2 475.4 -63.7Q477.8 -50.1 482.2 -38.6Q486.6 -27.1 492.6 -18.6Q498.5 -10 505.5 -5.2Q512.6 -0.4 520.3 -0.4Q530.2 -0.4 537.4 -5.8Q544.6 -11.3 548.6 -22.1Q552.5 -33 552.5 -49.3ZM519.3 -37.5Q519.1 -38.2 519.3 -38.6Q519.4 -39.1 519.9 -39.2Q520.3 -39.3 520.7 -39Q521 -38.6 521.2 -37.9Q525.4 -22 530.2 -12Q535 -2 540.7 3.5Q546.3 9 553 11.1Q559.7 13.2 567.7 13.2Q573 13.2 576.2 12.6Q579.4 12 581.3 10.8Q583.2 9.6 584.6 8Q585.1 7.4 585.6 7.3Q586.1 7.2 586.4 7.5Q586.8 7.7 586.7 8.3Q586.7 8.9 586.1 9.8L576.5 25.2Q575.3 27.2 573.2 28.2Q571.1 29.3 567.8 29.3Q559.8 29.3 553.1 25.8Q546.3 22.4 540.3 14.7Q534.4 6.9 529.2 -5.9Q524 -18.7 519.3 -37.5Z" fill="currentColor"/></svg></a>
+    <nav class="nav" aria-label="Sections">
+      <a href="./#demo">Demo</a>
+      <a href="./#how">How it works</a>
+      <a href="./#privacy">Privacy</a>
+      <a class="btn btn-primary btn-small btn-pin" id="getOpaq" href="https://github.com/carterkeel/opaq" target="_blank" rel="noopener">Get Opaq</a>
+    </nav>
+  </div>
+</header>
+<div class="scene">
+  <div class="bgmap" id="bgmap" aria-hidden="true"><canvas></canvas></div>
+  <div class="fade fade-top" aria-hidden="true"></div>
+  <div class="fade fade-bottom" aria-hidden="true"></div>
+  <main class="wrap">
+    <div class="card">
+    <h1>Report a problem</h1>
+    <p class="lead">Something not working, or not working the way you expected? Tell us what happened and we'll look into it.</p>
   <form id="report">
     <input type="hidden" name="access_key" value="55e1c92b-b0b9-4e6c-8dc5-4a0e5afecc2d">
     <input type="hidden" name="subject" value="Opaq problem report">
@@ -69,6 +118,9 @@ button:disabled { opacity: .6; cursor: default; }
     <label for="device">Phone and app version <small>Optional, for example "Pixel 8, Android 15, build 412"</small>
       <input id="device" name="device" type="text" autocomplete="off">
     </label>
+    <label for="log">Diagnostic log <small>Optional. In Opaq, go to Settings → Diagnostic logs → Export logs, then paste it here. It has no locations, keys or names.</small>
+      <textarea id="log" name="diagnostic_log" style="min-height:120px;font:13px/1.45 ui-monospace,monospace" placeholder="Opaq 1.0 (412) on Android 15…"></textarea>
+    </label>
     <label for="email">Your email <small>Optional, only if you'd like a reply</small>
       <input id="email" name="email" type="email" autocomplete="email">
     </label>
@@ -76,7 +128,10 @@ button:disabled { opacity: .6; cursor: default; }
     <button type="submit" id="send">Send report</button>
     <p class="status" id="status" role="status" aria-live="polite"></p>
   </form>
-</main>
+    </div>
+  </main>
+</div>
+<footer><div class="wrap"><a href="./">opaq.me</a> · <a href="privacy">Privacy policy</a> · <a href="terms">Terms of use</a></div></footer>
 <script>
 (function () {
   var form = document.getElementById("report"), btn = document.getElementById("send"), status = document.getElementById("status");
@@ -97,6 +152,96 @@ button:disabled { opacity: .6; cursor: default; }
       })
       .then(function () { btn.disabled = false; btn.textContent = "Send report"; });
   });
+})();
+</script>
+<script>
+// The header's route (as on the home page) and the example map behind the form, with its people moving.
+(function () {
+  var header = document.querySelector(".top"), mark = header.querySelector(".wordmark svg"), navpath = document.getElementById("navpath");
+  function route() {
+    var hr = header.getBoundingClientRect(), m = mark.getBoundingClientRect();
+    if (!m.width) return;
+    var x0 = m.left - hr.left + m.width * (366.3 / 605), y0 = m.top - hr.top + m.height * (184.5 / 197) + 3;
+    var links = header.querySelectorAll(".nav a:not(.btn)"), btn = document.getElementById("getOpaq"), end = btn.offsetParent ? btn : links[links.length - 1];
+    var b = end.getBoundingClientRect(), x1 = b.left - hr.left + b.width / 2, y1 = b.bottom - hr.top + (end === btn ? 9 : 4);
+    var dx = x1 - x0, waves = Math.max(2, Math.round(dx / 170)) | 0, d = "M" + x0.toFixed(1) + " " + y0.toFixed(1), low = hr.height - 5;
+    for (var i = 1; i <= 90; i++) {
+      var t = i / 90, base = y0 + (y1 - y0) * t, env = Math.sqrt(Math.sin(Math.PI * t));
+      d += " L" + (x0 + dx * t).toFixed(1) + " " + Math.min(low, base + Math.sin(t * Math.PI * waves) * 4 * env).toFixed(1);
+    }
+    navpath.setAttribute("d", d);
+  }
+  new ResizeObserver(route).observe(header);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(route);
+  route();
+})();
+(function () {
+  var box = document.getElementById("bgmap"), canvas = box.querySelector("canvas"), ctx = canvas.getContext("2d");
+  var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var SF = {"W":3167,"H":1797,"spots":{"you":[1469,840],"maya":[1689,536],"sam":[1900,1122],"rose":[1372,1144],"lena":[2213,503]},"routes":{"jordan":[[1757,759],[1773,757],[1811,750],[1814,750],[1829,748],[1838,799],[1843,831],[1845,847],[1846,851],[1847,856],[1847,858],[1848,859],[1848,863],[1847,868],[1847,869],[1847,872],[1848,873],[1848,876],[1850,878],[1869,897],[1890,918],[1899,929],[1913,942],[1936,967],[1957,988],[1980,1011],[1977,1014],[1963,1029],[1940,1052],[1914,1077],[1909,1083],[1907,1085],[1886,1106],[1883,1109],[1854,1138],[1851,1140],[1846,1145],[1839,1152],[1829,1162],[1820,1171],[1816,1175],[1850,1209],[1860,1219],[1870,1229],[1884,1243],[1891,1235],[1905,1222],[1919,1208],[1974,1153],[1982,1145],[1990,1137],[2030,1097],[2080,1048],[2057,1025],[2036,1004],[2012,980],[1988,956],[1987,955],[1968,936],[1944,912],[1920,888],[1900,867],[1898,865],[1874,841],[1854,862],[1847,868],[1842,873],[1808,907],[1804,910],[1787,913],[1782,914],[1778,888],[1773,862],[1769,838],[1768,831],[1765,811],[1761,786],[1757,759]],"theo":[[2129,578],[2154,553],[2156,555],[2158,557],[2157,558],[2125,590],[2104,611],[2099,616],[2088,629],[2050,667],[2010,706],[1978,738],[1972,744],[1966,750],[1954,762],[1938,778],[1931,784],[1919,797],[1874,841],[1854,862],[1847,868],[1842,873],[1808,907],[1804,910],[1784,930],[1733,981],[1712,1002],[1675,1039],[1612,1102],[1586,1127],[1580,1133],[1566,1147],[1552,1160],[1535,1178],[1480,1232],[1425,1287],[1420,1288],[1472,1236],[1474,1234],[1480,1232],[1490,1238],[1509,1257],[1528,1277],[1596,1210],[1620,1233],[1650,1204],[1670,1184],[1696,1158],[1721,1133],[1748,1106],[1753,1099],[1781,1071],[1792,1060],[1814,1039],[1821,1032],[1823,1029],[1826,1027],[1841,1012],[1846,1008],[1880,975],[1913,942],[1944,912],[1964,892],[1977,879],[1982,874],[1998,858],[2009,847],[2010,846],[2020,837],[2043,814],[2081,776],[2101,756],[2120,738],[2136,721],[2158,699],[2195,660],[2210,645],[2234,622],[2229,618],[2204,594],[2206,591],[2208,589],[2198,579],[2188,569],[2178,559],[2176,557],[2173,554],[2163,544],[2156,550],[2154,553],[2129,578]],"priya":[[1604,909],[1607,908],[1616,907],[1618,915],[1624,913],[1626,924],[1629,924],[1635,928],[1646,936],[1649,936],[1658,987],[1700,980],[1722,977],[1733,981],[1712,1002],[1758,1049],[1781,1071],[1784,1074],[1795,1063],[1804,1072],[1810,1066],[1816,1063],[1823,1062],[1829,1063],[1839,1064],[1824,1050],[1816,1042],[1843,1015],[1846,1008],[1826,990],[1822,985],[1803,966],[1790,952],[1788,950],[1787,948],[1786,946],[1786,944],[1785,941],[1784,930],[1784,927],[1783,922],[1782,919],[1782,914],[1713,925],[1709,899],[1641,910],[1624,913],[1622,900],[1603,904],[1604,909]],"noor":[[2210,507],[2224,526],[2240,548],[2245,552],[2259,568],[2268,581],[2272,586],[2276,590],[2291,608],[2319,638],[2332,652],[2336,657],[2342,661],[2340,663],[2344,669],[2349,678],[2353,686],[2357,697],[2361,709],[2365,718],[2369,727],[2374,736],[2379,741],[2388,751],[2383,756],[2380,759],[2378,760],[2377,762],[2374,765],[2371,768],[2366,763],[2362,758],[2364,756],[2359,750],[2353,744],[2349,738],[2344,731],[2340,724],[2336,717],[2331,702],[2324,678],[2322,672],[2320,667],[2319,666],[2316,661],[2313,655],[2309,650],[2306,646],[2304,644],[2298,637],[2282,620],[2275,612],[2265,601],[2267,598],[2269,597],[2271,594],[2268,590],[2264,585],[2253,572],[2240,557],[2235,551],[2228,542],[2222,536],[2218,529],[2212,522],[2204,510],[2210,507]]}};
+  var W = SF.W, H = SF.H, data = null, cam = { k: 1, x: 0, y: 0 };
+  function pathD(pts, closed) { return "M" + pts.map(function (p) { return p[0] + " " + p[1]; }).join("L") + (closed ? "Z" : ""); }
+  function routeOf(pts) { var len = [0]; for (var i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])); return { pts: pts, len: len, total: len[len.length - 1] }; }
+  function along(r, d) {
+    for (var i = 1; i < r.len.length; i++) if (r.len[i] >= d) { var a = r.pts[i - 1], b = r.pts[i], f = (d - r.len[i - 1]) / ((r.len[i] - r.len[i - 1]) || 1); return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]; }
+    return r.pts[r.pts.length - 1];
+  }
+  // The home page's example people: some still, some walking or driving round real streets.
+  var people = [
+    { i: "A", c: "#4F46E5", at: SF.spots.you }, { i: "M", c: "#0F766E", at: SF.spots.maya }, { i: "S", c: "#1D4ED8", at: SF.spots.sam },
+    { i: "R", c: "#BE185D", at: SF.spots.rose, off: true }, { i: "L", c: "#B91C1C", at: SF.spots.lena },
+    { i: "J", c: "#C2410C", route: routeOf(SF.routes.jordan), v: 11 }, { i: "P", c: "#7C3AED", route: routeOf(SF.routes.priya), v: 1.4 },
+    { i: "T", c: "#4D7C0F", route: routeOf(SF.routes.theo), v: 9 }, { i: "N", c: "#A16207", route: routeOf(SF.routes.noor), v: 1.4 }
+  ];
+  people.forEach(function (p) {
+    if (p.route) { p.d = Math.random() * p.route.total; p.at = along(p.route, p.d); }
+    var e = document.createElement("div"); e.className = "who" + (p.off ? " offline" : ""); e.style.background = p.c; e.textContent = p.i;
+    box.appendChild(e); p.el = e;
+  });
+  function fit() {
+    // Everyone in view, filling the area, without showing the edge of the mapped area.
+    var w = box.clientWidth, h = box.clientHeight, xs = [], ys = [];
+    people.forEach(function (p) { (p.route ? p.route.pts : [p.at]).forEach(function (q) { xs.push(q[0]); ys.push(q[1]); }); });
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
+    var k = Math.max(w / (x1 - x0 + 300), h / (y1 - y0 + 500), w / W, h / H);
+    cam = { k: k, x: Math.min(0, Math.max(w - W * k, w / 2 - k * (x0 + x1) / 2)), y: Math.min(0, Math.max(h - H * k, h / 2 - k * (y0 + y1) / 2)) };
+  }
+  function draw() {
+    fit();
+    var w = box.clientWidth, h = box.clientHeight, dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = "#F4F1EB"; ctx.fillRect(0, 0, w, h);
+    if (data) {
+      ctx.translate(cam.x, cam.y); ctx.scale(cam.k, cam.k); ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.fillStyle = "#A8CBEE"; ctx.fill(data.water, "evenodd");
+      ctx.fillStyle = "#F4F1EB"; ctx.fill(data.piers);
+      ctx.fillStyle = "#D6E7C5"; ctx.fill(data.parks, "evenodd");
+      ctx.fillStyle = "#E7E1D8"; ctx.fill(data.buildings, "evenodd");
+      var widths = { service: [5, 3.4], minor: [11, 8], medium: [13, 10], major: [16, 12.5] }, order = ["service", "minor", "medium", "major"];
+      order.forEach(function (k) { ctx.strokeStyle = k === "major" ? "#E6C985" : "#DCD5CA"; ctx.lineWidth = widths[k][0]; ctx.stroke(data.roads[k]); });
+      order.forEach(function (k) { ctx.strokeStyle = k === "major" ? "#FBE3AA" : "#FFFFFF"; ctx.lineWidth = widths[k][1]; ctx.stroke(data.roads[k]); });
+    }
+    place();
+  }
+  function place() { people.forEach(function (p) { p.el.style.transform = "translate(" + (cam.x + p.at[0] * cam.k).toFixed(1) + "px," + (cam.y + p.at[1] * cam.k).toFixed(1) + "px)"; }); }
+  fetch("sf-map.json").then(function (r) { return r.json(); }).then(function (d) {
+    function rings(list) { return new Path2D(list.map(function (r) { return pathD(r, true); }).join("")); }
+    var roads = {};
+    ["service", "minor", "medium", "major"].forEach(function (k) { roads[k] = new Path2D(d.roads.filter(function (r) { return !r.t && r.c === k; }).map(function (r) { return pathD(r.p); }).join("")); });
+    data = { water: rings(d.water), piers: rings(d.piers), parks: rings(d.parks), buildings: rings(d.buildings), roads: roads };
+    draw();
+  }).catch(function () {});
+  new ResizeObserver(draw).observe(box);
+  draw();
+  if (still) return;
+  var last = performance.now();
+  (function tick(now) {
+    var dt = Math.min(0.1, (now - last) / 1000); last = now;
+    people.forEach(function (p) { if (p.route) { p.d = (p.d + p.v * 0.5 * 6 * dt) % p.route.total; p.at = along(p.route, p.d); } });
+    place();
+    requestAnimationFrame(tick);
+  })(last);
 })();
 </script>
 </body>
