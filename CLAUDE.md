@@ -15,7 +15,7 @@ These are product decisions, not style preferences. Don't weaken them without th
 - **Relays must learn as little as possible.**
   - Location events are padded to one fixed size (`Envelopes.LOCATION_SIZE`, `Engine.MAX_LOCATION_CONTENT`).
   - They're signed with a per-hour publisher key and use per-hour `d` tags derived from the circle key.
-  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, one when sharing with a circle starts, one when the locate button finds the shared position was more than 25 m off, and one when someone in the circle asks for it (#149; at most one answer per person every 2 minutes, 20 an hour, and only while already sharing with that circle). The relay can see that a direct message was followed by an update; it can't read either.
+  - Updates go out at only two steady rates (~10 s moving, ~300 s still, ±15% jitter), plus one extra update when movement starts or stops, one when sharing with a circle starts, one when the locate button finds the shared position was more than 25 m off, and one when someone in the circle asks for it (#149; only once their last update is 10 minutes old, at most one answer per person every 2 minutes, 20 an hour, and only while already sharing exactly with that circle; the person asked sees nothing but their location going out). The relay can see that a direct message was followed by an update; it can't read either.
   - Activity, speed, battery, names and photos travel only inside the encryption.
 - **Never log locations, keys or message contents.** `Log.d("Opaq", …)` is for relay status only.
 - **Keys stay on the device.** State is encrypted with an Android Keystore key and excluded from backups (`data_extraction_rules.xml`, `allowBackup=false`).
@@ -181,6 +181,8 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 **Legal pages** (#159). opaq.me/privacy and opaq.me/terms (`PRIVACY_URL`, `TERMS_URL`), opened from Settings with `PlatformBridge.openUrl`, as is the website's report form (`REPORT_URL`). The app never contacts Web3Forms itself.
 
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
+
+**Status rings and battery.** Every face in the people list, the group list and on the map has a ring (`Format.ring`, `ringColor`): accent blue for an exact location, green for neighbourhood or city, grey when offline, paused or without a location. Your own follows the circle's setting. Battery is a `BatteryBadge` beside the status (`StatusLine`, `Format.battery`), red at 20% or below; `Format.status` leaves it out of the text.
 
 **First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. The location step is a checklist headed "Opaq needs these to work properly" (#158): location access, the platform's required background rows, and sharing on, each ticked when done or with a button. The background rows come from the same `sharingSettings` as Settings → Sharing (on Android "Allow all the time" and turning off the battery saver for Opaq; optional switches stay in Settings), each with its button (#131). Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
 
