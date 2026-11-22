@@ -4,6 +4,7 @@ import platform.CoreLocation.kCLAuthorizationStatusRestricted
 import platform.CoreLocation.kCLAuthorizationStatusDenied
 import platform.CoreLocation.CLAccuracyAuthorization
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.lowPowerModeEnabled
 import platform.UIKit.UIBackgroundRefreshStatus
 import platform.UIKit.UIApplication
 import app.opaq.core.Engine
