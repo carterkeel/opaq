@@ -3,7 +3,6 @@ package app.opaq.ios
 import platform.CoreLocation.kCLAuthorizationStatusRestricted
 import platform.CoreLocation.kCLAuthorizationStatusDenied
 import platform.CoreLocation.CLAccuracyAuthorization
-import platform.CoreLocation.CLBackgroundActivitySession
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.lowPowerModeEnabled
 import platform.UIKit.UIBackgroundRefreshStatus
@@ -87,11 +86,13 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private var activityUpdatesOn = false
 
     /**
-     * Keeps the app running in the background while sharing. Without it iOS (17 and later) stops
-     * counting the location updates as "in use" about 10 s after the app leaves the screen and
-     * suspends it, so nothing was sent until a geofence exit, a ~500 m move or opening the app.
+     * Last fix passed on while still, for the 25 m filter applied here rather than by iOS. With a
+     * distance filter on CLLocationManager a resting phone gets no fixes at all, and iOS then
+     * suspends the app about 10 s after it leaves the screen (nothing was sent until a geofence
+     * exit, a ~500 m move or opening the app). Taking every fix keeps it running, with no blue pill
+     * forced on.
      */
-    private var backgroundSession: CLBackgroundActivitySession? = null
+    private var lastStillFix: CLLocation? = null
 
     /** When Core Motion started saying "walking", until it has said so for [WALK_CONFIRM_SECONDS]. */
     private var walkingSince: Long? = null
@@ -224,7 +225,6 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         if (canRunInBackground) {
             manager.allowsBackgroundLocationUpdates = true
             manager.showsBackgroundLocationIndicator = showIndicator.value
-            if (backgroundSession == null) backgroundSession = CLBackgroundActivitySession.backgroundActivitySession()
         }
         setAccuracy(high = true)
         manager.startUpdatingLocation()
@@ -268,8 +268,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
-        backgroundSession?.invalidate()
-        backgroundSession = null
+        lastStillFix = null
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
         walkingSince = null
@@ -348,7 +347,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = high
         engine.diagnostic(if (high) "Location: GPS (moving)" else "Location: coarse (still)")
         manager.desiredAccuracy = if (high) kCLLocationAccuracyBest else kCLLocationAccuracyHundredMeters
-        manager.distanceFilter = if (high) kCLDistanceFilterNone else 25.0
+        manager.distanceFilter = kCLDistanceFilterNone // filtered in onLocation instead, see lastStillFix
+        lastStillFix = null
         if (high) monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION) else placeStillRegion()
     }
 
@@ -357,6 +357,11 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
 
     private fun onLocation(location: CLLocation) {
         if (location.horizontalAccuracy < 0) return // invalid fix
+        if (highAccuracy == false) {
+            val last = lastStillFix
+            if (last != null && location.distanceFromLocation(last) < STILL_FILTER_METERS) return
+            lastStillFix = location
+        }
         val (lat, lon) = location.coordinate.useContents { latitude to longitude }
         policy.add(
             LocationSample(
@@ -398,6 +403,9 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         const val MONITOR_NAME = "opaq"
         const val STILL_REGION = "still"
         const val STILL_RADIUS = 100.0
+
+        /** While still, a fix is passed on only once it's this far from the last one. */
+        const val STILL_FILTER_METERS = 25.0
 
         /** Background updates crash unless Info.plist declares the `location` background mode. */
         val canRunInBackground: Boolean by lazy {
