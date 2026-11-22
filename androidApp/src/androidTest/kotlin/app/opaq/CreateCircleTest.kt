@@ -158,6 +158,15 @@ class CreateCircleTest {
                 list.scroll(if (up) androidx.test.uiautomator.Direction.UP else androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
+            // That scroll sometimes doesn't move the setup checklist at all (it missed "Open the map"
+            // 15 times in a row in CI), so also drag the middle of the screen like a finger would,
+            // well clear of both edges.
+            if (device.findObject(By.text(text)) == null) {
+                val x = device.displayWidth / 2
+                val (from, to) = (device.displayHeight * 0.65).toInt() to (device.displayHeight * 0.35).toInt()
+                if (up) device.swipe(x, to, x, from, 25) else device.swipe(x, from, x, to, 25)
+                Thread.sleep(500)
+            }
         }
         return waitFor(text, 2_000)
     }
