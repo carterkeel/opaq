@@ -146,12 +146,13 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - It opens at city level around you, and [focus] glides the camera to a point (yourself for the
  *   recenter button, or a person you tapped).
  * - A person's dot shows their profile photo if they have one, otherwise their initial.
- * - People whose dots would overlap are stacked in a ring round the stack's centre: two side by
- *   side, three in a triangle, four in a square ([Grouping], [stackSlot]). Faces glide into and out
- *   of a stack as you zoom (#146).
- * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group calls [onGroupClick]
- *   with their ids, so you can pick who to open, and a way to zoom in until they separate (null
- *   when they're in the same spot and never would).
+ * - Each face stands on a white pointer whose tip is the person's spot. People whose dots would
+ *   overlap are stacked in a ring above a shared pointer: two side by side, three in a triangle,
+ *   four in a square ([Grouping], [stackSlot]), with one pointer per area they're in. Faces glide
+ *   into and out of a stack as you zoom (#146). They're drawn over the map in Compose
+ *   ([PeopleOverlay]), not as map symbols, so they never fade or swap order while zooming.
+ * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a stack calls
+ *   [onGroupClick] with everyone in it.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - [places] (alert areas, #151) are drawn as faint circles, true to scale, under the people.
@@ -167,7 +168,7 @@ fun MapPane(
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
-    onGroupClick: (ids: List<String>, zoomIn: (() -> Unit)?) -> Unit = { _, _ -> },
+    onGroupClick: (ids: List<String>) -> Unit = {},
     places: List<Place> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
@@ -193,37 +194,6 @@ fun MapPane(
         shown.distinctBy { it.id }.map { m ->
             val offline = m.kind == MapMarker.Kind.OFFLINE
             faceKey(m) to FacePainter(GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline, ringColors.getValue(m.ring)), measurer)
-        }
-    }
-    val geoJson = remember(faces) { facesToGeoJson(faces) }
-    val pinsJson = remember(faces) { pinsToGeoJson(faces) }
-    val pinIcons = remember { listOf(PinPainter(SINGLE_PIN), PinPainter(GROUP_PIN)) }
-    // Set just below; the tap handler only runs on a tap, after the map exists.
-    var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
-    // A person on their own opens their profile. A stack lists who's in it to pick from, with a
-    // way to zoom in until they separate.
-    val faceTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
-        val props = features.firstOrNull()?.properties
-        val ids = props?.get("ids")?.jsonPrimitive?.content?.split(",")
-        val id = props?.get("id")?.jsonPrimitive?.content
-        val map = stateRef
-        when {
-            ids != null && ids.size > 1 && map != null -> {
-                val people = ids.mapNotNull { i -> shown.firstOrNull { it.id == i } }
-                val split = Grouping.splitZoom(people.map { it.lat to it.lon })
-                val zoomIn = split?.let {
-                    {
-                        val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
-                        val zoom = max(split, map.cameraPosition.zoom + 1)
-                        scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
-                        Unit
-                    }
-                }
-                onGroup(people.map { it.id }, zoomIn)
-                ClickResult.Consume
-            }
-            id != null -> { onPerson(id); ClickResult.Consume }
-            else -> ClickResult.Pass
         }
     }
     val placesGeo = remember(places) { placesToGeoJson(places) }
@@ -254,38 +224,7 @@ fun MapPane(
             textHaloColor = const(Color.White),
             textHaloWidth = const(1.5.dp),
         )
-        val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson))
-        // Each face (or stack) stands on a white pointer whose tip is the spot, like a map pin. Drawn
-        // under the faces, so its top tucks in behind them.
-        val pins = rememberGeoJsonSource(GeoJsonData.JsonString(pinsJson))
-        val single = image(pinIcons[0], size = DpSize(SINGLE_PIN.imageWidthDp.dp, SINGLE_PIN.imageHeightDp.dp))
-        val group = image(pinIcons[1], size = DpSize(GROUP_PIN.imageWidthDp.dp, GROUP_PIN.imageHeightDp.dp))
-        SymbolLayer(
-            id = "people-pin",
-            source = pins,
-            iconImage = switch(feature["pin"].asString(), listOf(case("group", group)), fallback = single),
-            iconOffset = feature["off"].asDpOffset(),
-            iconAllowOverlap = const(true),
-            iconIgnorePlacement = const(true),
-        )
-        if (faceIcons.isNotEmpty()) {
-            val icons = faceIcons.map { (key, painter) -> key to image(painter, size = DpSize(FACE_IMAGE_DP.dp, FACE_IMAGE_DP.dp)) }
-            SymbolLayer(
-                id = "people-face",
-                source = people,
-                iconImage = switch(feature["face"].asString(), icons.map { case(it.first, it.second) }, fallback = icons.first().second),
-                // Where the face sits in its stack, in dp from the stack's centre.
-                iconOffset = feature["off"].asDpOffset(),
-                // The front face of a stack (and you) on top.
-                sortKey = feature["order"].asNumber(),
-                iconAllowOverlap = const(true),
-                iconIgnorePlacement = const(true),
-                onClick = faceTapped,
-            )
-        }
     }
-
-    SideEffect { stateRef = mapState }
 
     // Regroup every half zoom level, as the map zooms.
     LaunchedEffect(mapState) {
@@ -340,7 +279,7 @@ fun MapPane(
             viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
             cameraConstraints = worldFills(maxHeight),
             interactions = Interactions,
-            overlay = {},
+            overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, onPerson, onGroup) },
         )
     }
 }
@@ -567,57 +506,15 @@ internal fun circlePoints(lat: Double, lon: Double, radius: Double, steps: Int =
 }
 
 /** Identifies a person's picture: who, and how they look right now. */
-private fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.ring.ordinal}:${m.color}:${m.initial}:${m.photo?.hashCode() ?: 0}"
+internal fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.ring.ordinal}:${m.color}:${m.initial}:${m.photo?.hashCode() ?: 0}"
 
-/** One feature per face: where it's drawn, its place in a stack, and who's in that stack. */
-private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
-    put("type", "FeatureCollection")
-    putJsonArray("features") {
-        faces.forEach { f ->
-            addJsonObject {
-                put("type", "Feature")
-                putJsonObject("geometry") {
-                    put("type", "Point")
-                    putJsonArray("coordinates") { add(f.marker.lon); add(f.marker.lat) }
-                }
-                putJsonObject("properties") {
-                    put("id", f.marker.id)
-                    put("face", faceKey(f.marker))
-                    putJsonArray("off") { add(f.dx); add(f.dy) }
-                    put("order", f.order)
-                    if (f.ids != null) put("ids", f.ids)
-                }
-            }
-        }
-    }
-}.toString()
 
-/** One pointer per stack (or person on their own), at the spot of the face it stands on. */
-private fun pinsToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
-    put("type", "FeatureCollection")
-    putJsonArray("features") {
-        faces.filter { it.anchor }.forEach { f ->
-            val pin = if (f.ids != null) GROUP_PIN else SINGLE_PIN
-            addJsonObject {
-                put("type", "Feature")
-                putJsonObject("geometry") {
-                    put("type", "Point")
-                    putJsonArray("coordinates") { add(f.marker.lon); add(f.marker.lat) }
-                }
-                putJsonObject("properties") {
-                    put("pin", if (f.ids != null) "group" else "single")
-                    putJsonArray("off") { add(0.0); add(pin.offsetDp.toDouble()) }
-                }
-            }
-        }
-    }
-}.toString()
 
 /**
  * A face as drawn: at its person's own spot, shifted by ([dx], [dy]) dp, its drawing order, its
  * stack's people, and whether it's the one the stack's pointer stands on ([anchor]).
  */
-private data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?, val anchor: Boolean = false)
+internal data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?, val anchor: Boolean = false)
 
 /** Where a face belongs: [anchor]'s spot plus ([sx], [sy]) dp. Someone on their own is their own anchor. */
 private data class Slot(val anchor: String, val sx: Double, val sy: Double, val order: Int, val ids: String?)
@@ -638,7 +535,7 @@ private fun slots(groups: List<List<MapMarker>>): Map<String, Slot> = buildMap {
 }
 
 /** Web Mercator, as a fraction of the world across and down. */
-private fun mercator(lat: Double, lon: Double): Pair<Double, Double> {
+internal fun mercatorOf(lat: Double, lon: Double): Pair<Double, Double> {
     val phi = lat.coerceIn(-85.0511, 85.0511) * PI / 180.0
     return (lon + 180.0) / 360.0 to (1.0 - ln(kotlin.math.tan(phi) + 1.0 / cos(phi)) / PI) / 2.0
 }
@@ -678,8 +575,8 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
     val world = 512.0 * kotlin.math.exp(zoom * ln(2.0))
     fun offset(m: MapMarker, slot: Slot): Pair<Double, Double> {
         val anchor = byId[slot.anchor] ?: m
-        val (ax, ay) = mercator(anchor.lat, anchor.lon)
-        val (ox, oy) = mercator(m.lat, m.lon)
+        val (ax, ay) = mercatorOf(anchor.lat, anchor.lon)
+        val (ox, oy) = mercatorOf(m.lat, m.lon)
         return (ax - ox) * world + slot.sx to (ay - oy) * world + slot.sy
     }
     val t = maxOf(now, start)

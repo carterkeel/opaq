@@ -156,7 +156,6 @@ fun HomeScreen(
         var focusSeq by remember { mutableIntStateOf(0) }
         // People in one spot, tapped on the map (#146).
         var together by remember { mutableStateOf<List<String>?>(null) }
-        var togetherZoom by remember { mutableStateOf<(() -> Unit)?>(null) }
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
@@ -288,7 +287,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
-                    onGroupClick = { ids, zoomIn -> togetherZoom = zoomIn; together = ids },
+                    onGroupClick = { together = it },
                     // Alert areas (#151) watching this circle, only on this phone.
                     places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
@@ -544,8 +543,8 @@ fun HomeScreen(
                 now = now,
                 location = { locs[it] },
                 name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
+                onPerson = { pubkey -> together = null; if (!flyTo(pubkey)) openProfile(pubkey) },
                 onProfile = { together = null; openProfile(it) },
-                onZoomIn = togetherZoom?.let { zoom -> { together = null; zoom() } },
                 onDismiss = { together = null },
             )
         }
@@ -925,21 +924,21 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
 }
 
 /**
- * The people in a group of faces on the map (#146): tap one to open their profile. When they're
- * only close together at this zoom, [onZoomIn] zooms the map in until they separate.
+ * The people in a group of faces on the map (#146): tap one to zoom the map to them, as in the
+ * people list, or their info button to open their profile.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onProfile: (String) -> Unit, onZoomIn: (() -> Unit)? = null, onDismiss: () -> Unit) {
+internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onPerson: (String) -> Unit, onProfile: (String) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text(if (onZoomIn == null) "${ids.size} people here" else "${ids.size} people close together", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+            Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
             ids.forEach { id ->
                 val info = avatarFor(state, id, me, name(id))
                 val loc = location(id)
                 val offline = id != me && Format.isOffline(loc, now)
                 Row(
-                    Modifier.fillMaxWidth().clickable(onClickLabel = "Open profile") { onProfile(id) }.padding(horizontal = 24.dp, vertical = 10.dp),
+                    Modifier.fillMaxWidth().clickable(onClickLabel = "Show on map") { onPerson(id) }.padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Avatar(info, size = 48.dp, dimmed = offline, ring = Format.ring(loc, now))
@@ -948,10 +947,10 @@ internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: 
                         Text(if (id == me) "You" else info.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         StatusLine(Format.status(loc, now), Format.battery(loc, now))
                     }
+                    IconButton(onClick = { onProfile(id) }) {
+                        Icon(AppIcons.Info, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            }
-            if (onZoomIn != null) {
-                SettingsRow("Zoom in to see them apart", icon = AppIcons.MyLocation, titleColor = MaterialTheme.colorScheme.primary, onClick = onZoomIn)
             }
             Spacer(Modifier.height(24.dp))
         }
