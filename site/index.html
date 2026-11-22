@@ -199,6 +199,8 @@ section { padding-block: 112px; }
 }
 .map { position: relative; overflow: hidden; background: var(--map-land); touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; min-height: 0; }
 .map.dragging { cursor: grabbing; }
+/* On touch screens the map stays put, so a swipe over it scrolls the page. The buttons still zoom, and tapping a person still works. */
+@media (pointer: coarse) { .map { touch-action: auto; cursor: default; } }
 @media (max-width: 900px) { .map { height: 420px; } }
 #mapsvg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .basemap { position: absolute; left: 0; top: 0; transform-origin: 0 0; pointer-events: none; will-change: transform; }
@@ -819,6 +821,7 @@ footer .legal a { color: inherit; }
   var pointers = new Map(), last = null, pinch = null, moved = 0;
   map.addEventListener("pointerdown", function (e) {
     if (e.target.closest("button, .menu")) return;
+    if (e.pointerType === "touch") return;
     map.setPointerCapture(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     moved = 0; map.classList.add("dragging");
