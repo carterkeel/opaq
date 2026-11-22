@@ -377,6 +377,8 @@ fun PlacePickerMap(lat: Double, lon: Double, radius: Double, darkMap: Boolean, o
             state = mapState,
             cameraConstraints = worldFills(maxHeight),
             interactions = interactions,
+            // Drawn with the rest of the screen, so the rounded corners clip it.
+            uiOptions = remember { overlayMapUiOptions() },
             overlay = {},
         )
     }
@@ -661,7 +663,7 @@ fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus
                 }
             }
         }
-        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, cameraConstraints = worldFills(maxHeight), interactions = Interactions, overlay = {})
+        MaplibreMap(modifier = Modifier.fillMaxSize(), state = mapState, cameraConstraints = worldFills(maxHeight), interactions = Interactions, uiOptions = remember { overlayMapUiOptions() }, overlay = {})
     }
 }
 

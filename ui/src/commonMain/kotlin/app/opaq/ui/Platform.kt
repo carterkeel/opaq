@@ -146,8 +146,9 @@ val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No Platfor
 expect fun epochSeconds(): Long
 
 /**
- * Map options for a map with people drawn over it in Compose: on Android the map draws through a
- * TextureView, which is shown in the same frame as Compose, so the faces keep up while it pans.
+ * Map options for every map in the app: on Android the map draws through a TextureView, shown in
+ * the same frame as the rest of the screen. Faces drawn over it keep up while it pans, rounded
+ * corners clip it, and it slides and scrolls with the screen it's on (a SurfaceView does none of these).
  */
 expect fun overlayMapUiOptions(): org.maplibre.compose.map.MapUiOptions
 
