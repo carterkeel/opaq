@@ -55,6 +55,9 @@ class LocationService : LifecycleService(), LocationListener {
     /** The last update reached no relay (offline, or relays still confirming the circle key). */
     private var missed = false
 
+    /** When the current run of missed updates began (seconds). */
+    private var missedAt = 0L
+
     private var connectivity: ConnectivityManager? = null
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
@@ -137,12 +140,17 @@ class LocationService : LifecycleService(), LocationListener {
                     val battery = batteryPercent()
                     val status = if (battery != null && battery <= 5) "low battery" else null
                     policy.snapshot(battery, status, now)?.let {
-                        missed = !app.engine.publishLocation(it)
+                        val sent = app.engine.publishLocation(it)
+                        if (!sent && !missed) missedAt = now
+                        missed = !sent
                         policy.markPublished(now)
                     }
                 }
-                // Every 2 s while moving; while still, only when the next update is due (at most 30 s).
-                withTimeoutOrNull(policy.nextCheckMillis(nowSeconds())) { wake.receive() }
+                // Every 2 s while moving or just after a missed update (right after starting, the first
+                // one waits for relays to confirm the circle key); while still, only when the next
+                // update is due (at most 30 s).
+                val retrying = missed && nowSeconds() - missedAt < MotionPolicy.MISSED_RETRY_SECONDS
+                withTimeoutOrNull(if (retrying) MotionPolicy.FAST_CHECK_MILLIS else policy.nextCheckMillis(nowSeconds())) { wake.receive() }
             }
         }
 
