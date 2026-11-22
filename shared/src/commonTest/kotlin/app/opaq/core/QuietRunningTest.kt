@@ -75,6 +75,8 @@ class QuietRunningTest {
         assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("banned: too many rate-limit violations, try again later"))
         assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("blocked: you are not allowed"))
         assertEquals(RelayReplies.SHORT_HOLD_MILLIS, RelayReplies.publishHoldMillis("rate-limited: slow down"))
+        // A relay that only takes people it knows never takes Opaq's hourly keys: seen in a diagnostic log.
+        assertEquals(RelayReplies.LONG_HOLD_MILLIS, RelayReplies.publishHoldMillis("Policy violated and pubkey is not in our web of trust."))
         assertNull(RelayReplies.publishHoldMillis("duplicate: already have this event"))
         assertNull(RelayReplies.publishHoldMillis("invalid: bad signature"))
     }

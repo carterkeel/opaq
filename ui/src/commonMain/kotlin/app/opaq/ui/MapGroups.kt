@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -193,6 +194,9 @@ internal fun MapOverlayScope.PeopleOverlay(
             val top = (-(centres.minOf { it.y }.takeIf { it.isFinite() } ?: 0f)).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
             val faceOrder = g.indices.sortedBy { byId[g[it].id]?.order ?: 0 }
             val ids = g.map { it.id }
+            // The tap handler outlives this composition, so it reads the latest positions.
+            val hitCentres by androidx.compose.runtime.rememberUpdatedState(centres)
+            val hitOrder by androidx.compose.runtime.rememberUpdatedState(faceOrder)
             Box(
                 Modifier
                     .placedAt(org.maplibre.spatialk.geojson.Position(anchor.lon, anchor.lat), Alignment.BottomCenter)
@@ -200,25 +204,27 @@ internal fun MapOverlayScope.PeopleOverlay(
                     .pointerInput(ids) {
                         detectTapGestures { p ->
                             val at = Offset(p.x - size.width / 2f, p.y - size.height) / density
-                            val hit = faceOrder.reversed().firstOrNull { (centres[it] - at).getDistance() <= FACE_DP / 2 + 4 }
+                            val hit = hitOrder.reversed().firstOrNull { (hitCentres.getOrNull(it)?.let { c -> (c - at).getDistance() } ?: Float.MAX_VALUE) <= FACE_DP / 2 + 4 }
                             if (hit != null) { if (g.size > 1) onGroup(ids) else onPerson(g[hit].id) }
                         }
                     }
                     .drawBehind {
                         translate(size.width / 2f, size.height) {
                             val u = density
-                            fun shape(grow: Float) = Path().apply {
+                            // Each piece drawn on its own: in one path, a pointer and a circle wound in
+                            // opposite directions cancel out where they overlap, leaving a gap.
+                            fun shape(grow: Float) {
                                 tails.forEach { (l, r, tip) ->
-                                    moveTo(l.x * u - grow, l.y * u - grow); lineTo(r.x * u + grow, r.y * u - grow); lineTo(tip.x * u, tip.y * u + grow); close()
+                                    drawPath(Path().apply { moveTo(l.x * u - grow, l.y * u - grow); lineTo(r.x * u + grow, r.y * u - grow); lineTo(tip.x * u, tip.y * u + grow); close() }, Color.Black)
                                 }
-                                centres.forEach { c -> addOval(Rect(c * u, (FACE_DP / 2) * u + grow)) }
+                                centres.forEach { c -> drawCircle(Color.Black, (FACE_DP / 2) * u + grow, c * u) }
                             }
                             // One soft shadow under the whole shape, faces and pointers together:
                             // each layer is drawn solid, then faded as a whole, so overlaps don't darken.
                             val area = Rect(-size.width * 4, -size.height * 4, size.width * 4, size.height * 4)
                             for (spread in listOf(3.5f, 2f, 0.8f)) {
                                 drawContext.canvas.saveLayer(area, Paint().apply { alpha = 0.07f })
-                                translate(0f, 1.5f * u) { drawPath(shape(spread * u), Color.Black) }
+                                translate(0f, 1.5f * u) { shape(spread * u) }
                                 drawContext.canvas.restore()
                             }
                             tails.forEach { (l, r, tip) ->
