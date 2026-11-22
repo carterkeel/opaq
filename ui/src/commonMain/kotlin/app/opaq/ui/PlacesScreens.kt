@@ -144,13 +144,9 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
             Slider(value = sliderOf(radius), onValueChange = { radius = radiusOf(it) }, modifier = Gutter.fillMaxWidth())
 
             SectionHeader("Watch")
-            SettingsRow("Everyone in all your circles", icon = AppIcons.People, onClick = { circleId = null }) {
-                if (circleId == null) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-            }
+            ChoiceRow("Everyone in all your circles", icon = AppIcons.People, selected = circleId == null, onClick = { circleId = null })
             state.circles.forEach { c ->
-                SettingsRow("Only ${c.name}", icon = AppIcons.Circles, onClick = { circleId = c.id }) {
-                    if (circleId == c.id) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-                }
+                ChoiceRow("Only ${c.name}", icon = AppIcons.Circles, selected = circleId == c.id, onClick = { circleId = c.id })
             }
 
             SectionHeader("Tell me when someone")

@@ -1,5 +1,9 @@
 package app.opaq.ui
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -141,6 +146,40 @@ fun SettingsRow(
         if (trailing != null) {
             Spacer(Modifier.width(12.dp))
             trailing()
+        }
+    }
+}
+
+/** How choices in a list move between rows: a spring that settles without bouncing. */
+fun <T> choiceSpring() = spring<T>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+
+/**
+ * One row in a list where a single choice is picked. The picked row's icon and title turn the
+ * accent colour and a check grows in at the end, while the row you left fades back and its check
+ * shrinks away, so you see the choice move.
+ */
+@Composable
+fun ChoiceRow(title: String, subtitle: String? = null, icon: ImageVector? = null, selected: Boolean, onClick: () -> Unit) {
+    val tint by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+        choiceSpring(),
+        label = "choice colour",
+    )
+    SettingsRow(title, subtitle, icon, titleColor = tint, onClick = onClick) { SelectedCheck(selected) }
+}
+
+/** The check at the end of a picked row. It keeps its space either way, so the text never shifts. */
+@Composable
+fun SelectedCheck(selected: Boolean) {
+    val shown by animateFloatAsState(if (selected) 1f else 0f, choiceSpring(), label = "check")
+    Box(Modifier.size(24.dp)) {
+        if (shown > 0.01f) {
+            Icon(
+                AppIcons.Check,
+                contentDescription = if (selected) "Selected" else null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp).graphicsLayer { scaleX = shown; scaleY = shown; alpha = shown },
+            )
         }
     }
 }
