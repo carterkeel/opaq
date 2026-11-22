@@ -155,6 +155,7 @@ fun HomeScreen(
         var focusSeq by remember { mutableIntStateOf(0) }
         // People in one spot, tapped on the map (#146).
         var together by remember { mutableStateOf<List<String>?>(null) }
+        var togetherZoom by remember { mutableStateOf<(() -> Unit)?>(null) }
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
@@ -280,7 +281,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
-                    onGroupClick = { together = it },
+                    onGroupClick = { ids, zoomIn -> togetherZoom = zoomIn; together = ids },
                     // Alert areas (#151) watching this circle, only on this phone.
                     places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
@@ -537,6 +538,7 @@ fun HomeScreen(
                 location = { locs[it] },
                 name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
                 onProfile = { together = null; openProfile(it) },
+                onZoomIn = togetherZoom?.let { zoom -> { together = null; zoom() } },
                 onDismiss = { together = null },
             )
         }
@@ -910,13 +912,16 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
     }
 }
 
-/** People in the same spot on the map (#146): tap one to open their profile. */
+/**
+ * The people in a group of faces on the map (#146): tap one to open their profile. When they're
+ * only close together at this zoom, [onZoomIn] zooms the map in until they separate.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onProfile: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, onProfile: (String) -> Unit, onZoomIn: (() -> Unit)? = null, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
+            Text(if (onZoomIn == null) "${ids.size} people here" else "${ids.size} people close together", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
             ids.forEach { id ->
                 val info = avatarFor(state, id, me, name(id))
                 val loc = location(id)
@@ -932,6 +937,9 @@ internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: 
                         Text(Format.status(loc, now), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
+            }
+            if (onZoomIn != null) {
+                SettingsRow("Zoom in to see them apart", icon = AppIcons.MyLocation, titleColor = MaterialTheme.colorScheme.primary, onClick = onZoomIn)
             }
             Spacer(Modifier.height(24.dp))
         }

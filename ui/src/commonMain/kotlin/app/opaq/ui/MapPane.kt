@@ -142,8 +142,9 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  * - People whose dots would overlap are stacked in a ring round the stack's centre: two side by
  *   side, three in a triangle, four in a square ([Grouping], [stackSlot]). Faces glide into and out
  *   of a stack as you zoom (#146).
- * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group zooms in until they
- *   separate, or, for people in the same spot, calls [onGroupClick] with their ids.
+ * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a group calls [onGroupClick]
+ *   with their ids, so you can pick who to open, and a way to zoom in until they separate (null
+ *   when they're in the same spot and never would).
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - [places] (alert areas, #151) are drawn as faint circles, true to scale, under the people.
@@ -159,7 +160,7 @@ fun MapPane(
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
-    onGroupClick: (ids: List<String>) -> Unit = {},
+    onGroupClick: (ids: List<String>, zoomIn: (() -> Unit)?) -> Unit = { _, _ -> },
     places: List<Place> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
@@ -189,8 +190,8 @@ fun MapPane(
     val geoJson = remember(faces) { facesToGeoJson(faces) }
     // Set just below; the tap handler only runs on a tap, after the map exists.
     var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
-    // A person on their own opens their profile. In a stack: zoom in until they separate, or list
-    // them if they're in one spot.
+    // A person on their own opens their profile. A stack lists who's in it to pick from, with a
+    // way to zoom in until they separate.
     val faceTapped: (org.maplibre.compose.interaction.ClickEvent, List<org.maplibre.spatialk.geojson.Feature<*, kotlinx.serialization.json.JsonObject?>>) -> ClickResult = { _, features ->
         val props = features.firstOrNull()?.properties
         val ids = props?.get("ids")?.jsonPrimitive?.content?.split(",")
@@ -200,11 +201,15 @@ fun MapPane(
             ids != null && ids.size > 1 && map != null -> {
                 val people = ids.mapNotNull { i -> shown.firstOrNull { it.id == i } }
                 val split = Grouping.splitZoom(people.map { it.lat to it.lon })
-                if (split == null) onGroup(people.map { it.id }) else {
-                    val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
-                    val zoom = max(split, map.cameraPosition.zoom + 1)
-                    scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
+                val zoomIn = split?.let {
+                    {
+                        val center = Position(people.sumOf { it.lon } / people.size, people.sumOf { it.lat } / people.size)
+                        val zoom = max(split, map.cameraPosition.zoom + 1)
+                        scope.launch { map.animateCamera(CameraUpdate(center = center, zoom = zoom)) }
+                        Unit
+                    }
                 }
+                onGroup(people.map { it.id }, zoomIn)
                 ClickResult.Consume
             }
             id != null -> { onPerson(id); ClickResult.Consume }
