@@ -4,6 +4,7 @@ import platform.CoreLocation.kCLAuthorizationStatusRestricted
 import platform.CoreLocation.kCLAuthorizationStatusDenied
 import platform.CoreLocation.CLAccuracyAuthorization
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.lowPowerModeEnabled
 import platform.UIKit.UIBackgroundRefreshStatus
 import platform.UIKit.UIApplication
 import app.opaq.core.Engine
@@ -147,7 +148,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
             engine.state
                 .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed, c.precision, c.shareTrail) } }
                 .distinctUntilChanged()
-                .collect { policy.publishSoon() }
+                // Wake the loop too: while still it sleeps up to 30 s between checks.
+                .collect { policy.publishSoon(); wake.trySend(Unit) }
         }
         // Someone in a circle asked where we are (#149): GPS now, and the fresh fix goes out at once.
         scope.launch(Dispatchers.Main) {
