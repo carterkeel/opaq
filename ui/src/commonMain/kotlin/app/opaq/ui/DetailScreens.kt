@@ -137,8 +137,7 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 
 /**
  * Their map behind the top of their profile: today's path where this phone keeps history, or else
- * where they are now. It shows through faintly round the photo and fades into the page by the
- * first row, so the text below stays on a plain background. It's only a picture: touches go to the
+ * where they are now. It shows through faintly round the photo and is fully faded by the name, so the text below stays on a plain background. It's only a picture: touches go to the
  * page, so it scrolls as usual.
  */
 @Composable
@@ -156,7 +155,7 @@ private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation
             key(state.darkMap) { HistoryMap(shown, segments, null, Modifier.matchParentSize(), darkMap = state.darkMap, animate = false, showStops = false) }
             Box(
                 Modifier.matchParentSize()
-                    .background(Brush.verticalGradient(0f to ground.copy(alpha = 0.3f), 0.5f to ground.copy(alpha = 0.6f), 0.85f to ground.copy(alpha = 0.95f), 1f to ground))
+                    .background(Brush.verticalGradient(0f to ground.copy(alpha = 0.25f), 0.3f to ground.copy(alpha = 0.5f), 0.55f to ground.copy(alpha = 0.88f), 0.7f to ground))
                     // Takes touches before the map can, without using them, so the page still scrolls.
                     .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
             )
