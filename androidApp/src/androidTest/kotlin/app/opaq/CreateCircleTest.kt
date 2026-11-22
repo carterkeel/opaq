@@ -207,7 +207,8 @@ class CreateCircleTest {
         // Step 4: create a circle.
         waitFor("Create a circle")
         shot("setup-circle")
-        waitFor("Create a circle").click()
+        // A tap while the step is still sliding in can be lost, so tap until the next screen shows.
+        tapUntil("Create a circle", "Create")
         waitFor("Create").click()
 
         // Step 5: location (already granted by the test rule). The checklist of what Opaq needs (#158)
@@ -308,8 +309,14 @@ class CreateCircleTest {
         waitFor("Export logs")
         waitFor("Latest events")
         shot("diagnostics")
+        // Back to the map and into Settings again, which opens at the top, rather than scrolling
+        // all the way back up.
         device.pressBack()
-        scrollTo("Appearance", up = true)
+        waitFor("Diagnostic logs")
+        device.pressBack()
+        waitFor("Invite")
+        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+        waitFor("Appearance")
 
         // The app's own theme, then back to following the phone.
         waitFor("Appearance").click()
