@@ -141,6 +141,9 @@ fun Avatar(
     val ringTint by animateColorAsState(ring?.let { ringColor(it) } ?: Color.Transparent, label = "avatarRing")
     Box(modifier.size(size), contentAlignment = Alignment.Center) {
         if (ring != null) Box(Modifier.size(size).border(ringWidth, ringTint, CircleShape))
+        // A solid base, so a see-through colour or a faded photo never shows a map behind it.
+        val base = MaterialTheme.colorScheme.background
+        Box(Modifier.size(inner).clip(CircleShape).background(base))
         Crossfade(targetState = info.photo, label = "avatarPhoto") { photo ->
             val image = remember(photo) { photo?.let { PhotoCache.get(it) } }
             if (image != null) {

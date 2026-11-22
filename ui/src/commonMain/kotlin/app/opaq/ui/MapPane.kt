@@ -707,9 +707,9 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
  * already on screen, so it's redone whenever the map stops moving. Nothing is sent anywhere.
  */
 @Composable
-fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false, animate: Boolean = true) {
+fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false, animate: Boolean = true, showStops: Boolean = true) {
     var lines by remember(segments) { mutableStateOf(historyLines(segments, emptyList())) }
-    val stops = remember(segments) { historyStops(segments) }
+    val stops = remember(segments, showStops) { if (showStops) historyStops(segments) else historyStops(emptyList()) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val lineSource = rememberGeoJsonSource(GeoJsonData.JsonString(lines))
         val stopSource = rememberGeoJsonSource(GeoJsonData.JsonString(stops))

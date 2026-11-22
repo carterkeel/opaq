@@ -153,7 +153,7 @@ private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation
     val ground = MaterialTheme.colorScheme.background
     Box(Modifier.fillMaxWidth()) {
         if (shown.isNotEmpty()) {
-            key(state.darkMap) { HistoryMap(shown, segments, null, Modifier.matchParentSize(), darkMap = state.darkMap, animate = false) }
+            key(state.darkMap) { HistoryMap(shown, segments, null, Modifier.matchParentSize(), darkMap = state.darkMap, animate = false, showStops = false) }
             Box(
                 Modifier.matchParentSize()
                     .background(Brush.verticalGradient(0f to ground.copy(alpha = 0.3f), 0.5f to ground.copy(alpha = 0.6f), 0.85f to ground.copy(alpha = 0.95f), 1f to ground))
