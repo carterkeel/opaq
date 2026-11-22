@@ -57,6 +57,19 @@ class Actions(
 
     fun deletePlace(id: String, done: () -> Unit) = launchAction(after = done) { engine.deletePlace(id) }
 
+    /** Diagnostic logs (#154). */
+    fun setKeepDiagnostics(on: Boolean) = launchAction { engine.setKeepDiagnostics(on) }
+
+    fun clearDiagnostics(done: () -> Unit = {}) = launchAction(after = done) { engine.clearDiagnostics() }
+
+    suspend fun diagnosticsText(): String = engine.diagnosticsText(platform.diagnosticsHeader)
+
+    /** Opens the share sheet with the log as plain text, so the person can read it before sending. */
+    fun exportDiagnostics() = launchAction {
+        val text = engine.diagnosticsText(platform.diagnosticsHeader)
+        withContext(Dispatchers.Main) { platform.shareText(text, "Opaq diagnostic log") }
+    }
+
     /** Asks [pubkey] for their location now (#149) and says so. */
     fun requestLocation(circleId: String, pubkey: String, name: String) = launchAction {
         val sent = engine.requestLocation(circleId, pubkey)

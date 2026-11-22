@@ -46,10 +46,13 @@ class QuietRunningTest {
         d.add(LocationSample(41.001, -87.0, 5f, 16f, null, now + 5))
         d.markPublished(now + 5)
         assertTrue(d.isMoving(now + 5))
+        // A stop is held as driving for a while (a red light, #155), then counts.
         d.refresh(now + 70)
-        assertEquals(MotionPolicy.FAST_CHECK_MILLIS, d.nextCheckMillis(now + 70), "the stop isn't out yet")
-        d.markPublished(now + 70)
-        assertEquals(30_000L, d.nextCheckMillis(now + 71), "stop published: back to waiting")
+        val parked = now + 70 + MotionPolicy.STOP_TAKEOVER_SECONDS
+        d.refresh(parked)
+        assertEquals(MotionPolicy.FAST_CHECK_MILLIS, d.nextCheckMillis(parked), "the stop isn't out yet")
+        d.markPublished(parked)
+        assertEquals(30_000L, d.nextCheckMillis(parked + 1), "stop published: back to waiting")
     }
 
     @Test

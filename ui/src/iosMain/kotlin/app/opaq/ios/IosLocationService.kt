@@ -1,5 +1,11 @@
 package app.opaq.ios
 
+import platform.CoreLocation.kCLAuthorizationStatusRestricted
+import platform.CoreLocation.kCLAuthorizationStatusDenied
+import platform.CoreLocation.CLAccuracyAuthorization
+import platform.Foundation.NSProcessInfo
+import platform.UIKit.UIBackgroundRefreshStatus
+import platform.UIKit.UIApplication
 import app.opaq.core.Engine
 import app.opaq.core.MotionPolicy
 import app.opaq.core.model.LocationSample
@@ -169,11 +175,38 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     /** Starts or stops sharing to match the current state and permission. Call on the main thread. */
     fun update() {
         val s = engine.state.value
-        if (hasPermission && s.sharing && s.circles.isNotEmpty()) start() else stop()
+        if (hasPermission && s.sharing && s.circles.isNotEmpty()) {
+            start()
+        } else {
+            if (publishJob?.isActive == true) {
+                engine.diagnostic(
+                    "Sharing stopping: " + when {
+                        !hasPermission -> "location permission is off (${authorizationName()})"
+                        !s.sharing -> "sharing paused"
+                        else -> "no circles"
+                    },
+                )
+            }
+            stop()
+        }
     }
+
+    /** The permission in words for the diagnostic log (#154). */
+    private fun authorizationName(): String = when (authorization.value) {
+        kCLAuthorizationStatusAuthorizedAlways -> "Always"
+        kCLAuthorizationStatusAuthorizedWhenInUse -> "While Using"
+        kCLAuthorizationStatusDenied -> "denied"
+        kCLAuthorizationStatusRestricted -> "restricted"
+        else -> "not asked yet"
+    } + if (manager.accuracyAuthorization == CLAccuracyAuthorization.CLAccuracyAuthorizationReducedAccuracy) ", Precise off" else ""
 
     private fun start() {
         if (publishJob?.isActive == true) return
+        engine.diagnostic(
+            "Sharing started. Location permission: ${authorizationName()}. " +
+                "Background refresh ${if (UIApplication.sharedApplication.backgroundRefreshStatus == UIBackgroundRefreshStatus.UIBackgroundRefreshStatusAvailable) "on" else "off"}, " +
+                "low power mode ${if (NSProcessInfo.processInfo.lowPowerModeEnabled) "on" else "off"}",
+        )
         // Sharing (re)started: send the first update as soon as there's a fix, not up to 5 minutes later.
         policy.publishSoon()
         // Second step of the permission flow: iOS shows the "Always" prompt at most once.
@@ -300,6 +333,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private fun setAccuracy(high: Boolean) {
         if (high == highAccuracy) return
         highAccuracy = high
+        engine.diagnostic(if (high) "Location: GPS (moving)" else "Location: coarse (still)")
         manager.desiredAccuracy = if (high) kCLLocationAccuracyBest else kCLLocationAccuracyHundredMeters
         manager.distanceFilter = if (high) kCLDistanceFilterNone else 25.0
         if (high) monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION) else placeStillRegion()
@@ -334,6 +368,10 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         }
 
         override fun locationManagerDidChangeAuthorization(manager: CLLocationManager) {
+            if (manager.authorizationStatus != _authorization.value) {
+                _authorization.value = manager.authorizationStatus
+                engine.diagnostic("Location permission changed: ${authorizationName()}")
+            }
             _authorization.value = manager.authorizationStatus
             update()
         }

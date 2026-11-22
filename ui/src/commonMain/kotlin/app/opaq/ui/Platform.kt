@@ -33,6 +33,12 @@ interface PlatformBridge {
     /** Opens [app] (one of [directionsApps]) with directions to [lat], [lon], labelled [name] where the app allows. */
     fun openDirections(app: String, lat: Double, lon: Double, name: String) {}
 
+    /** First line of an exported diagnostic log (#154): app version and phone model, nothing personal. */
+    val diagnosticsHeader: String get() = "Opaq"
+
+    /** Opens a web page in the browser, such as the privacy policy (#159). */
+    fun openUrl(url: String) {}
+
     /**
      * Lets the user pick a photo, then crops it square and shrinks it to a small JPEG
      * (under [app.opaq.core.protocol.CircleCrypto.MAX_PHOTO_CHARS] once base64-encoded).

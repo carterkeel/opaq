@@ -93,16 +93,23 @@ object Format {
             // so say nothing rather than guess "Moving".
             if (loc.activity != Activity.UNKNOWN) parts += activity(loc.activity)
             val s = loc.speed
-            if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += speed(s)
+            // A drive held through a stop at lights (#155) says so rather than "0 mph".
+            if (s != null && (loc.activity == Activity.DRIVING || loc.activity == Activity.CYCLING)) parts += if (s < 1f) "stopped" else speed(s)
         }
         if (showBattery) loc.battery?.let { parts += "$it%" }
-        when (loc.precision) {
-            Precision.NEIGHBORHOOD -> parts += "area only"
-            Precision.CITY -> parts += "city only"
-            else -> Unit
-        }
+        // Shared roughly (#157): say so, with how far off it could be.
+        approximate(loc)?.let { parts += it }
         parts += ago(age)
         return parts.joinToString(" · ")
+    }
+
+    /**
+     * "Approximate (about 1 mi)" when [loc] was shared as a neighbourhood or city only, so nobody
+     * takes the dot for where the person really is (#157). Null for an exact location.
+     */
+    fun approximate(loc: MemberLocation): String? = when (loc.precision) {
+        Precision.NEIGHBORHOOD, Precision.CITY -> "Approximate (about ${radius(loc.accuracy.toDouble())})"
+        else -> null
     }
 
     fun initial(name: String): String = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"

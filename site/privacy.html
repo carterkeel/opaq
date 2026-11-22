@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy policy · Opaq</title>
+<meta name="description" content="How Opaq handles your data: everything stays on your phone, encrypted, and the developer receives nothing.">
+<meta name="theme-color" content="#0F172A">
+<!-- A static page: no scripts, nothing is contacted but the font host. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%236366F1'/%3E%3Csvg x='14' y='14' width='72' height='72' viewBox='-11 6 78 78'%3E%3CclipPath id='fs'%3E%3Cpath d='M-10 0 H66 V61.74 L30.82 80.68 Q28 82.2 25.18 80.68 L-10 61.74 Z'/%3E%3C/clipPath%3E%3Cg clip-path='url%28%23fs%29'%3E%3Crect x='11' y='42' width='34' height='43' fill='%23FFFFFF'/%3E%3Cpath d='M2 85 V38 C2 20 14 12 28 12 C42 12 54 20 54 38 V85 H42 V38 C42 25 36 19 28 19 C20 19 14 25 14 38 V85 Z' fill='%23FFFFFF'/%3E%3C/g%3E%3C/svg%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;600&display=swap">
+<style>
+:root {
+  --ink: #0F172A; --indigo: #6366F1; --slate: #475569;
+  --bg: #FFFFFF; --fg: var(--ink); --muted: var(--slate); --line: #E2E6EC; --field: #FFFFFF; --ok: #0B8A3E; --no: #B42318;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0F172A; --fg: #F1F5F9; --muted: #94A3B8; --line: #26324A; --field: #16203A; --ok: #5BD68A; --no: #FF8A80; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.6 var(--font-body); -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 640px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { background: #0F172A; color: #FFFFFF; border-bottom: 1px solid #26324A; padding-top: env(safe-area-inset-top, 0px); }
+header .wrap { max-width: 1120px; height: 72px; display: flex; align-items: center; justify-content: space-between; }
+header a { color: inherit; line-height: 0; }
+header svg { height: 22px; width: auto; }
+header .back { font-size: 15px; font-weight: 600; color: #A7B1C2; text-decoration: none; line-height: 1; }
+header .back:hover { color: #FFFFFF; }
+main { padding-block: 72px 96px; }
+h1 { font-family: var(--font-display); font-weight: 600; font-size: clamp(34px, 6vw, 48px); line-height: 1.08; letter-spacing: -0.018em; margin: 0 0 16px; }
+.lead { color: var(--muted); margin: 0 0 40px; }
+form { display: grid; gap: 22px; }
+label { display: grid; gap: 8px; font-weight: 600; font-size: 15px; }
+label small { font-weight: 400; color: var(--muted); }
+input, textarea { font: inherit; font-weight: 400; color: var(--fg); background: var(--field); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; width: 100%; }
+textarea { min-height: 160px; resize: vertical; }
+input:focus, textarea:focus { outline: 2px solid var(--indigo); outline-offset: 1px; border-color: transparent; }
+.hp { position: absolute; left: -9999px; }
+.note { font-size: 14px; color: var(--muted); margin: 0; }
+button { justify-self: start; height: 48px; padding: 0 24px; border: 0; border-radius: 10px; background: var(--indigo); color: #FFFFFF; font: 600 16px/1 var(--font-body); cursor: pointer; }
+button:hover { background: #5458E6; }
+button:disabled { opacity: .6; cursor: default; }
+:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+.status { margin: 0; font-weight: 600; }
+.status.ok { color: var(--ok); } .status.no { color: var(--no); }
+.status a { color: inherit; }
+h2 { font-family: var(--font-display); font-weight: 600; font-size: 24px; line-height: 1.25; margin: 48px 0 12px; }
+h3 { font-size: 17px; margin: 28px 0 8px; }
+p, li { margin: 0 0 14px; }
+ul { padding-left: 22px; margin: 0 0 14px; }
+main a { color: var(--indigo); }
+.dated { color: var(--muted); font-size: 15px; margin: 0 0 36px; }
+.summary { border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; margin: 0 0 8px; }
+.summary p:last-child, .summary ul:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<header><div class="wrap"><a href="./" aria-label="Opaq home"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" viewBox="-6.2 -154.5 605 197"><path d="M73.3 -142.1Q88.7 -142.1 101.3 -136.8Q113.9 -131.6 123 -122Q132.1 -112.4 137 -99.2Q141.9 -86.1 141.9 -70.4Q141.9 -54.2 137 -40.8Q132.1 -27.4 123.1 -17.8Q114.1 -8.3 101.7 -3.1Q89.3 2.1 74.3 2.1Q58.9 2.1 46.3 -3.1Q33.7 -8.4 24.6 -18Q15.6 -27.7 10.7 -41Q5.8 -54.4 5.8 -70.6Q5.8 -86.5 10.7 -99.6Q15.7 -112.8 24.7 -122.2Q33.8 -131.7 46.1 -136.9Q58.5 -142.1 73.3 -142.1ZM113.2 -49.3Q113.2 -63.6 110.8 -76.9Q108.4 -90.2 104 -101.5Q99.7 -112.8 93.8 -121.2Q87.9 -129.7 81 -134.4Q74.1 -139 66.5 -139Q56.9 -139 49.7 -133.6Q42.4 -128.2 38.4 -117.6Q34.4 -107.1 34.4 -91.8Q34.4 -77.3 36.8 -63.8Q39.2 -50.3 43.6 -38.9Q47.9 -27.5 53.8 -19Q59.6 -10.4 66.6 -5.7Q73.6 -0.9 81.2 -0.9Q91 -0.9 98.2 -6.3Q105.4 -11.7 109.3 -22.4Q113.2 -33.1 113.2 -49.3Z M276.3 -87.4Q276.3 -73.9 270.1 -63.9Q263.8 -53.9 252.7 -48.5Q241.5 -43 226.9 -43Q215.9 -43 207.8 -45.5Q199.6 -48 192.8 -53L193.3 -54.9Q197.8 -51.7 202.1 -49.8Q206.3 -48 210.4 -47.2Q214.5 -46.4 218.5 -46.4Q227.1 -46.4 233.9 -51.3Q240.7 -56.1 244.8 -65.5Q248.8 -74.8 248.8 -87.9Q248.8 -103.8 243.8 -114.9Q238.8 -126 230.2 -131.8Q221.6 -137.6 210.6 -137.6H202.1V-6.2Q202.1 -5 203.1 -4.3Q204 -3.6 205.8 -3.2L214.4 -1.9Q215.1 -1.8 215.4 -1.6Q215.7 -1.3 215.7 -0.9Q215.7 -0.5 215.4 -0.3Q215.1 0 214.4 0H162Q161.4 0 161 -0.3Q160.7 -0.5 160.7 -1Q160.7 -1.7 162 -1.9L170.4 -3.3Q172.2 -3.6 173.1 -4.3Q174 -5.1 174 -6.1V-133.5Q174 -134.8 173.1 -135.6Q172.3 -136.4 170.6 -136.7L161.8 -138.1Q160.7 -138.3 160.7 -139Q160.7 -139.5 161 -139.8Q161.3 -140 162 -140H210.7Q230.3 -140 245.1 -133.4Q259.9 -126.8 268.1 -115Q276.3 -103.1 276.3 -87.4Z" fill="currentColor"/><g transform="translate(290.1 -175) scale(2.5)"><clipPath id="wm1"><path d="M-10 0 H66 V61.7 L30.8 80.7 Q28 82.2 25.2 80.7 L-10 61.7 Z"/></clipPath><g clip-path="url(#wm1)"><rect x="9" y="40" width="38" height="45" fill="var(--indigo)"/><path d="M2 85 V38 C2 21 14 13 28 13 C42 13 54 21 54 38 V85 H44 V38 C44 23.5 38 15 28 15 C18 15 12 23.5 12 38 V85 Z" fill="currentColor"/><rect x="9" y="38.5" width="38" height="3.5" fill="currentColor"/></g><g fill="#0F172A"><circle cx="28" cy="50" r="3.4"/><path d="M26.5 52.5 L25 60 H31 L29.5 52.5 Z"/></g></g><path d="M512.3 -142.1Q527.6 -142.1 540.3 -136.8Q553 -131.6 562.3 -122Q571.6 -112.4 576.7 -99.2Q581.7 -86.1 581.7 -70.4Q581.7 -54.2 576.7 -40.8Q571.8 -27.4 562.7 -17.8Q553.6 -8.3 541 -3.1Q528.5 2.1 513.3 2.1Q497.4 2.1 484.6 -3.1Q471.8 -8.3 462.7 -17.9Q453.5 -27.5 448.7 -40.8Q443.8 -54.2 443.8 -70.6Q443.8 -86.5 448.8 -99.6Q453.9 -112.8 463 -122.2Q472.1 -131.7 484.7 -136.9Q497.3 -142.1 512.3 -142.1ZM552.5 -49.3Q552.5 -63.7 550.1 -77Q547.6 -90.4 543.2 -101.7Q538.8 -113.1 532.9 -121.6Q527 -130.1 520 -134.8Q512.9 -139.5 505.3 -139.5Q495.6 -139.5 488.3 -134Q481 -128.6 477 -117.9Q473 -107.3 473 -91.8Q473 -77.2 475.4 -63.7Q477.8 -50.1 482.2 -38.6Q486.6 -27.1 492.6 -18.6Q498.5 -10 505.5 -5.2Q512.6 -0.4 520.3 -0.4Q530.2 -0.4 537.4 -5.8Q544.6 -11.3 548.6 -22.1Q552.5 -33 552.5 -49.3ZM519.3 -37.5Q519.1 -38.2 519.3 -38.6Q519.4 -39.1 519.9 -39.2Q520.3 -39.3 520.7 -39Q521 -38.6 521.2 -37.9Q525.4 -22 530.2 -12Q535 -2 540.7 3.5Q546.3 9 553 11.1Q559.7 13.2 567.7 13.2Q573 13.2 576.2 12.6Q579.4 12 581.3 10.8Q583.2 9.6 584.6 8Q585.1 7.4 585.6 7.3Q586.1 7.2 586.4 7.5Q586.8 7.7 586.7 8.3Q586.7 8.9 586.1 9.8L576.5 25.2Q575.3 27.2 573.2 28.2Q571.1 29.3 567.8 29.3Q559.8 29.3 553.1 25.8Q546.3 22.4 540.3 14.7Q534.4 6.9 529.2 -5.9Q524 -18.7 519.3 -37.5Z" fill="currentColor"/></svg></a><a class="back" href="./">Back to the site</a></div></header>
+<main class="wrap">
+  <h1>Privacy policy</h1>
+  <p class="dated">Effective 21 November 2026</p>
+  <div class="summary">
+    <p><strong>In short:</strong> Opaq has no accounts and no servers of its own. Your location is encrypted on your phone and can only be read by the people in your circles. The developer never receives your location, your name, your photo or anything about the people you share with. There are no ads, no analytics and no tracking, and nothing is sold.</p>
+  </div>
+
+  <h2>Who we are</h2>
+  <p>Opaq is an open-source location sharing app made by Carter Keel (“we”, “us”). This policy covers the Opaq app for Android and iOS and the website at opaq.me. The app's source code is public at <a href="https://github.com/carterkeel/opaq">github.com/carterkeel/opaq</a>, so anyone can check that it does what this policy says.</p>
+
+  <h2>What stays on your phone</h2>
+  <p>Opaq keeps everything it needs on your phone, encrypted with a key that never leaves the device:</p>
+  <ul>
+    <li><strong>Your identity:</strong> a cryptographic key pair made on your phone the first time you open Opaq. There's no email, phone number or account.</li>
+    <li><strong>Your profile:</strong> the name, colour and optional photo you choose.</li>
+    <li><strong>Your circles:</strong> who is in them and the keys that encrypt their updates.</li>
+    <li><strong>Location history:</strong> recent places you and your circle have been, kept for as long as you choose (a week by default, at most 90 days, or off).</li>
+    <li><strong>Place alerts:</strong> areas you draw on the map to be told when someone arrives or leaves. They are worked out on your phone and never sent anywhere.</li>
+    <li><strong>Diagnostic logs:</strong> a short record of events such as “sharing started” or “a relay couldn't be reached”, to help find out why sharing stopped. They never contain locations, keys, names or message contents, and they only leave your phone if you export them yourself.</li>
+  </ul>
+  <p>The app's data is excluded from your phone's cloud backups. If you make an Opaq backup file, it is encrypted with a passphrase you choose, and you decide where to keep it.</p>
+
+  <h2>Location</h2>
+  <p>Opaq uses your phone's location so the people in your circles can see where you are. With your permission it keeps sharing in the background, including when the app is closed, because that's what a location sharing app is for. On Android a notification shows whenever sharing is on. You can pause sharing with one tap, pause it for one circle, share only roughly where you are (about which part of town, or which city), or turn location access off in your phone's settings at any time.</p>
+  <p>Your location is encrypted on your phone before it is sent. Only the members of the circle you share it with have the key to read it.</p>
+
+  <h2>Who can see what</h2>
+  <h3>People in your circles</h3>
+  <p>They see your location, activity (still, walking or driving), speed while driving, battery level, name and photo, and can keep a history of your updates on their own phones. Someone in a circle can ask your phone for a fresh update while you're sharing with them, and can set place alerts on their own phone that tell them when you arrive or leave a place. Nobody joins a circle without an invite and the approval of its admin or a manager.</p>
+  <h3>Relays</h3>
+  <p>Updates travel through public relays on the <a href="https://nostr.com">Nostr</a> network, run by independent third parties. A relay sees your phone's IP address (unless you turn on Tor in Settings), when updates are sent and encrypted messages of a fixed size. It cannot read your location or anything else inside them, and it can't tell who you are or who you share with. Relays may keep encrypted messages for a while under their own policies; we don't control them.</p>
+  <h3>Map tiles</h3>
+  <p>The map is loaded from OpenFreeMap like any web map, so their servers see your IP address and which areas of the map you look at.</p>
+  <h3>Directions</h3>
+  <p>If you ask for directions to someone, Opaq opens Google Maps, Apple Maps or another map app you choose, and that app then knows the destination.</p>
+  <h3>Us</h3>
+  <p>Nothing. The app never contacts any server run by us.</p>
+
+  <h2>What we don't do</h2>
+  <ul>
+    <li>No advertising, analytics, crash reporting services or tracking.</li>
+    <li>No selling, renting or sharing of personal data.</li>
+    <li>No account, so nothing to link your use of Opaq to your identity.</li>
+  </ul>
+
+  <h2>Keeping and deleting data</h2>
+  <p>Everything Opaq stores is on your phone. Deleting the app deletes it. Leaving a circle stops your phone sending to it; its members' phones remove your history once you're no longer in any circle with them. Encrypted messages already on relays expire under the relays' own rules, and remain unreadable.</p>
+
+  <h2>Children</h2>
+  <p>Opaq is not directed at children under 13, and we don't knowingly collect personal information from anyone, since the app sends us nothing. A parent or guardian who uses Opaq with their family should set it up and agree to sharing on the child's behalf.</p>
+
+  <h2>The website</h2>
+  <p>opaq.me is a static site hosted by GitHub Pages, which may log visitors' IP addresses under <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub's privacy statement</a>. Fonts come from Google Fonts. If you use the “Report a problem” form, what you type (and your email, if you give it) is sent to us by email through Web3Forms. The invite page reads the invite from the part of the link after “#”, which browsers never send to the server.</p>
+
+  <h2>Security</h2>
+  <p>Opaq uses well-reviewed encryption libraries and open standards (secp256k1 keys and NIP-44 encryption), keeps keys on your phone and can be locked with a PIN or biometrics for sensitive actions. No system is perfectly secure; if you find a problem, please tell us.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes, we'll update this page and its date. Big changes will be noted in the app's release notes.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or requests about privacy: use the <a href="report">contact form</a> or <a href="https://github.com/carterkeel/opaq/issues">open an issue on GitHub</a>. More technical detail is in <a href="https://github.com/carterkeel/opaq/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+</main>
+<footer style="border-top:1px solid var(--line);padding-block:32px;font-size:14px;color:var(--muted)"><div class="wrap">
+  <a href="privacy" style="color:inherit">Privacy policy</a> · <a href="terms" style="color:inherit">Terms of use</a> · <a href="report" style="color:inherit">Report a problem</a> · © 2026 Carter Keel
+</div></footer>
+</body>
+</html>

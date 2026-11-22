@@ -69,6 +69,9 @@ button:disabled { opacity: .6; cursor: default; }
     <label for="device">Phone and app version <small>Optional, for example "Pixel 8, Android 15, build 412"</small>
       <input id="device" name="device" type="text" autocomplete="off">
     </label>
+    <label for="log">Diagnostic log <small>Optional. In Opaq, go to Settings → Diagnostic logs → Export logs, then paste it here. It has no locations, keys or names.</small>
+      <textarea id="log" name="diagnostic_log" style="min-height:120px;font:13px/1.45 ui-monospace,monospace" placeholder="Opaq 1.0 (412) on Android 15…"></textarea>
+    </label>
     <label for="email">Your email <small>Optional, only if you'd like a reply</small>
       <input id="email" name="email" type="email" autocomplete="email">
     </label>

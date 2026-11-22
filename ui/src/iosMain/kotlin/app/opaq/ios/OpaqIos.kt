@@ -1,5 +1,8 @@
 package app.opaq.ios
 
+import kotlin.native.setUnhandledExceptionHook
+import platform.Foundation.NSBundle
+import platform.UIKit.UIApplicationState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -100,6 +103,12 @@ object OpaqIos {
 
     private const val TEST_RELAY_KEY = "opaqTestRelay"
 
+    /** "1.0 (412)" from the app bundle, for the diagnostic log. */
+    fun appVersion(): String {
+        val info = NSBundle.mainBundle.infoDictionary
+        return "Opaq ${info?.get("CFBundleShortVersionString") ?: "?"} (${info?.get("CFBundleVersion") ?: "?"})"
+    }
+
     /** Created on first use, on the main thread, as CoreLocation requires. */
     val location: IosLocationService by lazy { IosLocationService(engine, scope, notifier) }
 
@@ -133,6 +142,21 @@ object OpaqIos {
                 }
             }
             return
+        }
+        if (!started) {
+            // Diagnostic log (#154): each launch, including background relaunches (the app isn't
+            // in the foreground then), and any Kotlin crash before the app ends.
+            val state = UIApplication.sharedApplication.applicationState
+            engine.diagnostic("App started (${appVersion()} on iOS ${UIDevice.currentDevice.systemVersion}, ${if (state == UIApplicationState.UIApplicationStateBackground) "in the background: relaunched by iOS" else "opened"})")
+            var previous: ((Throwable) -> Unit)? = null
+            previous = setUnhandledExceptionHook { e ->
+                runCatching {
+                    kotlinx.coroutines.runBlocking {
+                        kotlinx.coroutines.withTimeoutOrNull(1_500) { engine.noteDiagnostic("Crash: ${e.stackTraceToString()}", maxLength = 4_000) }
+                    }
+                }
+                previous?.invoke(e)
+            }
         }
         location.update()
         if (started) return

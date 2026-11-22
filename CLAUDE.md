@@ -33,7 +33,8 @@ shared/      Kotlin Multiplatform core. No UI. Android + iOS targets.
   core/Grouping.kt          Which people's dots overlap at a zoom level, so the map draws them as one group.
   core/Places.kt            Alert areas: whether an update means someone arrived at or left a place.
   core/History.kt           On-device location history: encrypted per-person/day files, thinning,
-                            pruning, and grouping into segments (still/walking/driving).
+                            pruning, and grouping into segments (still/walking/driving/paused).
+  core/Diagnostics.kt       The on-device diagnostic log (#154): encrypted day files beside the history, sanitiser.
   core/model/Models.kt      AppState (everything persisted) and data classes.
   core/protocol/Protocol.kt Message bodies, sealed DMs, circle crypto (tags, publisher keys),
                             profiles, device codes, invite links.
@@ -53,6 +54,7 @@ ui/          Compose Multiplatform screens shared by Android and iOS.
                   sharing reminder.
   HistoryScreen.kt Location history map and segments, history-length picker.
   PlacesScreens.kt Place alerts list and the add/edit screen (tap the map to set the place).
+  DiagnosticsScreen.kt Settings → Diagnostic logs: keep on/off, latest events, export, clear.
   MapGroups.kt    Each person's face as a map icon (FacePainter), and how tightly a stack packs them.
   Everyone.kt     The "Everyone" view: all circles combined, display only.
   Avatars.kt      Avatar colours, photo decoding cache, verified badge.
@@ -77,11 +79,15 @@ site/        Static GitHub Pages site (pages.yml), no build step:
              index.html   the public website (three.js from cdnjs, fonts from Google Fonts; a CSP meta tag
                           allows only those). The demo map draws sf-map.json: downtown San Francisco
                           from OpenStreetMap (© OSM contributors, ODbL, credited on the page).
-             report.html  "Report a problem" form, posted with fetch to Web3Forms (api.web3forms.com),
+             report.html  "Report a problem" form (the app's Settings → Report a problem opens it; it has a
+                          box for pasting the diagnostic log), posted with fetch to Web3Forms (api.web3forms.com),
                           which emails it to the owner. Its access key is in the page on purpose: Web3Forms
                           keys are public by design (limit it to the domain in the Web3Forms dashboard).
                           This is the website only; the app never contacts Web3Forms.
-             join.html    hands https invite links to the app. Invite links point at
+             privacy.html, terms.html  the privacy policy and terms of use (#159), linked from Settings
+                          and the store listings. Static, no scripts.
+             join.html    hands https invite links to the app. Styled like the rest of the site but loads
+                          nothing from anywhere else (no web fonts), so opening an invite contacts no third party. Invite links point at
                           opaq.me/join (the Pages custom domain). Older links use
                           carterkeel.github.io/opaq/join, which Pages redirects there, keeping the # part.
 docs/readme/ README images: brand wordmarks, the banner and framed screenshots from the iOS simulator
@@ -135,6 +141,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - Speed comes only from fixes accurate to 30 m: the median of reported GPS speeds over 30 s, otherwise distance over time. Coarse network fixes count as movement only for a clear jump.
 - Three activities: still (< 0.5 m/s), walking (running too, < 4 m/s, about 9 mph) and driving. There's no cycling: speed can't tell it from a run or slow traffic. `Activity.CYCLING` stays in the enum so older updates and history files still decode; it's shown and stored as driving.
 - Classification uses 15% hysteresis.
+- A drive is held through stops (#155, `MotionPolicy.settle`): once driving, slowing or stopping stays "Driving" (shown as "stopped" near zero speed) until 2 minutes of steady walking pace (`WALK_TAKEOVER_SECONDS`, parked and walked off) or 4 minutes below driving speed in all (`STOP_TAKEOVER_SECONDS`, parked and stayed). Times are on this phone's clock (`receivedAt`), not GPS time.
 - A "motion hint" switches to GPS straight away. On Android it comes from the significant-motion sensor. On iOS it comes from Core Motion's activity reading (running, cycling or in a vehicle at once; walking only once it has lasted 30 s, so steps around the house don't turn GPS on; at least medium confidence; needs Motion & Fitness, `NSMotionUsageDescription`) and from leaving a `CLMonitor` geofence (100 m, or twice the fix's accuracy) placed where the phone went still. The older `startMonitoringForRegion` is on its way to deprecation, so don't use it.
 - One speed reading never starts a drive: a lone fix counts only if it says still, and two or more use the lower median.
 - `shouldPublish` publishes on the steady rate, or on a still↔moving transition at least 10 s after the last publish. The location services check every 2 s while moving or about to, and while still only when the next update is due (at most every 30 s, `MotionPolicy.nextCheckMillis`); a fresh fix or motion hint wakes them, so updates go out when they're due either way.
@@ -147,7 +154,7 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 - On a road it follows the road round its bends (`Roads`, in `Roads.kt`, built from the tiles on screen with `queryRenderedFeatures`, refreshed when the camera stops, zoom ≥ 12). It carries on into the next piece of road only where the road clearly goes straight on, and stops where the known road ends, forks or meets a T junction. A travelling person within 6 m (`SNAP_METERS`, about 20 ft) of a road running their way is drawn on it; drivers and cyclists up to 12 m off it follow it from where they really are. Off-road it goes straight along the heading, and only for 15 s on a winding path.
 - A new update doesn't make the dot jump (`Track`): it travels from where it's drawn to the new estimate along the recent points (lined up with the road), at the person's speed plus enough to close the gap within 0.8–8 s, and waits rather than going back if it got ahead. Over 3 km (`Track.JUMP_METERS`) it's moved at once.
 
-**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile. While driving, points keep the speed (`HistoryPoint.v`: the reported speed for the update, distance over time for its path points), and a drive shows its average and top speed. The drawn path is lined up with roads it runs close to (`RoadSnap`, 12 m walking, 25 m otherwise) using road shapes from the tiles already on screen (`queryRenderedFeatures`); stored points are never changed and nothing is sent to a map-matching service.
+**Location history** (`LocationHistory`, `HistoryScreen`). Every phone records received (and its own) exact updates in encrypted files (`HistoryFiles`: `FileHistory` on Android in `noBackupFilesDir`, `IosHistoryFiles` on iOS). The key is `AppState.historyKeyHex` (never in backups). `AppState.historyDays` (default 7, max 90, 0 = off) is pruned hourly; history of people no longer in any circle is deleted. Keeping more needs the PIN. Opened from a profile. A pause is stored as one marker point (`HistoryPoint.p`) and shown as a "Sharing paused" stretch until the next update (#156). The drawn path is split wherever nothing was recorded for 3 minutes or the jump is faster than a car (`historyPieces`), and a moving stretch isn't joined to a stop before it across a pause, so no straight line is drawn across water or buildings. While driving, points keep the speed (`HistoryPoint.v`: the reported speed for the update, distance over time for its path points), and a drive shows its average and top speed. The drawn path is lined up with roads it runs close to (`RoadSnap`, 12 m walking, 25 m otherwise) using road shapes from the tiles already on screen (`queryRenderedFeatures`); stored points are never changed and nothing is sent to a map-matching service.
 
 **Sharing button.** On the home map it's an icon: a blue location arrow tilted right while sharing, the same arrow in red with a line through it while paused (content description "Sharing" or "Paused"). After a change the pill widens to say so (a no-bounce spring) and goes back to the icon after 5 seconds.
 
@@ -167,9 +174,15 @@ The iOS platform layer lives in `ui/src/iosMain/.../ios/` (Keychain state store,
 
 **Place alerts** (#151, plan in #101). On the add/edit screen the map moves freely and a tap sets the place; the area glides to it and the centre dot pops (450 ms). The hint stays pinned under the map, with a fade below it for the settings scrolling underneath. `AppState.places` (at most 20, radius 30 m to 5 km, one circle or all) and `placeInside` (who's inside now, so restarts don't re-announce). `Engine.checkPlaces` runs on each received update: only exact, fresh (under 10 min), accurate updates count; leaving needs 25 m (or the accuracy) past the edge; passing through between updates counts as arriving; one alert per person, place and change every 10 minutes; never about yourself. Alerts go out as `Notice`s with `kind = PLACE` (Android channel "Place alerts"). Nothing is published and places are never logged. They're in backups (`BackupData.places`; who's inside isn't), and a circle's places go when the circle does. Enabled places are drawn faintly on the maker's home map.
 
+**Approximate sharing** (#157). A circle can get only a neighbourhood (0.02° cell, within about 1 mi) or city (0.2°, about 10 mi) position (`LocationPrecision`). Viewers see a dashed circle of that size round the dot in the person's colour (`approximateAreasToGeoJson`), "Approximate (about 1 mi)" in the list (`Format.approximate`) and a sentence on the profile.
+
+**Diagnostic logs** (#154, `DiagnosticLog`, Settings → Diagnostic logs). Events and times only: app start (and how, on iOS), the sharing service starting and stopping and why, permissions, GPS/coarse switches, battery bands and power saving, publish outcomes (logged when they change, else every 30 min), `shareStatus` changes per circle ("circle 2", never ids or names), relay connect/drop/refusals (host names only), pauses, and crashes with stack traces. `Engine.diagnostic` adds a line; `DiagnosticLog.clean` blanks anything like a coordinate, a hex key or encoded data before it's stored. Lines are NIP-44 encrypted under the history key in `d-<day>` files beside the history (`h-` files are the history's; neither prunes the other), kept 7 days, at most 3000 lines a day. On by default (`AppState.keepDiagnostics`); turning it off deletes it. "Export logs" opens the share sheet with plain text. Never pass a location, key, name or message to `diagnostic`.
+
+**Legal pages** (#159). opaq.me/privacy and opaq.me/terms (`PRIVACY_URL`, `TERMS_URL`), opened from Settings with `PlatformBridge.openUrl`, as is the website's report form (`REPORT_URL`). The app never contacts Web3Forms itself.
+
 **Offline.** No update for 45 min (`Engine.OFFLINE_AFTER_SECONDS`) shows the person as offline. The app can't tell a dead phone from no signal, by design.
 
-**First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. Once location is allowed, the location step also lists the platform's background rows that still need doing (the same `sharingSettings` as Settings → Sharing; on Android "Allow all the time" and turning off the battery saver for Opaq), each with its button (#131). Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
+**First run.** `SetupScreen` walks through name, photo (optional), a PIN (optional), creating or joining a circle, and location access, then sets `AppState.setupDone`. The location step is a checklist headed "Opaq needs these to work properly" (#158): location access, the platform's required background rows, and sharing on, each ticked when done or with a button. The background rows come from the same `sharingSettings` as Settings → Sharing (on Android "Allow all the time" and turning off the battery saver for Opaq; optional switches stay in Settings), each with its button (#131). Installs that already had circles skip it. The app reopens on `AppState.lastCircleId`.
 
 ## Building and testing
 

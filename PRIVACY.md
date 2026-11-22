@@ -44,13 +44,19 @@ An invite link contains your name, the circle's name, your relays, your public k
 
 ## Location history
 
-Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time, activity (still, walking, driving) and, while driving, speed, thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
+Each phone keeps a history of the updates it receives (and its own), so people can look back at where someone has been from their profile. It's kept only on that phone, encrypted with a key protected by the Keystore (Android) or Keychain (iOS), and is never sent anywhere or put in backups. It holds what the updates already contained: position, time, activity (still, walking, driving), while driving the speed, and when sharing was paused (but not where anyone went meanwhile, since nothing was shared), thinned to about one point every 15 m or 2 minutes while moving and every 15 minutes while still. Approximate (area or city only) updates aren't kept.
 
 How long it's kept is each phone's own setting: 1 week by default, up to 3 months, or off. That means the people in your circles can look back at your movements for as long as *their* setting says. Opaq deletes someone's history from a phone once they're no longer in any circle with it. Like any app that receives your location, a modified copy could keep more; Opaq can't prevent that.
 
 ## Place alerts
 
 Anyone in a circle can draw an area on their own map (a place alert) and get a notification when someone in the circle arrives or leaves. It's worked out on their phone from the updates it already receives: nothing new is sent, the area is never published or logged. It goes into the maker's passphrase-encrypted backup file, so it moves to a new phone with them. Only the person who made it can see it, and the people it watches aren't told. It needs no more than they already share with that circle; pausing or sharing only your area stops it working.
+
+## Diagnostic logs
+
+To help find out why a phone stopped sharing, Opaq keeps a short log of events on that phone: the app and its sharing service starting and stopping and why, permission and battery-saving changes, whether each update was sent or skipped (and why), and relays connecting, dropping or refusing. It never contains locations, speeds, keys, invites, PINs, message contents, names or photos (circles are just "circle 1", "circle 2"), and each line is checked for anything that looks like a coordinate, a key or encoded data before it's stored. It's encrypted like the history, kept for 7 days, and never sent anywhere: Settings → Diagnostic logs shows it, and "Export logs" opens the share sheet so you can read it and choose who gets it. You can turn it off or clear it there.
+
+Settings → Report a problem opens the report form on opaq.me in your browser; the app itself sends nothing.
 
 ## Directions
 

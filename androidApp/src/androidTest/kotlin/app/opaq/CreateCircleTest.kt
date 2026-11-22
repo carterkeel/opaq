@@ -127,7 +127,7 @@ class CreateCircleTest {
     }
 
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
-    private fun scrollTo(text: String): UiObject2 {
+    private fun scrollTo(text: String, up: Boolean = false): UiObject2 {
         // A list under a map is short, so each scroll moves it only a little: allow plenty.
         repeat(15) {
             device.findObject(By.text(text))?.let { return it }
@@ -136,7 +136,7 @@ class CreateCircleTest {
             // The map counts as scrollable too; the screen's list is the one reaching lowest.
             device.findObjects(By.scrollable(true)).maxByOrNull { it.visibleBounds.bottom }?.let { list ->
                 list.setGestureMargin((device.displayHeight * 0.15).toInt())
-                list.scroll(androidx.test.uiautomator.Direction.DOWN, 0.9f)
+                list.scroll(if (up) androidx.test.uiautomator.Direction.UP else androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
         }
@@ -210,12 +210,11 @@ class CreateCircleTest {
         waitFor("Create a circle").click()
         waitFor("Create").click()
 
-        // Step 5: location (already granted by the test rule). Background location and the battery
-        // saver aren't, so their prompts (#131) show too, and may push the button below the screen.
-        waitFor("Keep sharing when Opaq is closed")
+        // Step 5: location (already granted by the test rule). The checklist of what Opaq needs (#158)
+        // shows background location and the battery saver still to do, and pushes the button down.
+        waitFor("Opaq needs these to work properly")
         shot("setup-location")
-        device.swipe(device.displayWidth / 2, device.displayHeight * 3 / 4, device.displayWidth / 2, device.displayHeight / 4, 30)
-        waitFor("Open the map").click()
+        scrollTo("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
         waitFor("Invite", 30_000)
@@ -303,6 +302,14 @@ class CreateCircleTest {
         waitFor("Add a place")
         device.pressBack()
         waitFor("Appearance")
+
+        // Diagnostic logs (#154), near the end of Settings.
+        scrollTo("Diagnostic logs").click()
+        waitFor("Export logs")
+        waitFor("Latest events")
+        shot("diagnostics")
+        device.pressBack()
+        scrollTo("Appearance", up = true)
 
         // The app's own theme, then back to following the phone.
         waitFor("Appearance").click()

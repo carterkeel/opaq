@@ -86,6 +86,17 @@ class OpaqApp : Application() {
             },
         )
         engine // start relays
+        // Diagnostic log (#154): the start, and any crash with its stack trace, before the app ends.
+        engine.diagnostic("App started (Opaq ${appVersion()} on Android ${Build.VERSION.RELEASE})")
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            runCatching {
+                kotlinx.coroutines.runBlocking {
+                    kotlinx.coroutines.withTimeoutOrNull(1_500) { engine.noteDiagnostic("Crash on ${thread.name}: ${e.stackTraceToString()}", maxLength = 4_000) }
+                }
+            }
+            previous?.uncaughtException(thread, e)
+        }
         // Start sharing the moment you're let into a circle (or create one), not the next time
         // the app comes to the front.
         scope.launch {
@@ -187,4 +198,10 @@ class OpaqApp : Application() {
         const val CHANNEL_PLACES = "places"
         fun from(context: Context): OpaqApp = context.applicationContext as OpaqApp
     }
+
+    /** "1.0 (412)" from the installed package, for the diagnostic log. */
+    fun appVersion(): String = runCatching {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        "${info.versionName} (${if (Build.VERSION.SDK_INT >= 28) info.longVersionCode else @Suppress("DEPRECATION") info.versionCode.toLong()})"
+    }.getOrDefault("?")
 }

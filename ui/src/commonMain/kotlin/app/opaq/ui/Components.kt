@@ -261,6 +261,12 @@ object AppIcons {
         moveTo(13f, 8f); lineTo(15f, 10f); lineTo(13f, 12f)
     }
 
+    /** A flag on a pole: report a problem. */
+    val Flag: ImageVector = stroke("Flag") {
+        moveTo(5f, 21f); lineTo(5f, 3.5f)
+        moveTo(5f, 4f); quadTo(8.5f, 2.5f, 12f, 4f); quadTo(15.5f, 5.5f, 19f, 4f); lineTo(19f, 13f); quadTo(15.5f, 14.5f, 12f, 13f); quadTo(8.5f, 11.5f, 5f, 13f)
+    }
+
     /** A globe: everyone from every circle (#147). */
     val Globe: ImageVector = stroke("Globe") {
         moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()

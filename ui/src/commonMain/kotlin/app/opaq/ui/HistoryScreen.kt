@@ -3,6 +3,7 @@ package app.opaq.ui
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -181,10 +182,19 @@ private fun SegmentRow(seg: HistorySegment, selected: Boolean, onClick: () -> Un
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Box(Modifier.size(12.dp).background(activityColor(seg.activity), CircleShape))
+        // A pause (#156) is a hollow grey ring: no location was shared for that stretch.
+        if (seg.paused) {
+            Box(Modifier.size(12.dp).border(2.dp, MaterialTheme.colorScheme.outline, CircleShape))
+        } else {
+            Box(Modifier.size(12.dp).background(activityColor(seg.activity), CircleShape))
+        }
         Column(Modifier.weight(1f)) {
             Text(
-                if (moving && seg.meters >= 50) "${Format.activity(seg.activity)} · ${Format.distance(seg.meters)}" else Format.activity(seg.activity),
+                when {
+                    seg.paused -> "Sharing paused"
+                    moving && seg.meters >= 50 -> "${Format.activity(seg.activity)} · ${Format.distance(seg.meters)}"
+                    else -> Format.activity(seg.activity)
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
             )

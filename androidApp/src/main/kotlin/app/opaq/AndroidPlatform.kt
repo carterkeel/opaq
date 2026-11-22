@@ -73,6 +73,17 @@ class AndroidPlatform(
 
     override val directionsApps = listOf(GOOGLE_MAPS, OTHER_MAPS)
 
+    override val diagnosticsHeader: String
+        get() = "Opaq ${app.appVersion()} on Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+
+    override fun openUrl(url: String) {
+        try {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (_: ActivityNotFoundException) {
+            showMessage("No browser can open this")
+        }
+    }
+
     override fun openDirections(app: String, lat: Double, lon: Double, name: String) {
         val to = "$lat,$lon"
         val intent = when (app) {

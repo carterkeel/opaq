@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.opaq.core.model.Precision
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Invite
 import app.opaq.core.model.THEME_DARK
@@ -148,7 +149,14 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
 
         SettingsRow(
             title = if (isMe && !state.sharing) "Sharing paused" else Format.status(loc, now),
-            subtitle = loc?.let { "Accurate to about ${it.accuracy.toInt()} m" },
+            // Shared roughly (#157): spell out that the dot is only the middle of an area.
+            subtitle = loc?.let { l ->
+                when (l.precision) {
+                    Precision.NEIGHBORHOOD -> "Shares only roughly which part of town: somewhere within about ${Format.radius(l.accuracy.toDouble())} of the dot"
+                    Precision.CITY -> "Shares only roughly which city: somewhere within about ${Format.radius(l.accuracy.toDouble())} of the dot"
+                    else -> "Accurate to about ${Format.radius(l.accuracy.toDouble())}"
+                }
+            },
             icon = AppIcons.LocationPin,
         )
         // Ask their phone for a fresh update (#149). It only answers if they're sharing with this circle.
@@ -596,6 +604,7 @@ fun SettingsScreen(
     onEditProfile: () -> Unit,
     onSection: (SettingsSection) -> Unit,
     onPlaces: () -> Unit = {},
+    onDiagnostics: () -> Unit = {},
 ) {
     ScreenScaffold("Settings", onBack) {
         Row(
@@ -619,6 +628,14 @@ fun SettingsScreen(
             // Alert areas (#151) sit with sharing and circles.
             if (section == SettingsSection.Circles) SettingsRow("Place alerts", icon = AppIcons.Radius, onClick = onPlaces)
         }
+        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+        // Diagnostics (#154), and the legal pages on the website (#159).
+        val platform = LocalPlatform.current
+        // The website's report form (opaq.me/report); the app itself never contacts the form service.
+        SettingsRow("Report a problem", "Tell the developer what went wrong", AppIcons.Flag, onClick = { platform.openUrl(REPORT_URL) })
+        SettingsRow("Diagnostic logs", "Find out why sharing stopped", AppIcons.Info, onClick = onDiagnostics)
+        SettingsRow("Privacy policy", icon = AppIcons.Shield, onClick = { platform.openUrl(PRIVACY_URL) })
+        SettingsRow("Terms of use", icon = AppIcons.Lock, onClick = { platform.openUrl(TERMS_URL) })
         Caption("Opaq · open source", Gutter.padding(top = 24.dp))
     }
 }
@@ -1047,3 +1064,8 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
         }
     }
 }
+
+/** The website's legal pages (#159), also linked from the store listings. */
+const val PRIVACY_URL = "https://opaq.me/privacy"
+const val TERMS_URL = "https://opaq.me/terms"
+const val REPORT_URL = "https://opaq.me/report"

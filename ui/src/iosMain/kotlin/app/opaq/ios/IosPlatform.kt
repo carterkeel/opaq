@@ -52,6 +52,11 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
 
     override val directionsApps = listOf("Apple Maps", "Google Maps")
 
+    override fun openUrl(url: String) {
+        val link = NSURL.URLWithString(url) ?: return
+        UIApplication.sharedApplication.openURL(link, options = emptyMap<Any?, Any>(), completionHandler = null)
+    }
+
     override fun openDirections(app: String, lat: Double, lon: Double, name: String) {
         val to = "$lat,$lon"
         val urls = when (app) {
@@ -88,6 +93,9 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
 
     // iOS has no persistent notification. The blue location pill can be its sign that sharing is on,
     // but it's off by default (IosLocationService.showIndicator).
+    override val diagnosticsHeader: String
+        get() = "${OpaqIos.appVersion()} on iOS ${platform.UIKit.UIDevice.currentDevice.systemVersion}, ${platform.UIKit.UIDevice.currentDevice.model}"
+
     override val sharingIndicatorText = "Settings → Sharing can show the blue location pill while you're sharing"
 
     // iOS lets apps cover their app-switcher snapshot, but not block screenshots.

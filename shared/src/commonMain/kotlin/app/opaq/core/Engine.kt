@@ -131,6 +131,9 @@ class Engine(
     private val historyStore = historyFiles?.let { LocationHistory(it) }
     private var historyPrunedAt = 0L
 
+    /** Events kept for "Export logs" (#154), next to the history files; null where history isn't kept. */
+    private val diagnostics = historyFiles?.let { DiagnosticLog(it) }
+
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
@@ -143,7 +146,10 @@ class Engine(
     var identity: KeyPair
         private set
 
-    private val pool: RelayTransport = transport?.invoke(::onEvent) ?: RelayPool(scope, ::onEvent, log)
+    private val pool: RelayTransport = transport?.invoke(::onEvent) ?: RelayPool(scope, ::onEvent) { line ->
+        log(line)
+        diagnostic(line)
+    }
     val relayStatus: StateFlow<Map<String, RelayStatus>> = pool.status
 
     private enum class TagKind { LOCATION, PROFILE, CONTROL }
@@ -337,6 +343,7 @@ class Engine(
      * seconds, 0 = none) turns it back on then, the next time the app runs.
      */
     suspend fun setSharing(on: Boolean, resumeAt: Long = 0) {
+        if (on != state.value.sharing) diagnostic(if (on) "Sharing turned on" else if (resumeAt > 0) "Sharing paused for a while" else "Sharing paused")
         if (!on && state.value.sharing) publishPausedNotice(state.value.circles)
         update { if (on) it.copy(sharing = true, consentAt = now(), sharingResumeAt = 0) else it.copy(sharing = false, sharingResumeAt = resumeAt) }
     }
@@ -348,6 +355,7 @@ class Engine(
      */
     suspend fun setCirclePaused(circleId: String, paused: Boolean, until: Long = 0) {
         val c = state.value.circles.firstOrNull { it.id == circleId } ?: return
+        if (paused != c.paused) diagnostic("${circleLabel(circleId)} ${if (paused) "paused" else "resumed"}")
         if (paused && !c.paused && state.value.sharing) publishPausedNotice(listOf(c))
         update { s -> s.copy(circles = s.circles.map { if (it.id == circleId) it.copy(paused = paused, pausedUntil = if (paused) until else 0) else it }) }
     }
@@ -382,6 +390,10 @@ class Engine(
             sent = true
         }
         if (sent) update { it.copy(lastSeq = maxOf(it.lastSeq, seq)) }
+        // Your own history shows the pause too (#156).
+        s.circles.firstNotNullOfOrNull { s.locations[it.id]?.get(myPubkey) }?.let { last ->
+            recordHistory(myPubkey, last.copy(speed = null, heading = null, activity = Activity.STILL, time = t, points = emptyList(), status = MemberLocation.PAUSED, precision = null))
+        }
     }
 
     suspend fun setShareBattery(on: Boolean) = update { it.copy(shareBattery = on) }
@@ -1194,8 +1206,12 @@ class Engine(
      */
     suspend fun publishLocation(location: MemberLocation): Boolean {
         val s = state.value
-        if (!s.sharing || _recovery.value != null) return false
+        if (!s.sharing || _recovery.value != null) {
+            publishOutcome(if (!s.sharing) "Update not sent: sharing is paused" else "Update not sent: saved data can't be read")
+            return false
+        }
         val online = relayConnected()
+        noteShareStatuses(s)
         val t = now()
         val location = if (s.shareBattery) location else location.copy(battery = null)
         val seq = maxOf(s.lastSeq + 1, t * 1000)
@@ -1208,7 +1224,11 @@ class Engine(
             pool.publish(event, queueIfOffline = false)
             sentTo += c.id
         }
-        if (sentTo.isEmpty()) return false
+        if (sentTo.isEmpty()) {
+            publishOutcome(if (s.circles.isEmpty()) "Update not sent: no circles" else "Update not sent: no circle is sharing right now")
+            return false
+        }
+        publishOutcome(if (online) "Updates sent" else "Update not sent: no relay connected")
         update { st ->
             st.copy(
                 lastSeq = maxOf(st.lastSeq, seq),
@@ -1232,6 +1252,96 @@ class Engine(
     fun networkAvailable() = pool.reconnectNow()
 
     // -----------------------------------------------------------------------------------------
+    // Diagnostic logs (#154): events and times only, kept on this phone, exported by hand
+    // -----------------------------------------------------------------------------------------
+
+    private var lastOutcome: String? = null
+    private var lastOutcomeLoggedAt = 0L
+    private val loggedShareStatus = HashMap<String, ShareStatus>()
+
+    /** "circle 2": a circle by its place in the list, so the log never holds ids or names. */
+    private fun circleLabel(circleId: String): String =
+        "circle ${state.value.circles.indexOfFirst { it.id == circleId }.let { if (it < 0) "?" else (it + 1).toString() }}"
+
+    /**
+     * Adds [event] to the diagnostic log, if it's kept (on by default, Settings → Diagnostic logs).
+     * Callers pass events and reasons only, never locations, keys, names or contents; the log blanks
+     * anything that looks like one anyway ([DiagnosticLog.clean]). [maxLength] is longer for crashes.
+     */
+    fun diagnostic(event: String, maxLength: Int = 300) {
+        if (diagnostics == null || !state.value.keepDiagnostics) return
+        scope.launch { noteDiagnostic(event, maxLength) }
+    }
+
+    /** As [diagnostic], but waits until it's written: for a crash, just before the app ends. */
+    suspend fun noteDiagnostic(event: String, maxLength: Int = 300) {
+        val log = diagnostics ?: return
+        if (!state.value.keepDiagnostics) return
+        val key = historyKey() ?: return
+        runCatching { log.note(key, now(), event, maxLength) }
+    }
+
+    /** Relays connecting and dropping, by host name only. */
+    private val loggedRelays = HashMap<String, RelayStatus>()
+
+    init {
+        if (diagnostics != null) scope.launch {
+            pool.status.collect { all ->
+                all.forEach { (url, status) ->
+                    if (loggedRelays[url] != status) {
+                        loggedRelays[url] = status
+                        diagnostic("relay ${url.substringAfter("://").substringBefore('/')}: ${status.name.lowercase()}")
+                    }
+                }
+            }
+        }
+    }
+
+    /** Publish results are logged when they change, and otherwise every half hour. */
+    private fun publishOutcome(outcome: String) {
+        val t = now()
+        if (outcome == lastOutcome && t - lastOutcomeLoggedAt < 1800) return
+        diagnostic(if (outcome == lastOutcome) "$outcome (still)" else outcome)
+        lastOutcome = outcome
+        lastOutcomeLoggedAt = t
+    }
+
+    private fun noteShareStatuses(s: AppState) {
+        s.circles.forEach { c ->
+            val status = shareStatus(c)
+            if (loggedShareStatus[c.id] != status) {
+                loggedShareStatus[c.id] = status
+                diagnostic("${circleLabel(c.id)}: ${status.name.lowercase().replace('_', ' ')}")
+            }
+        }
+    }
+
+    /** The log as plain text for the person to read and send, oldest first, times in UTC. */
+    suspend fun diagnosticsText(header: String): String {
+        val log = diagnostics ?: return header
+        val key = historyKey() ?: return header
+        val lines = log.read(key)
+        return buildString {
+            appendLine(header)
+            appendLine("Events only: no locations, keys, names or message contents. Times are UTC.")
+            appendLine()
+            lines.forEach { (at, text) -> appendLine("${utcTime(at)}  $text") }
+            if (lines.isEmpty()) appendLine("(nothing recorded yet)")
+        }
+    }
+
+    suspend fun clearDiagnostics() {
+        diagnostics?.clear()
+        lastOutcome = null
+        loggedShareStatus.clear()
+    }
+
+    suspend fun setKeepDiagnostics(on: Boolean) {
+        update { it.copy(keepDiagnostics = on) }
+        if (!on) clearDiagnostics()
+    }
+
+        // -----------------------------------------------------------------------------------------
     // Location history (kept only on this phone)
     // -----------------------------------------------------------------------------------------
 
@@ -1278,6 +1388,7 @@ class Engine(
         val t = now()
         if (t - historyPrunedAt < 3600) return
         historyPrunedAt = t
+        runCatching { diagnostics?.prune(t) }
         val s = state.value
         val keep = s.circles.flatMap { c -> c.members.map { it.pubkey } }.toSet() + myPubkey
         runCatching { h.prune(t, s.historyDays, keep) }
@@ -2023,4 +2134,22 @@ data class Notice(val title: String, val text: String, val kind: String = CIRCLE
         /** Someone arrived at or left an alert area (#151). */
         const val PLACE = "place"
     }
+}
+
+/** "2026-11-21 14:03:07Z" for unix seconds [t]. */
+internal fun utcTime(t: Long): String {
+    val days = t.floorDiv(86_400L)
+    val secs = t - days * 86_400
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    val z = days + 719_468
+    val era = z.floorDiv(146_097L)
+    val doe = z - era * 146_097
+    val yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365
+    val doy = doe - (365 * yoe + yoe / 4 - yoe / 100)
+    val mp = (5 * doy + 2) / 153
+    val d = doy - (153 * mp + 2) / 5 + 1
+    val m = if (mp < 10) mp + 3 else mp - 9
+    val y = yoe + era * 400 + if (m <= 2) 1 else 0
+    fun two(n: Long) = n.toString().padStart(2, '0')
+    return "$y-${two(m)}-${two(d)} ${two(secs / 3600)}:${two(secs % 3600 / 60)}:${two(secs % 60)}Z"
 }

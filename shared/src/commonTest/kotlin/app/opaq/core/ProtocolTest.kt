@@ -228,14 +228,52 @@ class ProtocolTest {
         assertFalse(p.shouldPublish(t + 7), "never faster than the moving rate, less its jitter")
         assertTrue(p.shouldPublish(t + 12), "about every 10 seconds while moving")
 
-        // Parks: the stop is reported promptly instead of showing "Driving" for minutes.
+        // Parks: a stop is held as driving for a while (it could be a red light, #155), then
+        // reported as still, and that goes out straight away.
         p.markPublished(t + 70)
         t += 100
         p.add(sample(t, 41.003, 0f))
         p.add(sample(t + 5, 41.003, 0f))
-        t += 5
+        assertEquals(Activity.DRIVING, p.activity(), "a stop could be a light")
+        t += MotionPolicy.STOP_TAKEOVER_SECONDS
+        p.add(sample(t, 41.003, 0f))
         assertEquals(Activity.STILL, p.activity())
         assertTrue(p.shouldPublish(t))
+    }
+
+    @Test
+    fun aLongRedLightKeepsTheDrive() {
+        // #155: driving, 3 minutes stopped at a light (fixes still coming), then off again.
+        val p = MotionPolicy()
+        var t = now
+        p.add(sample(t, 41.000, 15f)); p.add(sample(t + 5, 41.001, 15f))
+        t += 5
+        assertEquals(Activity.DRIVING, p.activity())
+        // Slowing down through walking pace, then standing for 3 minutes.
+        p.add(sample(t + 5, 41.0012, 3f))
+        p.add(sample(t + 10, 41.0013, 1f))
+        for (s in 15L..195L step 15) p.add(sample(t + s, 41.0013, 0f))
+        assertEquals(Activity.DRIVING, p.activity(), "3 minutes at a light is still a drive")
+        assertEquals(0f, p.snapshot(null, now = t + 195)!!.speed, "shown as stopped")
+        // Creeping forward, then away at speed.
+        p.add(sample(t + 200, 41.0014, 2f))
+        p.add(sample(t + 210, 41.0016, 9f))
+        p.add(sample(t + 215, 41.0020, 14f))
+        assertEquals(Activity.DRIVING, p.activity())
+    }
+
+    @Test
+    fun parkingAndWalkingAwayBecomesWalking() {
+        // #155: driving, park, then walk off steadily: walking after two minutes of it.
+        val p = MotionPolicy()
+        var t = now
+        p.add(sample(t, 41.000, 15f)); p.add(sample(t + 5, 41.001, 15f))
+        t += 5
+        p.add(sample(t + 10, 41.0011, 0f))
+        p.add(sample(t + 20, 41.0011, 0f))
+        var lat = 41.0011
+        for (s in 30L..170L step 10) { lat += 0.00013; p.add(sample(t + s, lat, 1.4f)) }
+        assertEquals(Activity.WALKING, p.activity(), "steady walking pace for 2 minutes ends the drive")
     }
 
     @Test
@@ -311,12 +349,15 @@ class ProtocolTest {
         p.refresh(t + 30)
         assertEquals(Activity.DRIVING, p.activity(), "a short gap between fixes isn't a stop")
         p.refresh(t + MotionPolicy.QUIET_SECONDS)
-        assertEquals(Activity.STILL, p.activity(), "no fix for a minute means stopped")
-        assertTrue(p.shouldPublish(t + MotionPolicy.QUIET_SECONDS), "the stop goes out straight away")
-        val loc = p.snapshot(null, now = t + MotionPolicy.QUIET_SECONDS)!!
+        assertEquals(Activity.DRIVING, p.activity(), "no fix for a minute is a stop, but it could be a light (#155)")
+        val parked = t + MotionPolicy.QUIET_SECONDS + MotionPolicy.STOP_TAKEOVER_SECONDS
+        p.refresh(parked)
+        assertEquals(Activity.STILL, p.activity(), "stopped for minutes means parked")
+        assertTrue(p.shouldPublish(parked), "the stop goes out straight away")
+        val loc = p.snapshot(null, now = parked)!!
         assertEquals(Activity.STILL, loc.activity)
         assertEquals(0f, loc.speed)
-        assertEquals(t + MotionPolicy.QUIET_SECONDS, loc.time)
+        assertEquals(parked, loc.time)
     }
 
     @Test
@@ -365,6 +406,9 @@ class ProtocolTest {
         // Parked: zero-speed fixes once the driving ones have left the 30 s speed window.
         p.add(sample(now + 40, 41.001, 0f), receivedAt = now + 40 + skew, ageSeconds = 0)
         p.add(sample(now + 45, 41.001, 0f), receivedAt = now + 45 + skew, ageSeconds = 0)
+        assertEquals(Activity.DRIVING, p.activity(), "held through a stop, timed on this phone's clock")
+        val parked = now + 40 + skew + MotionPolicy.STOP_TAKEOVER_SECONDS
+        p.refresh(parked)
         assertEquals(Activity.STILL, p.activity())
         assertEquals(now + 45 + 300, p.snapshot(null, now = now + 45 + skew + 300)!!.time)
     }

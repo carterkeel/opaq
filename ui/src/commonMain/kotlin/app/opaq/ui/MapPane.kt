@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import app.opaq.core.GeoPoint
 import app.opaq.core.Grouping
 import app.opaq.core.HistoryPoint
+import app.opaq.core.MotionPolicy
 import app.opaq.core.HistorySegment
 import app.opaq.core.LocationHistory
 import app.opaq.core.Prediction
@@ -37,6 +38,7 @@ import app.opaq.core.Track
 import app.opaq.core.model.Activity
 import app.opaq.core.model.MemberLocation
 import app.opaq.core.model.Place
+import app.opaq.core.model.Precision
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.floor
@@ -210,7 +212,19 @@ fun MapPane(
         }
     }
     val placesGeo = remember(places) { placesToGeoJson(places) }
+    // People sharing only roughly where they are (#157): the area they could be anywhere in.
+    val roughGeo = remember(shown.map { Triple(it.id, it.location?.precision, it.lat to it.lon) }) { approximateAreasToGeoJson(shown) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
+        val rough = rememberGeoJsonSource(GeoJsonData.JsonString(roughGeo))
+        FillLayer(id = "rough-fill", source = rough, color = feature["color"].convertToColor(), opacity = const(0.10f))
+        LineLayer(
+            id = "rough-edge",
+            source = rough,
+            color = feature["color"].convertToColor(),
+            width = const(1.5.dp),
+            opacity = const(0.8f),
+            dasharray = const(listOf(2f, 2f)),
+        )
         // Alert areas, only on this phone's map.
         val areas = rememberGeoJsonSource(GeoJsonData.JsonString(placesGeo))
         FillLayer(id = "places-fill", source = areas, color = const(Palette.Ultramarine), opacity = const(0.12f))
@@ -446,6 +460,30 @@ private fun rememberMovingMarkers(markers: List<MapMarker>, roads: Roads?): List
     }
     return shown
 }
+
+/**
+ * For each person sharing approximately (#157), the circle they could be anywhere in: their
+ * update's accuracy, about 1 mi for a neighbourhood and 10 mi for a city, round the cell's centre.
+ */
+private fun approximateAreasToGeoJson(markers: List<MapMarker>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        markers.forEach { m ->
+            val loc = m.location ?: return@forEach
+            if (loc.precision == null || loc.precision == Precision.EXACT) return@forEach
+            addJsonObject {
+                put("type", "Feature")
+                putJsonObject("geometry") {
+                    put("type", "Polygon")
+                    putJsonArray("coordinates") {
+                        addJsonArray { circlePoints(loc.lat, loc.lon, loc.accuracy.toDouble()).forEach { (lat, lon) -> addJsonArray { add(lon); add(lat) } } }
+                    }
+                }
+                putJsonObject("properties") { put("color", if (m.kind == MapMarker.Kind.OFFLINE) "#9E9E9E" else m.color) }
+            }
+        }
+    }
+}.toString()
 
 /** Alert areas as circles of 64 points, true to scale on the map. */
 private fun placesToGeoJson(places: List<Place>): String = buildJsonObject {
@@ -686,37 +724,65 @@ private fun historyLines(segments: List<HistorySegment>, roads: List<List<GeoPoi
     putJsonArray("features") {
         segments.forEachIndexed { i, seg ->
             if (!LocationHistory.moving(seg.activity)) return@forEachIndexed
-            // Start from where the previous stretch ended, so the path has no gaps.
-            val recorded = (listOfNotNull(segments.getOrNull(i - 1)?.points?.lastOrNull()) + seg.points).map { GeoPoint(it.lat, it.lon) }
-            if (recorded.size < 2) return@forEachIndexed
-            val snapped = RoadSnap.snap(recorded, roads, snapMeters(seg.activity))
-            // Still leave from the dot of the stop before, which is drawn where it was recorded.
-            val fromStop = segments.getOrNull(i - 1)?.let { !LocationHistory.moving(it.activity) } == true
-            val path = if (fromStop && snapped.first() != recorded.first()) listOf(recorded.first()) + snapped else snapped
-            addJsonObject {
-                put("type", "Feature")
-                putJsonObject("geometry") {
-                    put("type", "LineString")
-                    putJsonArray("coordinates") { path.forEach { p -> addJsonArray { add(p.lon); add(p.lat) } } }
+            // Start from where the previous stretch ended, so the path has no gaps, unless that was
+            // a pause or long ago (#156): then there's no knowing the way taken, so draw none.
+            val before = segments.getOrNull(i - 1)?.takeIf { !it.paused }?.points?.lastOrNull()
+            val points = listOfNotNull(before) + seg.points
+            // A gap in the recording (phone off, no signal) splits the line rather than drawing a
+            // straight one across it, which could run through water or buildings.
+            historyPieces(points).forEach { piece ->
+                val recorded = piece.map { GeoPoint(it.lat, it.lon) }
+                if (recorded.size < 2) return@forEach
+                val snapped = RoadSnap.snap(recorded, roads, snapMeters(seg.activity))
+                // Still leave from the dot of the stop before, which is drawn where it was recorded.
+                val fromStop = piece.first() === before && segments.getOrNull(i - 1)?.let { !LocationHistory.moving(it.activity) } == true
+                val path = if (fromStop && snapped.first() != recorded.first()) listOf(recorded.first()) + snapped else snapped
+                addJsonObject {
+                    put("type", "Feature")
+                    putJsonObject("geometry") {
+                        put("type", "LineString")
+                        putJsonArray("coordinates") { path.forEach { p -> addJsonArray { add(p.lon); add(p.lat) } } }
+                    }
+                    putJsonObject("properties") { put("color", activityColorHex(seg.activity)) }
                 }
-                putJsonObject("properties") { put("color", activityColorHex(seg.activity)) }
             }
         }
     }
 }.toString()
+
+/**
+ * Splits recorded points where there's a gap no line should bridge (#156): over 3 minutes with
+ * nothing recorded while moving, or a jump faster than any car.
+ */
+internal fun historyPieces(points: List<HistoryPoint>): List<List<HistoryPoint>> {
+    val pieces = mutableListOf<MutableList<HistoryPoint>>()
+    points.forEach { p ->
+        val last = pieces.lastOrNull()?.lastOrNull()
+        val gap = last != null && run {
+            val dt = p.t - last.t
+            val meters = MotionPolicy.distanceMeters(last.lat, last.lon, p.lat, p.lon)
+            dt > HISTORY_GAP_SECONDS || (dt > 0 && meters / dt > 70) || (dt <= 0 && meters > 500)
+        }
+        if (last == null || gap) pieces += mutableListOf(p) else pieces.last() += p
+    }
+    return pieces
+}
+
+private const val HISTORY_GAP_SECONDS = 180L
 
 private fun historyStops(segments: List<HistorySegment>): String = buildJsonObject {
     put("type", "FeatureCollection")
     putJsonArray("features") {
         segments.filter { !LocationHistory.moving(it.activity) }.forEach { seg ->
             val p = seg.points.last()
+            val color = if (seg.paused) "#9E9E9E" else activityColorHex(seg.activity)
             addJsonObject {
                 put("type", "Feature")
                 putJsonObject("geometry") {
                     put("type", "Point")
                     putJsonArray("coordinates") { add(p.lon); add(p.lat) }
                 }
-                putJsonObject("properties") { put("color", activityColorHex(seg.activity)) }
+                putJsonObject("properties") { put("color", color) }
             }
         }
     }
