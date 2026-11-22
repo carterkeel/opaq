@@ -68,3 +68,5 @@ actual fun SystemBarsTheme(dark: Boolean, followSystem: Boolean) {
         UIApplication.sharedApplication.windows.forEach { (it as? UIWindow)?.overrideUserInterfaceStyle = style }
     }
 }
+
+actual fun overlayMapUiOptions(): org.maplibre.compose.map.MapUiOptions = org.maplibre.compose.map.MapUiOptions.Standard

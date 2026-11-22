@@ -41,9 +41,12 @@ internal const val FACE_DP = 40f
  */
 internal class Pin(val widthDp: Float, val heightDp: Float)
 
-internal val SINGLE_PIN = Pin(18f, 16f)
-internal val GROUP_PIN = Pin(30f, 22f)
-private const val PIN_OVERLAP_DP = 6f
+// Height is from the top (inside the face) to the tip; about 16 and 22 dp show below the face.
+internal val SINGLE_PIN = Pin(26f, 30f)
+internal val GROUP_PIN = Pin(32f, 36f)
+
+/** How far the pointer's top reaches up into the face, so they join as one shape. */
+private const val PIN_OVERLAP_DP = 14f
 
 /** People in a stack within this many dp of each other on screen share one pointer. */
 private const val SAME_SPOT_DP = 14.0
@@ -170,12 +173,14 @@ internal fun MapOverlayScope.PeopleOverlay(
                 val near = clusters.firstOrNull { c -> (spots[c.first()] - spots[i]).getDistance() < SAME_SPOT_DP }
                 if (near != null) near += i else clusters += mutableListOf(i)
             }
+            // Each pointer starts inside one face, the one of its people nearest the spot, so its
+            // top is always hidden by that face and never shows in the gaps between faces.
             val tails = clusters.map { c ->
                 val pin = if (c.size > 1) GROUP_PIN else SINGLE_PIN
                 val tip = c.map { spots[it] }.reduce { acc, o -> acc + o } / c.size.toFloat()
-                val baseX = c.map { centres[it].x }.average().toFloat()
-                val baseY = c.maxOf { centres[it].y } + FACE_DP / 2 - PIN_OVERLAP_DP
-                Triple(Offset(baseX - pin.widthDp / 2, baseY), Offset(baseX + pin.widthDp / 2, baseY), tip)
+                val from = centres[c.minBy { (centres[it] - tip).getDistance() }]
+                val baseY = from.y + FACE_DP / 2 - PIN_OVERLAP_DP
+                Triple(Offset(from.x - pin.widthDp / 2, baseY), Offset(from.x + pin.widthDp / 2, baseY), tip)
             }
             // A box from the faces down to the spot, so a tap on the stack lands here and a drag
             // anywhere else still moves the map. Everything is drawn from its bottom centre.

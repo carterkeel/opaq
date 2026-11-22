@@ -63,3 +63,8 @@ actual fun SystemBarsTheme(dark: Boolean, followSystem: Boolean) {
         )
     }
 }
+
+actual fun overlayMapUiOptions(): org.maplibre.compose.map.MapUiOptions =
+    org.maplibre.compose.map.MapUiOptions(org.maplibre.compose.map.MapUiOptions.Standard) {
+        renderMode = org.maplibre.compose.map.AndroidRenderMode.Texture
+    }

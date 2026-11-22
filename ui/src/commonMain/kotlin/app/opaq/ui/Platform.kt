@@ -145,6 +145,12 @@ val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No Platfor
 /** Seconds since the Unix epoch. */
 expect fun epochSeconds(): Long
 
+/**
+ * Map options for a map with people drawn over it in Compose: on Android the map draws through a
+ * TextureView, which is shown in the same frame as Compose, so the faces keep up while it pans.
+ */
+expect fun overlayMapUiOptions(): org.maplibre.compose.map.MapUiOptions
+
 /** Milliseconds since the Unix epoch, for smooth animation. */
 expect fun epochMillis(): Long
 

@@ -279,6 +279,7 @@ fun MapPane(
             viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
             cameraConstraints = worldFills(maxHeight),
             interactions = Interactions,
+            uiOptions = remember { overlayMapUiOptions() },
             overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, onPerson, onGroup) },
         )
     }
