@@ -112,18 +112,25 @@ class CreateCircleTest {
         Thread.sleep(2_500)
     }
 
-    /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
-    /** Like [tapUntil], for a button found by its content description. */
+    /** Whether [label] is on screen, as a content description (icon buttons) or as text (list rows). */
+    private fun shows(label: String) = device.hasObject(By.desc(label)) || device.hasObject(By.text(label))
+
+    /**
+     * Like [tapUntil], for a button found by its content description. [expected] may be either a
+     * description or text: the circle picker's rows ("New circle", "Everyone") are plain text.
+     */
     private fun tapDescUntil(label: String, expected: String) {
         repeat(3) {
             dismissSystemDialogs()
             device.wait(Until.findObject(By.desc(label)), 10_000)?.click()
-            if (device.wait(Until.hasObject(By.desc(expected)), 10_000)) return
+            val until = System.currentTimeMillis() + 10_000
+            while (System.currentTimeMillis() < until) {
+                if (shows(expected)) return
+                Thread.sleep(250)
+            }
         }
-        device.wait(Until.findObject(By.desc(expected)), 1_000) ?: run {
-            logScreen()
-            error("\"$expected\" didn't appear")
-        }
+        logScreen()
+        error("\"$expected\" didn't appear")
     }
 
     /** Pinches the map several times, from the middle of the screen, to zoom far out. */
