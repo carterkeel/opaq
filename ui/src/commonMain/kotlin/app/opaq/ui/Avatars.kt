@@ -1,6 +1,7 @@
 package app.opaq.ui
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Image
@@ -128,10 +129,18 @@ fun Avatar(
     dimmed: Boolean = false,
     showVerified: Boolean = true,
     modifier: Modifier = Modifier,
+    ring: Format.Ring? = null,
 ) {
     val colors = AvatarColors.themed(AvatarColors.forIndex(info.colorIndex, info.pubkey))
     val alpha by animateFloatAsState(if (dimmed) 0.45f else 1f, label = "avatarDim")
-    Box(modifier.size(size)) {
+    // The status ring (blue exact, green approximate, grey offline) sits outside the picture with a
+    // small gap, and changes colour smoothly.
+    val ringWidth = (size.value * 0.055f).coerceIn(2f, 4f).dp
+    val inset = if (ring != null) ringWidth * 1.8f else 0.dp
+    val inner = size - inset * 2
+    val ringTint by animateColorAsState(ring?.let { ringColor(it) } ?: Color.Transparent, label = "avatarRing")
+    Box(modifier.size(size), contentAlignment = Alignment.Center) {
+        if (ring != null) Box(Modifier.size(size).border(ringWidth, ringTint, CircleShape))
         Crossfade(targetState = info.photo, label = "avatarPhoto") { photo ->
             val image = remember(photo) { photo?.let { PhotoCache.get(it) } }
             if (image != null) {
@@ -140,24 +149,32 @@ fun Avatar(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     alpha = alpha,
-                    modifier = Modifier.size(size).clip(CircleShape),
+                    modifier = Modifier.size(inner).clip(CircleShape),
                 )
             } else {
                 Box(
-                    Modifier.size(size).clip(CircleShape).background(colors.container.copy(alpha = colors.container.alpha * alpha)),
+                    Modifier.size(inner).clip(CircleShape).background(colors.container.copy(alpha = colors.container.alpha * alpha)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
                         Format.initial(info.name),
                         color = colors.content.copy(alpha = alpha),
                         fontWeight = FontWeight.Medium,
-                        fontSize = (size.value * 0.42f).sp,
+                        fontSize = (inner.value * 0.42f).sp,
                     )
                 }
             }
         }
         if (showVerified) VerifiedBadge(info.verified, size)
     }
+}
+
+/** The status ring's colour: the accent for an exact location, green for approximate, grey for offline. */
+@Composable
+fun ringColor(ring: Format.Ring): Color = when (ring) {
+    Format.Ring.EXACT -> MaterialTheme.colorScheme.primary
+    Format.Ring.APPROXIMATE -> verifiedGreen()
+    Format.Ring.OFFLINE -> if (LocalDarkTheme.current) Color(0xFF6B7280) else Color(0xFFA3A8B2)
 }
 
 @Composable

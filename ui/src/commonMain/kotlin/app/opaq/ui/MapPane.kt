@@ -1,7 +1,12 @@
 package app.opaq.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
@@ -103,6 +108,8 @@ data class MapMarker(
     val location: MemberLocation? = null,
     /** Their profile photo (base64 JPEG), drawn in the dot instead of the initial. */
     val photo: String? = null,
+    /** The ring round their face: blue exact, green approximate, grey offline. */
+    val ring: Format.Ring = Format.Ring.EXACT,
 ) {
     enum class Kind { ME, ONLINE, OFFLINE }
 }
@@ -179,12 +186,13 @@ fun MapPane(
     // Each face glides into its place in a stack, and back out, rather than jumping.
     var zoom by remember { mutableStateOf(CITY_ZOOM) }
     val faces = rememberStackedFaces(groups, zoom)
-    // One picture per person: their photo or initial in a white ring, dimmed when offline.
+    // One picture per person: their photo or initial inside their status ring, dimmed when offline.
     val measurer = rememberTextMeasurer()
-    val faceIcons = remember(shown.map(::faceKey).toSet()) {
+    val ringColors = Format.Ring.entries.associateWith { ringColor(it) }
+    val faceIcons = remember(shown.map(::faceKey).toSet(), ringColors) {
         shown.distinctBy { it.id }.map { m ->
             val offline = m.kind == MapMarker.Kind.OFFLINE
-            faceKey(m) to FacePainter(GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline), measurer)
+            faceKey(m) to FacePainter(GroupFace(if (offline) Color(0xFF9E9E9E) else hexColor(m.color), m.initial, m.photo?.let { PhotoCache.get(it) }, offline, ringColors.getValue(m.ring)), measurer)
         }
     }
     val geoJson = remember(faces) { facesToGeoJson(faces) }
@@ -343,35 +351,59 @@ fun PlacePickerMap(lat: Double, lon: Double, radius: Double, darkMap: Boolean, o
             }
         }
     }
-    // A new spot glides there (ease out, 450 ms) from wherever the area is drawn, even mid-glide,
-    // and the dot in the middle pops as it lands.
-    val glide = remember { Animatable(1f) }
-    val drawn = remember { doubleArrayOf(lat, lon) }
-    val from = remember { doubleArrayOf(lat, lon) }
-    LaunchedEffect(lat, lon) {
-        if (drawn[0] == lat && drawn[1] == lon) return@LaunchedEffect
-        from[0] = drawn[0]; from[1] = drawn[1]
-        glide.snapTo(0f)
-        glide.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
+    // Picking a spot glides the area there on a spring that settles without bouncing. Picking again
+    // mid-glide carries on from where it's drawn, at the speed it's going, so it never jerks. A
+    // ripple spreads from where you tapped and the dot swells as it lands, and changing the radius
+    // grows or shrinks the area on the same spring.
+    // Positions are animated as millionths of a degree from where the screen opened: small enough
+    // for a Float to be exact to well under a metre.
+    val origin = remember { doubleArrayOf(lat, lon) }
+    fun micro(la: Double, lo: Double) = Offset(((lo - origin[1]) * 1e6).toFloat(), ((la - origin[0]) * 1e6).toFloat())
+    val glideSpring = spring<Offset>(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow)
+    val shown = remember { Animatable(micro(lat, lon), Offset.VectorConverter) }
+    val ripple = remember { Animatable(1f) }
+    val scope = rememberCoroutineScope()
+    val picked = remember { doubleArrayOf(lat, lon) }
+    SideEffect {
+        if (picked[0] != lat || picked[1] != lon) {
+            picked[0] = lat; picked[1] = lon
+            val to = micro(lat, lon)
+            // Launched (not a LaunchedEffect restart, which would stop the glide first) so the new
+            // glide starts at the current speed.
+            scope.launch { shown.animateTo(to, glideSpring) }
+            scope.launch { ripple.snapTo(0f); ripple.animateTo(1f, tween(700, easing = LinearOutSlowInEasing)) }
+        }
     }
-    val p = glide.value.toDouble()
-    val shownLat = from[0] + (lat - from[0]) * p
-    val shownLon = from[1] + (lon - from[1]) * p
-    SideEffect { drawn[0] = shownLat; drawn[1] = shownLon }
-    val pop = kotlin.math.sin(PI * p).toFloat()
-    val area = placesToGeoJson(listOf(Place("", "", shownLat, shownLon, radius)))
+    val drawnRadius by animateFloatAsState(radius.toFloat(), spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow), label = "place radius")
+    val shownLat = origin[0] + shown.value.y / 1e6
+    val shownLon = origin[1] + shown.value.x / 1e6
+    val r = ripple.value
+    val pop = kotlin.math.sin(PI * r).toFloat()
+    val area = placesToGeoJson(listOf(Place("", "", shownLat, shownLon, drawnRadius.toDouble())))
     val spot = buildJsonObject {
         put("type", "Point")
         putJsonArray("coordinates") { add(shownLon); add(shownLat) }
+    }.toString()
+    val tapped = buildJsonObject {
+        put("type", "Point")
+        putJsonArray("coordinates") { add(lon); add(lat) }
     }.toString()
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val areaSource = rememberGeoJsonSource(GeoJsonData.JsonString(area))
         FillLayer(id = "pick-fill", source = areaSource, color = const(Palette.Ultramarine), opacity = const(0.15f))
         LineLayer(id = "pick-edge", source = areaSource, color = const(Palette.Ultramarine), width = const(2.dp))
+        // The ripple where you tapped: it spreads out and fades.
+        CircleLayer(
+            id = "pick-ripple",
+            source = rememberGeoJsonSource(GeoJsonData.JsonString(tapped)),
+            radius = const((6f + 30f * r).dp),
+            color = const(Palette.Ultramarine),
+            opacity = const(0.3f * (1f - r)),
+        )
         CircleLayer(
             id = "pick-spot",
             source = rememberGeoJsonSource(GeoJsonData.JsonString(spot)),
-            radius = const((5f + 4f * pop).dp),
+            radius = const((5f + 3f * pop).dp),
             color = const(Palette.Ultramarine),
             strokeColor = const(Color.White),
             strokeWidth = const(2.dp),
@@ -520,7 +552,7 @@ internal fun circlePoints(lat: Double, lon: Double, radius: Double, steps: Int =
 }
 
 /** Identifies a person's picture: who, and how they look right now. */
-private fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.color}:${m.initial}:${m.photo?.hashCode() ?: 0}"
+private fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.ring.ordinal}:${m.color}:${m.initial}:${m.photo?.hashCode() ?: 0}"
 
 /** One feature per face: where it's drawn, its place in a stack, and who's in that stack. */
 private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {

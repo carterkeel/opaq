@@ -17,12 +17,15 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
 /** One face in a group on the map. */
-internal data class GroupFace(val color: Color, val initial: String, val photo: ImageBitmap?, val dimmed: Boolean)
+internal data class GroupFace(val color: Color, val initial: String, val photo: ImageBitmap?, val dimmed: Boolean, val ring: Color = Color.White)
 
 /** A face, ring included, is this wide on the map. */
-internal const val FACE_DP = 36f
+internal const val FACE_DP = 40f
 
-private const val RING_DP = 3f
+/** A thin white edge (so the ring stands out on any map), the status ring, then a white gap. */
+private const val EDGE_DP = 1.2f
+private const val STATUS_DP = 2.8f
+private const val RING_DP = 5.2f
 
 /**
  * Where face [index] of a stack of [count] sits, in dp from the stack's centre (#146): round a
@@ -39,8 +42,8 @@ internal fun stackSlot(index: Int, count: Int): Pair<Double, Double> {
 }
 
 /**
- * One person on the map: their photo or initial inside a white ring, dimmed (greyed, or a faded
- * photo) when they're offline. People close together are these same faces stacked, so they can
+ * One person on the map: their photo or initial inside their status ring (blue exact, green
+ * approximate, grey offline) with a white edge, dimmed (greyed, or a faded photo) when they're offline. People close together are these same faces stacked, so they can
  * glide in and out of a stack.
  */
 internal class FacePainter(private val face: GroupFace, private val measurer: TextMeasurer) : Painter() {
@@ -52,6 +55,8 @@ internal class FacePainter(private val face: GroupFace, private val measurer: Te
         val center = Offset(size.width / 2, size.height / 2)
         val inner = d / 2 - RING_DP * unit
         drawCircle(Color.White, d / 2, center)
+        drawCircle(face.ring, d / 2 - EDGE_DP * unit, center)
+        drawCircle(Color.White, d / 2 - (EDGE_DP + STATUS_DP) * unit, center)
         val image = face.photo
         if (image != null) {
             val side = minOf(image.width, image.height)

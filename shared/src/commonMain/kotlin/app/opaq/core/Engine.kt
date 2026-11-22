@@ -1865,8 +1865,11 @@ class Engine(
 
     /** A member left: if we're the admin, remove them properly so the circle gets a new key. */
     /**
-     * Asks [pubkey] in [circleId] for their location now (#149). Returns false without sending if we
-     * asked them less than [LOCATION_REQUEST_GAP_SECONDS] ago.
+     * Asks [pubkey] in [circleId] for their location now (#149): a nudge to a phone that hasn't sent
+     * an update for a while. Their phone answers on its own if it's online and sharing exactly with
+     * the circle; they see nothing but their location going out. Returns false without sending if
+     * their latest update is under [LOCATION_REQUEST_AFTER_SECONDS] old, or we asked them less than
+     * [LOCATION_REQUEST_GAP_SECONDS] ago.
      */
     suspend fun requestLocation(circleId: String, pubkey: String): Boolean {
         val c = state.value.circles.firstOrNull { it.id == circleId } ?: throw IllegalStateException("Circle not found")
@@ -1874,6 +1877,8 @@ class Engine(
         if (!c.confirmed) throw IllegalStateException("Start sharing with this circle first")
         val t = now()
         val key = "$circleId|$pubkey"
+        val last = state.value.locations[circleId]?.get(pubkey)
+        if (last != null && t - last.time < LOCATION_REQUEST_AFTER_SECONDS) return false
         if (t - (locationAsked[key] ?: 0) < LOCATION_REQUEST_GAP_SECONDS) return false
         locationAsked[key] = t
         sendDirect(c, pubkey, LocationRequestBody(myPubkey, t, circleId))
@@ -1884,8 +1889,9 @@ class Engine(
         val s = state.value
         val c = s.circles.firstOrNull { it.id == body.circle } ?: return
         if (body.from == myPubkey || c.members.none { it.pubkey == body.from }) return
-        // Only while we're sharing with them anyway: a request never turns sharing on.
-        if (!s.sharing || c.paused || !c.confirmed) return
+        // Only while we're sharing exactly with them anyway: a request never turns sharing on, and
+        // never sends more than the circle is set to see.
+        if (!s.sharing || c.paused || !c.confirmed || c.precision != Precision.EXACT) return
         val t = now()
         // Relays keep direct messages, so an old request (or a replayed one) is ignored.
         if (kotlin.math.abs(t - body.ts) > MAX_CLOCK_SKEW_SECONDS) return
@@ -2041,6 +2047,9 @@ class Engine(
 
         /** Asking one person for their location, and answering one person, at most this often (#149). */
         const val LOCATION_REQUEST_GAP_SECONDS = 2 * 60L
+
+        /** Asking for someone's location is for a phone that's gone quiet: their update must be this old. */
+        const val LOCATION_REQUEST_AFTER_SECONDS = 10 * 60L
 
         /** Answers to location requests per hour, from everyone together. */
         const val LOCATION_ANSWERS_PER_HOUR = 20

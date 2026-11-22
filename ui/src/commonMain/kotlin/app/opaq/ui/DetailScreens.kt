@@ -57,6 +57,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.opaq.core.model.Precision
+import app.opaq.core.model.MemberLocation
+import app.opaq.core.Engine
 import app.opaq.core.model.AppState
 import app.opaq.core.model.Invite
 import app.opaq.core.model.THEME_DARK
@@ -132,6 +134,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val published = state.profiles[pubkey]?.name?.ifBlank { null } ?: member.name
     val loc = state.locations[circleId]?.get(pubkey)
     var renaming by remember { mutableStateOf(false) }
+    var askInfo by remember { mutableStateOf(false) }
     var confirmRemove by remember { mutableStateOf(false) }
     var confirmAdmin by remember { mutableStateOf(false) }
     var directions by remember { mutableStateOf(false) }
@@ -147,8 +150,9 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         }
         ProfileHeader(info, info.name, subtitle)
 
+        val myPaused = isMe && (!state.sharing || circle.paused)
         SettingsRow(
-            title = if (isMe && !state.sharing) "Sharing paused" else Format.status(loc, now),
+            title = if (myPaused) "Sharing paused" else Format.status(loc, now),
             // Shared roughly (#157): spell out that the dot is only the middle of an area.
             subtitle = loc?.let { l ->
                 when (l.precision) {
@@ -158,15 +162,30 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 }
             },
             icon = AppIcons.LocationPin,
+            trailing = Format.battery(loc, now)?.takeIf { !myPaused }?.let { b -> { BatteryBadge(b) } },
         )
-        // Ask their phone for a fresh update (#149). It only answers if they're sharing with this circle.
+        // Nudge a phone that's gone quiet to send its location (#149). Their phone answers on its own,
+        // and they see nothing but their location going out, so it only works while they're online,
+        // sharing with this circle and sharing exactly; and only once their update is 10 minutes old.
         if (!isMe && circle.confirmed) {
+            val age = loc?.let { now - it.time }
+            val why = when {
+                loc?.status == MemberLocation.PAUSED -> "${info.name} paused sharing, so their phone won't answer"
+                loc?.precision == Precision.NEIGHBORHOOD || loc?.precision == Precision.CITY -> "${info.name} shares only roughly where they are, so their phone won't answer"
+                age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 10 minutes old"
+                else -> null
+            }
             SettingsRow(
                 "Ask for their location",
-                "Their phone sends a fresh update if they're sharing",
+                why ?: "Their phone sends a fresh update if it's online",
                 AppIcons.Refresh,
-                onClick = { haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) },
-            )
+                titleColor = if (why == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = if (why == null) ({ haptics.confirm(); actions.requestLocation(circleId, pubkey, info.name) }) else null,
+            ) {
+                IconButton(onClick = { askInfo = true }) {
+                    Icon(AppIcons.Info, contentDescription = "About asking for a location", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
         }
         // Directions to where they are (#150), from their last shared position.
         if (!isMe && loc != null && platform.directionsApps.isNotEmpty()) {
@@ -250,6 +269,19 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         TextSheet("Rename", "Name shown on your phone", contact?.label ?: published, "Save", { renaming = false }) {
             actions.setLabel(pubkey, it); renaming = false
         }
+    }
+    if (askInfo) {
+        InfoSheet(
+            title = "Asking for a location",
+            text = "If ${info.name}'s location hasn't updated in a while, this reminds their phone to send it now. " +
+                "All they see is their location being shared, as usual.",
+            points = listOf(
+                "It works only if their phone is online.",
+                "It doesn't work if they've paused sharing, or share only roughly which part of town or city they're in.",
+                "You can ask once their last update is 10 minutes old.",
+            ),
+            onDismiss = { askInfo = false },
+        )
     }
     if (confirmRemove) {
         ConfirmSheet(

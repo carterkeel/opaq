@@ -5,6 +5,14 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -147,6 +155,52 @@ fun SettingsRow(
             Spacer(Modifier.width(12.dp))
             trailing()
         }
+    }
+}
+
+/**
+ * Someone's status with their battery beside it, as a small battery shape (like the one in a
+ * phone's status bar) so the number reads as battery at a glance.
+ */
+@Composable
+fun StatusLine(text: String, battery: Int?, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant, style: TextStyle = MaterialTheme.typography.bodyMedium) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = style, color = color, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+        if (battery != null) {
+            Spacer(Modifier.width(8.dp))
+            BatteryBadge(battery)
+        }
+    }
+}
+
+/**
+ * A battery with the percentage inside it: dark on a light screen, white on a dark one, and red
+ * at 20% or below.
+ */
+@Composable
+fun BatteryBadge(percent: Int, modifier: Modifier = Modifier) {
+    val low = percent <= 20
+    val body = if (low) Palette.Red else MaterialTheme.colorScheme.onSurface
+    val digits = if (low) Color.White else MaterialTheme.colorScheme.surface
+    Row(modifier.clearAndSetSemantics { contentDescription = "Battery $percent%" }, verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.heightIn(min = 15.dp).widthIn(min = 25.dp).clip(RoundedCornerShape(4.5.dp)).background(body).padding(horizontal = 3.dp, vertical = 1.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                percent.coerceIn(0, 100).toString(),
+                color = digits,
+                style = TextStyle(
+                    fontSize = 10.5.sp,
+                    lineHeight = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+                ),
+                maxLines = 1,
+            )
+        }
+        Spacer(Modifier.width(1.dp))
+        Box(Modifier.width(2.dp).height(5.dp).clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp)).background(body))
     }
 }
 
@@ -511,6 +565,26 @@ object AppIcons {
  * [onDismiss] runs when the sheet is swiped away, closed with back or tapped outside; the
  * [dismiss] button runs [onSecondary] if given (a real answer, like "Deny"), else [onDismiss].
  */
+/** A short explanation in a sheet, with one button to close it. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun InfoSheet(title: String, text: String, onDismiss: () -> Unit, points: List<String> = emptyList()) {
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Text(text, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            points.forEach { point ->
+                Row {
+                    Text("•", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(20.dp))
+                    Text(point, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            Spacer(Modifier.heightIn(min = 4.dp))
+            PrimaryButton("OK", onDismiss)
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfirmSheet(

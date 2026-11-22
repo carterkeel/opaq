@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.sp
 import app.opaq.core.MotionPolicy
 import app.opaq.core.ShareStatus
 import app.opaq.core.model.AppState
+import app.opaq.core.model.Precision
 import app.opaq.core.model.Circle
 import app.opaq.core.model.JoinRequest
 import app.opaq.core.model.MemberLocation
@@ -161,7 +162,7 @@ fun HomeScreen(
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
         // Everything a face is drawn from, so a new photo, name or colour shows on the map at once,
         // stacked or not.
-        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, state.myPhoto, state.myName, state.showPhotos, now) {
+        val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, state.myPhoto, state.myName, state.showPhotos, now, state.sharing, circle.paused, circle.precision) {
             circle.members.mapNotNull { m ->
                 val l = locs[m.pubkey] ?: return@mapNotNull null
                 val info = avatarFor(state, m.pubkey, me, m.name)
@@ -170,7 +171,13 @@ fun HomeScreen(
                     Format.isOffline(l, now) -> MapMarker.Kind.OFFLINE
                     else -> MapMarker.Kind.ONLINE
                 }
-                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l, photo = info.photo)
+                val ring = when {
+                    m.pubkey != me -> Format.ring(l, now)
+                    !state.sharing || circle.paused -> Format.Ring.OFFLINE
+                    circle.precision != Precision.EXACT -> Format.Ring.APPROXIMATE
+                    else -> Format.Ring.EXACT
+                }
+                MapMarker(m.pubkey, l.lat, l.lon, Format.initial(info.name), markerColorHex(info), kind, location = l, photo = info.photo, ring = ring)
             }
         }
         fun flyTo(pubkey: String): Boolean {
@@ -780,7 +787,15 @@ private fun PeopleList(
                     .padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Avatar(info, size = 48.dp, dimmed = offline)
+                val paused = m.pubkey == me && (!state.sharing || circle.paused)
+                // Your own ring follows what this circle is set to see, since your phone keeps your exact spot.
+                val ring = when {
+                    m.pubkey != me -> Format.ring(loc, now)
+                    paused -> Format.Ring.OFFLINE
+                    circle.precision != Precision.EXACT -> Format.Ring.APPROXIMATE
+                    else -> Format.Ring.EXACT
+                }
+                Avatar(info, size = 48.dp, dimmed = offline, ring = ring)
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -802,12 +817,9 @@ private fun PeopleList(
                             Caption(role)
                         }
                     }
-                    Text(
-                        if (m.pubkey == me && (!state.sharing || circle.paused)) "Sharing paused" else Format.status(loc, now),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                    StatusLine(
+                        if (paused) "Sharing paused" else Format.status(loc, now),
+                        battery = if (paused) null else Format.battery(loc, now),
                     )
                 }
                 IconButton(onClick = { onProfile(m.pubkey) }) {
@@ -930,11 +942,11 @@ internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: 
                     Modifier.fillMaxWidth().clickable(onClickLabel = "Open profile") { onProfile(id) }.padding(horizontal = 24.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Avatar(info, size = 48.dp, dimmed = offline)
+                    Avatar(info, size = 48.dp, dimmed = offline, ring = Format.ring(loc, now))
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
                         Text(if (id == me) "You" else info.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(Format.status(loc, now), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        StatusLine(Format.status(loc, now), Format.battery(loc, now))
                     }
                 }
             }

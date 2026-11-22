@@ -75,7 +75,8 @@ class LiveUpdatesTest {
     @Test
     fun askingForSomeonesLocationWakesTheirPhoneOnlyWhileTheyShare() = runTest {
         // #149: Ana asks Ben where he is. His phone is told once; asking again straight away sends
-        // nothing, and a paused circle never answers.
+        // nothing, a paused or approximate circle never answers, and nobody is asked for an update
+        // they sent a moment ago.
         val a = Phone("Ana"); val b = Phone("Ben")
         val id = circleWith(a, b)
         val asked = mutableListOf<String>()
@@ -93,6 +94,26 @@ class LiveUpdatesTest {
         net.flush()
         kotlinx.coroutines.yield()
         assertEquals(listOf(id), asked, "paused: no answer")
+
+        // Someone who sent an update a moment ago isn't asked: there's nothing to nudge.
+        b.engine.setCirclePaused(id, false)
+        clock += Engine.LOCATION_REQUEST_GAP_SECONDS + 1
+        b.engine.publishLocation(loc(41.0))
+        net.flush()
+        assertFalse(a.engine.requestLocation(id, b.me), "updated just now")
+
+        // Ten minutes on, Ben's phone answers again, but not once he shares only roughly.
+        clock += Engine.LOCATION_REQUEST_AFTER_SECONDS + 1
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id, id), asked)
+        b.engine.setCirclePrecision(id, app.opaq.core.model.Precision.NEIGHBORHOOD)
+        clock += Engine.LOCATION_REQUEST_AFTER_SECONDS + 1
+        assertTrue(a.engine.requestLocation(id, b.me))
+        net.flush()
+        kotlinx.coroutines.yield()
+        assertEquals(listOf(id, id), asked, "approximate: no answer")
         watch.cancel()
     }
 
