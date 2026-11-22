@@ -585,7 +585,13 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
         val slot = targets.getValue(m.id)
         val (tx, ty) = offset(m, slot)
         val glide = glides[m.id]
-        val f = glide?.let { ((t - it.second) / STACK_MILLIS).coerceIn(0.0, 1.0) } ?: 1.0
+        var f = glide?.let { ((t - it.second) / STACK_MILLIS).coerceIn(0.0, 1.0) } ?: 1.0
+        // A glide across more than a stack's width (the camera jumped, or the circle changed) isn't
+        // a glide: go straight there.
+        if (glide != null && f < 1.0) {
+            val (fx, fy) = offset(m, glide.first)
+            if (!fx.isFinite() || !fy.isFinite() || kotlin.math.hypot(tx - fx, ty - fy) > 150.0) f = 1.0
+        }
         if (f >= 1.0) {
             glides.remove(m.id)
             StackedFace(m, tx, ty, slot.order, slot.ids, slot.anchor == m.id)

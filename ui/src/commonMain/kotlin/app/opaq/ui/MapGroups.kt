@@ -48,6 +48,9 @@ internal val GROUP_PIN = Pin(32f, 36f)
 /** How far the pointer's top reaches up into the face, so they join as one shape. */
 private const val PIN_OVERLAP_DP = 14f
 
+/** The farthest a face is drawn from its stack's spot; anything beyond is a jump, not a glide. */
+private const val MAX_REACH_DP = 300f
+
 /** People in a stack within this many dp of each other on screen share one pointer. */
 private const val SAME_SPOT_DP = 14.0
 
@@ -184,8 +187,10 @@ internal fun MapOverlayScope.PeopleOverlay(
             }
             // A box from the faces down to the spot, so a tap on the stack lands here and a drag
             // anywhere else still moves the map. Everything is drawn from its bottom centre.
-            val half = maxOf(centres.maxOf { kotlin.math.abs(it.x) }, 0f) + FACE_DP / 2 + 2
-            val top = -(centres.minOf { it.y } - FACE_DP / 2 - 2)
+            // Kept to a sane size: a box thousands of dp across (a stale glide, or a camera that
+            // jumped from far out to street level) can't be measured and would crash the app.
+            val half = (centres.maxOf { kotlin.math.abs(it.x) }.takeIf { it.isFinite() } ?: 0f).coerceAtMost(MAX_REACH_DP) + FACE_DP / 2 + 2
+            val top = (-(centres.minOf { it.y }.takeIf { it.isFinite() } ?: 0f)).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
             val faceOrder = g.indices.sortedBy { byId[g[it].id]?.order ?: 0 }
             val ids = g.map { it.id }
             Box(
