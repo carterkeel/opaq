@@ -364,9 +364,9 @@ object AppIcons {
     /** Two houses: roughly which part of town. */
     val Houses: ImageVector = stroke("Houses") {
         moveTo(2.5f, 20f); lineTo(21.5f, 20f)
-        moveTo(3.5f, 20f); lineTo(3.5f, 12.5f); lineTo(8f, 8.5f); lineTo(12.5f, 12.5f); lineTo(12.5f, 20f)
-        moveTo(12.5f, 11f); lineTo(16.5f, 7.5f); lineTo(20.5f, 11f); lineTo(20.5f, 20f)
-        moveTo(7f, 20f); lineTo(7f, 16.5f); lineTo(9f, 16.5f); lineTo(9f, 20f)
+        moveTo(3.5f, 20f); lineTo(3.5f, 12f); lineTo(8f, 8f); lineTo(12.5f, 12f); lineTo(12.5f, 20f)
+        moveTo(14.5f, 10f); lineTo(16.5f, 8.2f); lineTo(20.5f, 11.8f); lineTo(20.5f, 20f)
+        moveTo(8f, 20f); lineTo(8f, 16f)
     }
 
     /** Tall buildings: roughly which city. */
@@ -375,7 +375,7 @@ object AppIcons {
         moveTo(4f, 21f); lineTo(4f, 11f); lineTo(9f, 11f)
         moveTo(9f, 21f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 21f)
         moveTo(15f, 13f); lineTo(20f, 13f); lineTo(20f, 21f)
-        moveTo(11.25f, 8f); lineTo(12.75f, 8f); moveTo(11.25f, 12f); lineTo(12.75f, 12f); moveTo(11.25f, 16f); lineTo(12.75f, 16f)
+        moveTo(12f, 8f); lineTo(12.01f, 8f); moveTo(12f, 12f); lineTo(12.01f, 12f); moveTo(12f, 16f); lineTo(12.01f, 16f)
     }
 
     /** A winding path between two spots: your recent path. */
