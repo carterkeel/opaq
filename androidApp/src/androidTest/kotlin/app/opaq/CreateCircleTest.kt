@@ -126,6 +126,18 @@ class CreateCircleTest {
         }
     }
 
+    /** Pinches the map several times, from the middle of the screen, to zoom far out. */
+    private fun zoomMapOut() {
+        repeat(5) {
+            device.findObject(By.res("android:id/content"))?.let { root ->
+                root.setGestureMargins(0, device.displayHeight / 5, 0, device.displayHeight / 2)
+                root.pinchClose(0.9f)
+            }
+            Thread.sleep(400)
+        }
+        Thread.sleep(1_000)
+    }
+
     /** Finds [text], scrolling the screen's scrollable part down until it shows. */
     private fun scrollTo(text: String, up: Boolean = false): UiObject2 {
         // A list under a map is short, so each scroll moves it only a little: allow plenty.
@@ -260,6 +272,28 @@ class CreateCircleTest {
         }
         shot("join-incomplete")
         device.pressBack()
+
+        // A second circle, then Everyone and back while zoomed far out: switching like this once
+        // crashed the map (a face's glide was worked out at the wrong zoom, far off screen).
+        waitFor("Invite")
+        tapDescUntil("Switch circle", expected = "New circle")
+        waitFor("New circle").click()
+        val circleName = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no circle name field")
+        circleName.text = "Friends"
+        waitFor("Create").click()
+        waitFor("Invite")
+        zoomMapOut()
+        tapDescUntil("Switch circle", expected = "Everyone")
+        waitFor("Everyone").click()
+        waitFor("people from all your circles")
+        Thread.sleep(3_000)
+        shot("everyone")
+        zoomMapOut()
+        tapDescUntil("Switch circle", expected = "Family")
+        waitFor("Family").click()
+        waitFor("Invite")
+        Thread.sleep(3_000)
+        assertNotNull("The map crashed switching circles while zoomed out", device.findObject(By.text("Invite")))
 
         // Settings, then back to the map.
         waitFor("Invite")
