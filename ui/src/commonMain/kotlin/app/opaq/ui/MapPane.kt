@@ -666,7 +666,7 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
  * already on screen, so it's redone whenever the map stops moving. Nothing is sent anywhere.
  */
 @Composable
-fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false) {
+fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus: List<HistoryPoint>?, modifier: Modifier = Modifier, darkMap: Boolean = false, animate: Boolean = true) {
     var lines by remember(segments) { mutableStateOf(historyLines(segments, emptyList())) }
     val stops = remember(segments) { historyStops(segments) }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
@@ -696,7 +696,9 @@ fun HistoryMap(points: List<HistoryPoint>, segments: List<HistorySegment>, focus
         val span = maxOf(maxLat - minLat, (maxLon - minLon) * cos(midLat * PI / 180), 0.0005)
         // At zoom z the world is 512·2^z dp wide; leave room around the path in a ~300 dp map.
         val zoom = (ln(200.0 * 360 / (512 * span)) / ln(2.0)).coerceIn(3.0, STREET_ZOOM)
-        mapState.animateCamera(CameraUpdate(center = Position((minLon + maxLon) / 2, midLat), zoom = zoom))
+        val center = Position((minLon + maxLon) / 2, midLat)
+        if (animate) mapState.animateCamera(CameraUpdate(center = center, zoom = zoom))
+        else mapState.setCameraPosition(CameraPosition(center = center, zoom = zoom))
     }
     BoxWithConstraints(modifier) {
         val view = DpRect(0.dp, 0.dp, maxWidth, maxHeight)

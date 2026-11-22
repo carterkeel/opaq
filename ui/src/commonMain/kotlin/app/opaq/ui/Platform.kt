@@ -134,10 +134,10 @@ data class SettingItem(
     val action: String?,
     /** When set, the row shows a switch in this position instead of a button. */
     val checked: Boolean? = null,
+    /** The row's icon; each row in a list gets its own. Before the lambdas, so a trailing lambda is still [onAction]. */
+    val icon: androidx.compose.ui.graphics.vector.ImageVector = AppIcons.Info,
     val onCheckedChange: (Boolean) -> Unit = {},
     val onAction: () -> Unit = {},
-    /** The row's icon; each row in a list gets its own. */
-    val icon: androidx.compose.ui.graphics.vector.ImageVector = AppIcons.Info,
 )
 
 val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No PlatformBridge provided") }

@@ -14,6 +14,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.graphics.Brush
+import app.opaq.core.HistorySegments
+import app.opaq.core.HistoryPoint
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -118,6 +124,36 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 // Someone's profile
 // -------------------------------------------------------------------------------------------------
 
+/**
+ * Their map behind the top of their profile: today's path where this phone keeps history, or else
+ * where they are now. It shows through faintly round the photo and fades into the page by the
+ * first row, so the text below stays on a plain background. It's only a picture: touches go to the
+ * page, so it scrolls as usual.
+ */
+@Composable
+private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation?, actions: Actions, content: @Composable () -> Unit) {
+    val today = remember { localDayStart(epochSeconds()) }
+    var points by remember(pubkey) { mutableStateOf<List<HistoryPoint>>(emptyList()) }
+    LaunchedEffect(pubkey, state.historyDays, loc?.time) {
+        if (state.historyDays > 0) actions.history(pubkey, today, localDayStart(today + 25 * 3600)) { points = it }
+    }
+    val shown = remember(points, loc) { points.ifEmpty { listOfNotNull(loc?.let { HistoryPoint(it.time, it.lat, it.lon) }) } }
+    val segments = remember(shown) { HistorySegments.build(shown) }
+    val ground = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxWidth()) {
+        if (shown.isNotEmpty()) {
+            key(state.darkMap) { HistoryMap(shown, segments, null, Modifier.matchParentSize(), darkMap = state.darkMap, animate = false) }
+            Box(
+                Modifier.matchParentSize()
+                    .background(Brush.verticalGradient(0f to ground.copy(alpha = 0.3f), 0.5f to ground.copy(alpha = 0.6f), 0.85f to ground.copy(alpha = 0.95f), 1f to ground))
+                    // Takes touches before the map can, without using them, so the page still scrolls.
+                    .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
+            )
+        }
+        content()
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String, actions: Actions, onBack: () -> Unit, onHistory: () -> Unit = {}) {
@@ -150,7 +186,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             contact?.label != null && published.isNotBlank() && published != contact.label -> "Calls themself “$published”"
             else -> null
         }
-        ProfileHeader(info, info.name, subtitle)
+        ProfileBackdrop(state, pubkey, loc, actions) { ProfileHeader(info, info.name, subtitle) }
 
         val myPaused = isMe && (!state.sharing || circle.paused)
         SettingsRow(
