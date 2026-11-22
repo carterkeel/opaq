@@ -102,16 +102,19 @@ class LiveUpdatesTest {
         // arrives and leaves; Ben's phone hears nothing about it.
         val a = Phone("Ana"); val b = Phone("Ben")
         val id = circleWith(a, b)
+        // Only place alerts: other notices (someone joining) can still arrive from setting up the circle.
         val seen = mutableListOf<Notice>()
         val heard = mutableListOf<Notice>()
-        val watchA = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { seen += it } }
+        val watchA = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { a.engine.notices.collect { if (it.kind == Notice.PLACE) seen += it } }
         val watchB = scope.launch(Dispatchers.Unconfined, start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { b.engine.notices.collect { heard += it } }
 
         b.engine.publishLocation(loc(41.01))
         net.flush()
         a.engine.savePlace(app.opaq.core.model.Place("", "Home", 41.0, -87.6, radius = 30.0, onLeave = true))
-        assertTrue(seen.isEmpty())
+        assertTrue(seen.isEmpty(), seen.toString())
 
+        // A later update than the first, so it's never taken for the same one.
+        clock += 10
         b.engine.publishLocation(loc(41.0001))
         net.flush()
         assertEquals(listOf("Ben arrived at Home"), seen.map { it.title })
