@@ -3,6 +3,7 @@ package app.opaq.ios
 import platform.CoreLocation.kCLAuthorizationStatusRestricted
 import platform.CoreLocation.kCLAuthorizationStatusDenied
 import platform.CoreLocation.CLAccuracyAuthorization
+import platform.CoreLocation.CLBackgroundActivitySession
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.lowPowerModeEnabled
 import platform.UIKit.UIBackgroundRefreshStatus
@@ -84,6 +85,13 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private var lastReminderAt = 0L
     private val activityManager = CMMotionActivityManager()
     private var activityUpdatesOn = false
+
+    /**
+     * Keeps the app running in the background while sharing. Without it iOS (17 and later) stops
+     * counting the location updates as "in use" about 10 s after the app leaves the screen and
+     * suspends it, so nothing was sent until a geofence exit, a ~500 m move or opening the app.
+     */
+    private var backgroundSession: CLBackgroundActivitySession? = null
 
     /** When Core Motion started saying "walking", until it has said so for [WALK_CONFIRM_SECONDS]. */
     private var walkingSince: Long? = null
@@ -216,6 +224,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         if (canRunInBackground) {
             manager.allowsBackgroundLocationUpdates = true
             manager.showsBackgroundLocationIndicator = showIndicator.value
+            if (backgroundSession == null) backgroundSession = CLBackgroundActivitySession.backgroundActivitySession()
         }
         setAccuracy(high = true)
         manager.startUpdatingLocation()
@@ -259,6 +268,8 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
+        backgroundSession?.invalidate()
+        backgroundSession = null
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
         walkingSince = null

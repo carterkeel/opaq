@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ComposeUIViewController
 import app.opaq.core.Engine
+import app.opaq.core.StoredState
 import app.opaq.core.nostr.RelayUrls
 import app.opaq.core.protocol.InviteLinks
 import app.opaq.ui.OpaqScreens
@@ -127,9 +128,14 @@ object OpaqIos {
      * Starts relays and, if sharing is on, location updates. After a reboot iOS can relaunch the
      * app before the phone's first unlock, when saved state can't be read yet; then this waits
      * for the unlock instead of starting with an empty state. Call on the main thread.
+     *
+     * Only the first unlock matters: the state file and its Keychain key stay readable while the
+     * phone is locked after that. Waiting whenever the phone is locked (isProtectedDataAvailable)
+     * meant a background relaunch from a geofence or significant change, which nearly always
+     * happens with the phone locked, shared nothing until the phone was next unlocked.
      */
     fun start() {
-        if (!UIApplication.sharedApplication.isProtectedDataAvailable()) {
+        if (savedStateLocked()) {
             if (unlockObserver == null) {
                 unlockObserver = NSNotificationCenter.defaultCenter.addObserverForName(
                     UIApplicationProtectedDataDidBecomeAvailable,
@@ -165,6 +171,11 @@ object OpaqIos {
         coverInAppSwitcher()
         notifier // follow notices from now on, even if the screen never opens (background relaunch)
     }
+
+    /** Before the phone's first unlock since it started, the saved state can't be read yet. */
+    private fun savedStateLocked(): Boolean =
+        !UIApplication.sharedApplication.isProtectedDataAvailable() &&
+            (IosStateStore().read() as? StoredState.Unreadable)?.retryable == true
 
     /** The network came back: reconnect to relays now instead of after the retry wait, as Android does. */
     private fun watchNetwork() {
