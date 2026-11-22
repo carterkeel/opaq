@@ -94,13 +94,13 @@ class LocationService : LifecycleService(), LocationListener {
                 }
         }
 
-        // Joined a circle and tapped Start sharing (#148), someone new arrived, or a circle paused or resumed: send our location now instead of at the next
+        // Joined a circle and tapped Start sharing (#148), someone new arrived, a circle paused or resumed, or what a circle sees changed: send our location now instead of at the next
         // interval (up to 5 minutes away while still).
         lifecycleScope.launch {
             app.engine.state
-                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed) } }
+                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed, c.precision, c.shareTrail) } }
                 .distinctUntilChanged()
-                .collect { policy.publishSoon() }
+                .collect { policy.publishSoon(); wake.trySend(Unit) }
         }
         // Someone in a circle asked where we are (#149): GPS now, and the fresh fix goes out at once.
         lifecycleScope.launch {

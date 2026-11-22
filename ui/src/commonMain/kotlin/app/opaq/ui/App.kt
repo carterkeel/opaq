@@ -15,6 +15,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.Dp
@@ -215,7 +220,9 @@ fun OpaqScreens(
                         when (val route = routes.last()) {
                             Route.Home -> Box(Modifier.fillMaxSize()) // empty: the always-composed home shows through
                             else -> Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                                Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+                                // A profile draws its map up behind the status bar and keeps clear of it itself.
+                                val insets = if (route is Route.Profile) Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)) else Modifier.safeDrawingPadding()
+                                Box(Modifier.fillMaxSize().then(insets), contentAlignment = Alignment.TopCenter) {
                                   // On a wide screen (a phone turned sideways) rows and pickers keep a readable
                                   // width, centred, like Signal. The history map uses the whole width.
                                   Box(if (route is Route.History) Modifier.fillMaxSize() else Modifier.fillMaxHeight().widthIn(max = MAX_CONTENT_WIDTH)) {

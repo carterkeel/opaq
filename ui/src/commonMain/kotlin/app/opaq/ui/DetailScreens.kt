@@ -14,6 +14,15 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.ui.input.pointer.pointerInput
@@ -89,12 +98,13 @@ internal val Gutter = Modifier.padding(horizontal = 24.dp)
  * camera badge sits outside the avatar's circle so it isn't cropped.
  */
 @Composable
-private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, onAvatarClick: (() -> Unit)? = null, editBadge: Boolean = false) {
+private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, onAvatarClick: (() -> Unit)? = null, editBadge: Boolean = false, ring: Format.Ring? = null) {
     Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(Modifier.size(124.dp)) {
             Avatar(
                 info,
-                size = 112.dp,
+                size = if (ring != null) 120.dp else 112.dp,
+                ring = ring,
                 modifier = Modifier
                     .align(Alignment.Center)
                     .then(if (onAvatarClick != null) Modifier.clip(CircleShape).clickable(onClick = onAvatarClick) else Modifier),
@@ -150,7 +160,47 @@ private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation
                     .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
             )
         }
-        content()
+        Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(top = 56.dp)) { content() }
+    }
+}
+
+/**
+ * Someone's profile: their map reaches the top of the screen behind the status bar, with the same
+ * soft fade as the home screen so the clock, signal and battery stay readable. The back button
+ * floats over it, and a plain bar fades in behind it once the page scrolls.
+ */
+@Composable
+private fun ProfileScaffold(onBack: () -> Unit, darkMap: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    val scroll = rememberScrollState()
+    val ground = MaterialTheme.colorScheme.background
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().verticalScroll(scroll)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                .padding(bottom = 24.dp),
+            content = content,
+        )
+        val solid = (scroll.value / 160f).coerceIn(0f, 1f)
+        Box(
+            Modifier.fillMaxWidth()
+                .background(ground.copy(alpha = solid))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                .height(64.dp),
+        )
+        // The status bar fade, as on the home screen: stronger when a dark theme sits over a light map.
+        val clash = LocalDarkTheme.current && !darkMap
+        Column(Modifier.fillMaxWidth()) {
+            Box(Modifier.fillMaxWidth().windowInsetsTopHeight(WindowInsets.safeDrawing).background(ground.copy(alpha = if (clash) 0.92f else 0.72f)))
+            Box(
+                Modifier.fillMaxWidth().height(if (clash) 36.dp else 28.dp)
+                    .background(Brush.verticalGradient(listOf(ground.copy(alpha = if (clash) 0.92f else 0.72f), ground.copy(alpha = if (clash) 0.6f else 0.35f), ground.copy(alpha = 0f)))),
+            )
+        }
+        Row(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).height(64.dp).padding(start = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), shadowElevation = (2f * (1f - solid)).dp) {
+                IconButton(onClick = onBack) { Icon(AppIcons.ArrowBack, contentDescription = "Back") }
+            }
+        }
     }
 }
 
@@ -180,22 +230,29 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
     val haptics = rememberHaptics()
     val platform = LocalPlatform.current
 
-    ScreenScaffold("", onBack) {
+    ProfileScaffold(onBack, state.darkMap) {
         val subtitle = when {
             isMe -> "This is you"
             contact?.label != null && published.isNotBlank() && published != contact.label -> "Calls themself “$published”"
             else -> null
         }
-        ProfileBackdrop(state, pubkey, loc, actions) { ProfileHeader(info, info.name, subtitle) }
-
         val myPaused = isMe && (!state.sharing || circle.paused)
+        // The same ring as in the people list: your own follows what this circle is set to see.
+        val ring = when {
+            !isMe -> Format.ring(loc, now)
+            myPaused -> Format.Ring.OFFLINE
+            circle.precision != Precision.EXACT -> Format.Ring.APPROXIMATE
+            else -> Format.Ring.EXACT
+        }
+        ProfileBackdrop(state, pubkey, loc, actions) { ProfileHeader(info, info.name, subtitle, ring = ring) }
+
         SettingsRow(
             title = if (myPaused) "Sharing paused" else Format.status(loc, now),
             // Shared roughly (#157): spell out that the dot is only the middle of an area.
             subtitle = loc?.let { l ->
                 when (l.precision) {
-                    Precision.NEIGHBORHOOD -> "Shares only roughly which part of town: somewhere within about ${Format.radius(l.accuracy.toDouble())} of the dot"
-                    Precision.CITY -> "Shares only roughly which city: somewhere within about ${Format.radius(l.accuracy.toDouble())} of the dot"
+                    Precision.NEIGHBORHOOD -> "Approximate: only roughly which part of town"
+                    Precision.CITY -> "Approximate: only roughly which city"
                     else -> "Accurate to about ${Format.radius(l.accuracy.toDouble())}"
                 }
             },
@@ -204,13 +261,13 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         )
         // Nudge a phone that's gone quiet to send its location (#149). Their phone answers on its own,
         // and they see nothing but their location going out, so it only works while they're online,
-        // sharing with this circle and sharing exactly; and only once their update is 10 minutes old.
+        // sharing with this circle and sharing exactly; and only once their update is 5 minutes old.
         if (!isMe && circle.confirmed) {
             val age = loc?.let { now - it.time }
             val why = when {
                 loc?.status == MemberLocation.PAUSED -> "${info.name} paused sharing, so their phone won't answer"
                 loc?.precision == Precision.NEIGHBORHOOD || loc?.precision == Precision.CITY -> "${info.name} shares only roughly where they are, so their phone won't answer"
-                age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 10 minutes old"
+                age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 5 minutes old"
                 else -> null
             }
             SettingsRow(
@@ -336,7 +393,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             points = listOf(
                 "It works only if their phone is online.",
                 "It doesn't work if they've paused sharing, or share only roughly which part of town or city they're in.",
-                "You can ask once their last update is 10 minutes old.",
+                "You can ask once their last update is 5 minutes old.",
             ),
             onDismiss = { askInfo = false },
         )

@@ -2049,7 +2049,7 @@ class Engine(
         const val LOCATION_REQUEST_GAP_SECONDS = 2 * 60L
 
         /** Asking for someone's location is for a phone that's gone quiet: their update must be this old. */
-        const val LOCATION_REQUEST_AFTER_SECONDS = 10 * 60L
+        const val LOCATION_REQUEST_AFTER_SECONDS = 5 * 60L
 
         /** Answers to location requests per hour, from everyone together. */
         const val LOCATION_ANSWERS_PER_HOUR = 20

@@ -145,7 +145,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         // interval (up to 5 minutes away while still), as Android's service does.
         scope.launch(Dispatchers.Main) {
             engine.state
-                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed) } }
+                .map { s -> s.circles.map { c -> listOf(c.id, c.members.size, c.paused, c.confirmed, c.precision, c.shareTrail) } }
                 .distinctUntilChanged()
                 .collect { policy.publishSoon() }
         }

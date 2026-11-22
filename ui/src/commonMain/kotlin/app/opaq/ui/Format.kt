@@ -121,11 +121,11 @@ object Format {
     }
 
     /**
-     * "Approximate (about 1 mi)" when [loc] was shared as a neighbourhood or city only, so nobody
+     * "Approximate" when [loc] was shared as a neighbourhood or city only, so nobody
      * takes the dot for where the person really is (#157). Null for an exact location.
      */
     fun approximate(loc: MemberLocation): String? = when (loc.precision) {
-        Precision.NEIGHBORHOOD, Precision.CITY -> "Approximate (about ${radius(loc.accuracy.toDouble())})"
+        Precision.NEIGHBORHOOD, Precision.CITY -> "Approximate"
         else -> null
     }
 
