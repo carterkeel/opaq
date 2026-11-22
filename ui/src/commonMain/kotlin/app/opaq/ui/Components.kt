@@ -354,6 +354,143 @@ object AppIcons {
         moveTo(13f, 8f); lineTo(15f, 10f); lineTo(13f, 12f)
     }
 
+    /** A bullseye: an exact location. */
+    val Target: ImageVector = stroke("Target") {
+        moveTo(20f, 12f); arcTo(8f, 8f, 0f, true, true, 4f, 12f); arcTo(8f, 8f, 0f, true, true, 20f, 12f); close()
+        moveTo(15f, 12f); arcTo(3f, 3f, 0f, true, true, 9f, 12f); arcTo(3f, 3f, 0f, true, true, 15f, 12f); close()
+        moveTo(12f, 12f); lineTo(12.01f, 12f)
+    }
+
+    /** Two houses: roughly which part of town. */
+    val Houses: ImageVector = stroke("Houses") {
+        moveTo(2.5f, 20f); lineTo(21.5f, 20f)
+        moveTo(3.5f, 20f); lineTo(3.5f, 12.5f); lineTo(8f, 8.5f); lineTo(12.5f, 12.5f); lineTo(12.5f, 20f)
+        moveTo(12.5f, 11f); lineTo(16.5f, 7.5f); lineTo(20.5f, 11f); lineTo(20.5f, 20f)
+        moveTo(7f, 20f); lineTo(7f, 16.5f); lineTo(9f, 16.5f); lineTo(9f, 20f)
+    }
+
+    /** Tall buildings: roughly which city. */
+    val City: ImageVector = stroke("City") {
+        moveTo(2.5f, 21f); lineTo(21.5f, 21f)
+        moveTo(4f, 21f); lineTo(4f, 11f); lineTo(9f, 11f)
+        moveTo(9f, 21f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 21f)
+        moveTo(15f, 13f); lineTo(20f, 13f); lineTo(20f, 21f)
+        moveTo(11.25f, 8f); lineTo(12.75f, 8f); moveTo(11.25f, 12f); lineTo(12.75f, 12f); moveTo(11.25f, 16f); lineTo(12.75f, 16f)
+    }
+
+    /** A winding path between two spots: your recent path. */
+    val Route: ImageVector = stroke("Route") {
+        moveTo(8f, 18f); arcTo(2f, 2f, 0f, true, true, 4f, 18f); arcTo(2f, 2f, 0f, true, true, 8f, 18f); close()
+        moveTo(20f, 6f); arcTo(2f, 2f, 0f, true, true, 16f, 6f); arcTo(2f, 2f, 0f, true, true, 20f, 6f); close()
+        moveTo(8f, 18f); lineTo(13f, 18f); quadTo(16f, 18f, 16f, 15f); quadTo(16f, 12f, 12f, 12f); quadTo(8f, 12f, 8f, 9f); quadTo(8f, 6f, 11f, 6f); lineTo(16f, 6f)
+    }
+
+    /** An arrow coming down into an area: someone arrives. */
+    val Arrive: ImageVector = stroke("Arrive") {
+        moveTo(19f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 5f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 19f, 18.5f); close()
+        moveTo(12f, 3f); lineTo(12f, 15f)
+        moveTo(8f, 11f); lineTo(12f, 15f); lineTo(16f, 11f)
+    }
+
+    /** An arrow going up out of an area: someone leaves. */
+    val Depart: ImageVector = stroke("Depart") {
+        moveTo(19f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 5f, 18.5f); arcTo(7f, 2.5f, 0f, true, true, 19f, 18.5f); close()
+        moveTo(12f, 15f); lineTo(12f, 3f)
+        moveTo(8f, 7f); lineTo(12f, 3f); lineTo(16f, 7f)
+    }
+
+    /** A folded paper map: any map app. */
+    val Map: ImageVector = stroke("Map") {
+        moveTo(3f, 6f); lineTo(9f, 4f); lineTo(15f, 6f); lineTo(21f, 4f); lineTo(21f, 18f); lineTo(15f, 20f); lineTo(9f, 18f); lineTo(3f, 20f); close()
+        moveTo(9f, 4f); lineTo(9f, 18f); moveTo(15f, 6f); lineTo(15f, 20f)
+    }
+
+    /** A heartbeat line: diagnostic logs. */
+    val Pulse: ImageVector = stroke("Pulse") {
+        moveTo(2f, 12f); lineTo(6f, 12f); lineTo(9f, 5f); lineTo(14f, 19f); lineTo(17f, 12f); lineTo(22f, 12f)
+    }
+
+    /** A page with a folded corner: terms of use. */
+    val Document: ImageVector = stroke("Document") {
+        moveTo(6f, 3f); lineTo(14f, 3f); lineTo(19f, 8f); lineTo(19f, 21f); lineTo(6f, 21f); close()
+        moveTo(14f, 3f); lineTo(14f, 8f); lineTo(19f, 8f)
+        moveTo(9f, 13f); lineTo(16f, 13f); moveTo(9f, 17f); lineTo(16f, 17f)
+    }
+
+    /** An eye, crossed out: privacy policy. */
+    val EyeOff: ImageVector = stroke("EyeOff") {
+        moveTo(2f, 12f); quadTo(12f, 2.5f, 22f, 12f); quadTo(12f, 21.5f, 2f, 12f); close()
+        moveTo(15f, 12f); arcTo(3f, 3f, 0f, true, true, 9f, 12f); arcTo(3f, 3f, 0f, true, true, 15f, 12f); close()
+        moveTo(4f, 4f); lineTo(20f, 20f)
+    }
+
+    /** A key: your identity key, or a circle's key. */
+    val Key: ImageVector = stroke("Key") {
+        moveTo(11f, 12f); arcTo(3.5f, 3.5f, 0f, true, true, 4f, 12f); arcTo(3.5f, 3.5f, 0f, true, true, 11f, 12f); close()
+        moveTo(11f, 12f); lineTo(21f, 12f)
+        moveTo(17f, 12f); lineTo(17f, 15f); moveTo(20f, 12f); lineTo(20f, 14.5f)
+    }
+
+    /** Lines of a list: a log. */
+    val Log: ImageVector = stroke("Log") {
+        moveTo(4f, 6f); lineTo(4.01f, 6f); moveTo(8f, 6f); lineTo(20f, 6f)
+        moveTo(4f, 12f); lineTo(4.01f, 12f); moveTo(8f, 12f); lineTo(20f, 12f)
+        moveTo(4f, 18f); lineTo(4.01f, 18f); moveTo(8f, 18f); lineTo(20f, 18f)
+    }
+
+    /** An arrow up out of a tray: making a backup. */
+    val Upload: ImageVector = stroke("Upload") {
+        moveTo(4f, 15f); lineTo(4f, 20f); lineTo(20f, 20f); lineTo(20f, 15f)
+        moveTo(12f, 16f); lineTo(12f, 4f)
+        moveTo(7.5f, 8.5f); lineTo(12f, 4f); lineTo(16.5f, 8.5f)
+    }
+
+    /** An arrow down into a tray: restoring a backup. */
+    val Download: ImageVector = stroke("Download") {
+        moveTo(4f, 15f); lineTo(4f, 20f); lineTo(20f, 20f); lineTo(20f, 15f)
+        moveTo(12f, 4f); lineTo(12f, 16f)
+        moveTo(7.5f, 11.5f); lineTo(12f, 16f); lineTo(16.5f, 11.5f)
+    }
+
+    /** A storage box: backups. */
+    val Archive: ImageVector = stroke("Archive") {
+        moveTo(3f, 4f); lineTo(21f, 4f); lineTo(21f, 8f); lineTo(3f, 8f); close()
+        moveTo(5f, 8f); lineTo(5f, 20f); lineTo(19f, 20f); lineTo(19f, 8f)
+        moveTo(10f, 12f); lineTo(14f, 12f)
+    }
+
+    /** A leaf: the phone's battery saver. */
+    val Leaf: ImageVector = stroke("Leaf") {
+        moveTo(5f, 19f); curveTo(4f, 10f, 10f, 4.5f, 20f, 4f); curveTo(20.5f, 14f, 14f, 20f, 5f, 19f); close()
+        moveTo(5f, 19f); lineTo(13f, 11f)
+    }
+
+    /** A clock: all the time, in the background. */
+    val Clock: ImageVector = stroke("Clock") {
+        moveTo(21f, 12f); arcTo(9f, 9f, 0f, true, true, 3f, 12f); arcTo(9f, 9f, 0f, true, true, 21f, 12f); close()
+        moveTo(12f, 7f); lineTo(12f, 12f); lineTo(15.5f, 14f)
+    }
+
+    /** A pill shape with a dot: the location indicator at the top of the screen. */
+    val Pill: ImageVector = stroke("Pill") {
+        moveTo(8f, 8f); lineTo(16f, 8f); arcTo(4f, 4f, 0f, false, true, 16f, 16f); lineTo(8f, 16f); arcTo(4f, 4f, 0f, false, true, 8f, 8f); close()
+        moveTo(9f, 12f); lineTo(9.01f, 12f)
+    }
+
+    /** A person with a plus: someone joined, or make them a manager. */
+    val PersonAdd: ImageVector = stroke("PersonAdd") {
+        moveTo(12.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 5.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 12.5f, 8f); close()
+        moveTo(2f, 20f); curveTo(2f, 16f, 5f, 14f, 9f, 14f); curveTo(13f, 14f, 16f, 16f, 16f, 20f)
+        moveTo(19f, 8f); lineTo(19f, 14f); moveTo(16f, 11f); lineTo(22f, 11f)
+    }
+
+    /** A person with a minus: someone left, or no longer a manager. */
+    val PersonRemove: ImageVector = stroke("PersonRemove") {
+        moveTo(12.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 5.5f, 8f); arcTo(3.5f, 3.5f, 0f, true, true, 12.5f, 8f); close()
+        moveTo(2f, 20f); curveTo(2f, 16f, 5f, 14f, 9f, 14f); curveTo(13f, 14f, 16f, 16f, 16f, 20f)
+        moveTo(16f, 11f); lineTo(22f, 11f)
+    }
+
     /** A flag on a pole: report a problem. */
     val Flag: ImageVector = stroke("Flag") {
         moveTo(5f, 21f); lineTo(5f, 3.5f)

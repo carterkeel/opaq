@@ -150,8 +150,8 @@ fun PlaceScreen(state: AppState, me: String, placeId: String?, actions: Actions,
             }
 
             SectionHeader("Tell me when someone")
-            SwitchRow("Arrives", null, onArrive, AppIcons.Bell) { onArrive = it }
-            SwitchRow("Leaves", null, onLeave, AppIcons.Bell) { onLeave = it }
+            SwitchRow("Arrives", null, onArrive, AppIcons.Arrive) { onArrive = it }
+            SwitchRow("Leaves", null, onLeave, AppIcons.Depart) { onLeave = it }
             if (existing != null) SwitchRow("Alerts for this place", if (enabled) "On" else "Off, and hidden from the map", enabled) { enabled = it }
 
             Spacer(Modifier.height(16.dp))

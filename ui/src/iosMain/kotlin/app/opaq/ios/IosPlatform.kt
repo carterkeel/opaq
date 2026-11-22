@@ -1,5 +1,6 @@
 package app.opaq.ios
 
+import app.opaq.ui.AppIcons
 import app.opaq.ui.BiometricResult
 import app.opaq.ui.PlatformBridge
 import app.opaq.ui.SettingItem
@@ -141,6 +142,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
             if (hasAlways) "Granted. Sharing continues in the background and after a restart."
             else "Needed to keep sharing while Opaq is in the background. Choose Location → Always.",
             if (hasAlways) null else "Open",
+            icon = AppIcons.Clock,
         ) {
             NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let {
                 UIApplication.sharedApplication.openURL(it, options = emptyMap<Any?, Any>(), completionHandler = null)
@@ -156,6 +158,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
             action = null,
             checked = showIndicator,
             onCheckedChange = location::setShowIndicator,
+            icon = AppIcons.Pill,
         ),
     )
 

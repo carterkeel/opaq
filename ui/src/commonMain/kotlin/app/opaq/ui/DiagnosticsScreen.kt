@@ -40,7 +40,7 @@ fun DiagnosticsScreen(state: AppState, actions: Actions, onBack: () -> Unit) {
                 "It keeps events and times for 7 days. It never holds locations, keys, names or messages, and stays on this phone unless you send it.",
             Gutter.padding(bottom = 8.dp),
         )
-        SwitchRow("Keep diagnostic logs", if (state.keepDiagnostics) "On" else "Off. Turning it off deletes the log.", state.keepDiagnostics, AppIcons.Info) {
+        SwitchRow("Keep diagnostic logs", if (state.keepDiagnostics) "On" else "Off. Turning it off deletes the log.", state.keepDiagnostics, AppIcons.Pulse) {
             actions.setKeepDiagnostics(it)
             refresh++
         }

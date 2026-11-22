@@ -33,6 +33,9 @@ interface PlatformBridge {
     /** Opens [app] (one of [directionsApps]) with directions to [lat], [lon], labelled [name] where the app allows. */
     fun openDirections(app: String, lat: Double, lon: Double, name: String) {}
 
+    /** [app]'s own icon as installed on this phone, if the platform can read it; null draws a plain one. */
+    fun directionsAppIcon(app: String): androidx.compose.ui.graphics.ImageBitmap? = null
+
     /** First line of an exported diagnostic log (#154): app version and phone model, nothing personal. */
     val diagnosticsHeader: String get() = "Opaq"
 
@@ -133,6 +136,8 @@ data class SettingItem(
     val checked: Boolean? = null,
     val onCheckedChange: (Boolean) -> Unit = {},
     val onAction: () -> Unit = {},
+    /** The row's icon; each row in a list gets its own. */
+    val icon: androidx.compose.ui.graphics.vector.ImageVector = AppIcons.Info,
 )
 
 val LocalPlatform = staticCompositionLocalOf<PlatformBridge> { error("No PlatformBridge provided") }

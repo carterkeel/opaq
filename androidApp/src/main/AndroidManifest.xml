@@ -15,6 +15,11 @@
     <!-- Fingerprint or face unlock in place of the PIN (Biometrics.kt). A normal permission: no prompt. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
+    <!-- Lets the directions sheet show Google Maps' own icon when it's installed (AndroidPlatform.directionsAppIcon). -->
+    <queries>
+        <package android:name="com.google.android.apps.maps" />
+    </queries>
+
     <!-- largeHeap: a backup's Argon2id holds 64 MiB at once (Backups.ARGON2_MEMORY_KIB), more than the
          normal app heap on phones that allow 48 MiB, so backing up and restoring failed there. -->
     <application

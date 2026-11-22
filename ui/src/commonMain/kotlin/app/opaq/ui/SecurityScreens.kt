@@ -362,7 +362,11 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
                     Precision.CITY -> "City"
                 },
                 subtitle = detail,
-                icon = AppIcons.LocationPin,
+                icon = when (p) {
+                    Precision.EXACT -> AppIcons.Target
+                    Precision.NEIGHBORHOOD -> AppIcons.Houses
+                    Precision.CITY -> AppIcons.City
+                },
                 selected = selected,
                 onClick = {
                     // Sharing less needs nothing; sharing more precisely needs the PIN.
@@ -378,7 +382,7 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
             enter = expandVertically(choiceSpring(), expandFrom = Alignment.Top) + fadeIn(choiceSpring()),
             exit = shrinkVertically(choiceSpring(), shrinkTowards = Alignment.Top) + fadeOut(choiceSpring()),
         ) {
-            SwitchRow("Recent path", "Send your last few points with each update", circle.shareTrail, AppIcons.Circles) { on ->
+            SwitchRow("Recent path", "Send your last few points with each update", circle.shareTrail, AppIcons.Route) { on ->
                 if (on) gate.require { actions.setCircleTrail(circle.id, true) } else actions.setCircleTrail(circle.id, false)
             }
         }
@@ -389,7 +393,7 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
 
         SectionHeader("Who can see you")
         circle.members.filter { it.pubkey != me }.forEach { m ->
-            SettingsRow(avatarFor(state, m.pubkey, me, m.name).name, if (m.pubkey == circle.adminPubkey) "Admin" else null, AppIcons.Person)
+            SettingsRow(avatarFor(state, m.pubkey, me, m.name).name, if (m.pubkey == circle.adminPubkey) "Admin" else null, if (m.pubkey == circle.adminPubkey) AppIcons.Star else AppIcons.Person)
         }
         if (circle.members.size <= 1) SettingsRow("Nobody else yet", null, AppIcons.Person)
 
@@ -404,7 +408,16 @@ fun CircleInfoScreen(state: AppState, me: String, circleId: String, actions: Act
                 MembershipChange.NEW_ADMIN -> "$who became the admin"
             }
             val by = e.by?.takeIf { it != e.pubkey && e.change != MembershipChange.CREATED }?.let { if (it == me) "by you" else "by ${nameOf(it)}" }
-            SettingsRow(title, listOfNotNull(Format.ago(now - e.at), by).joinToString(" · "), AppIcons.Circles)
+            SettingsRow(
+                title,
+                listOfNotNull(Format.ago(now - e.at), by).joinToString(" · "),
+                when (e.change) {
+                    MembershipChange.CREATED -> AppIcons.Circles
+                    MembershipChange.JOINED -> AppIcons.PersonAdd
+                    MembershipChange.LEFT -> AppIcons.PersonRemove
+                    MembershipChange.NEW_ADMIN -> AppIcons.Star
+                },
+            )
         }
         Caption("Kept on this phone only.", Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
     }

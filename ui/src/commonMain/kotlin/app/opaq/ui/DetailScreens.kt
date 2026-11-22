@@ -18,6 +18,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -206,7 +208,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             SettingsRow(
                 "Hasn't received the circle's new key",
                 "Their phone may be off or offline. Opaq keeps resending it for two weeks.",
-                AppIcons.Lock,
+                AppIcons.Key,
             )
         }
         if (!isMe) SettingsRow("Rename", "Only changes the name on your phone", AppIcons.Edit, onClick = { renaming = true })
@@ -241,7 +243,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             SettingsRow(
                 if (isManager) "Remove as manager" else "Make a manager",
                 if (isManager) "They'll no longer be able to invite people" else "They can invite and approve people",
-                AppIcons.Person,
+                if (isManager) AppIcons.PersonRemove else AppIcons.PersonAdd,
                 onClick = { gate.require { actions.setManager(circleId, pubkey, !isManager) } },
             )
             SettingsRow("Make admin", "Hand over ${circle.name}. You'll become a regular member.", AppIcons.Star, onClick = { confirmAdmin = true })
@@ -257,10 +259,30 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 Gutter.padding(top = 4.dp, bottom = 8.dp),
             )
             platform.directionsApps.forEach { app ->
-                SettingsRow(app, icon = AppIcons.Directions, onClick = {
-                    directions = false
-                    platform.openDirections(app, loc.lat, loc.lon, info.name)
-                })
+                // The app's own icon where the phone lets us read it; otherwise a turn arrow for
+                // Google Maps and a folded map for any other app, so the rows never look alike.
+                val appIcon = remember(app) { platform.directionsAppIcon(app) }
+                Row(
+                    Modifier.fillMaxWidth().clickable {
+                        directions = false
+                        platform.openDirections(app, loc.lat, loc.lon, info.name)
+                    }.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                        if (appIcon != null) {
+                            Image(appIcon, contentDescription = null, modifier = Modifier.requiredSize(30.dp))
+                        } else {
+                            Icon(
+                                if ("Google" in app) AppIcons.Directions else AppIcons.Map,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(24.dp))
+                    Text(app, style = MaterialTheme.typography.bodyLarge)
+                }
             }
             Spacer(Modifier.height(24.dp))
         }
@@ -622,7 +644,7 @@ enum class SettingsSection(val title: String) {
             Appearance -> AppIcons.Appearance
             Privacy -> AppIcons.Lock
             Security -> AppIcons.Shield
-            Backups -> AppIcons.History
+            Backups -> AppIcons.Archive
             Connection -> AppIcons.Relay
         }
 }
@@ -665,9 +687,9 @@ fun SettingsScreen(
         val platform = LocalPlatform.current
         // The website's report form (opaq.me/report); the app itself never contacts the form service.
         SettingsRow("Report a problem", "Tell the developer what went wrong", AppIcons.Flag, onClick = { platform.openUrl(REPORT_URL) })
-        SettingsRow("Diagnostic logs", "Find out why sharing stopped", AppIcons.Info, onClick = onDiagnostics)
-        SettingsRow("Privacy policy", icon = AppIcons.Shield, onClick = { platform.openUrl(PRIVACY_URL) })
-        SettingsRow("Terms of use", icon = AppIcons.Lock, onClick = { platform.openUrl(TERMS_URL) })
+        SettingsRow("Diagnostic logs", "Find out why sharing stopped", AppIcons.Pulse, onClick = onDiagnostics)
+        SettingsRow("Privacy policy", icon = AppIcons.EyeOff, onClick = { platform.openUrl(PRIVACY_URL) })
+        SettingsRow("Terms of use", icon = AppIcons.Document, onClick = { platform.openUrl(TERMS_URL) })
         Caption("Opaq · open source", Gutter.padding(top = 24.dp))
     }
 }
@@ -707,9 +729,9 @@ fun SettingsSectionScreen(
                 SwitchRow("Share battery level", "Shown next to your status", state.shareBattery, AppIcons.Battery) { actions.setShareBattery(it) }
                 sharingSettings.forEach { item ->
                     if (item.checked != null) {
-                        SwitchRow(item.title, item.detail, item.checked, AppIcons.Info, item.onCheckedChange)
+                        SwitchRow(item.title, item.detail, item.checked, item.icon, item.onCheckedChange)
                     } else {
-                        SettingsRow(item.title, item.detail, AppIcons.Info, onClick = if (item.action != null) item.onAction else null) {
+                        SettingsRow(item.title, item.detail, item.icon, onClick = if (item.action != null) item.onAction else null) {
                             if (item.action != null) TextButton(onClick = item.onAction) { Text(item.action) }
                         }
                     }
@@ -775,8 +797,8 @@ fun SettingsSectionScreen(
                     SettingsRow("Remove PIN", null, AppIcons.Close, onClick = { gate.require { platform.forgetBiometrics(); actions.removePin() } })
                     BiometricSwitch(state, actions)
                 }
-                SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Info, onClick = onSecurityLog)
-                SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Lock)
+                SettingsRow("Security log", "Backups made, PIN changes and resets on this phone", AppIcons.Log, onClick = onSecurityLog)
+                SettingsRow("Your key stays on this phone", "It's only copied if you make a backup.", AppIcons.Key)
                 SettingsRow(
                     "Get a new device code",
                     "If someone may have copied this phone's identity",
@@ -787,8 +809,8 @@ fun SettingsSectionScreen(
             }
 
             SettingsSection.Backups -> {
-                SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Share, onClick = onBackup)
-                SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Refresh, onClick = onRestore)
+                SettingsRow("Back up to a file", "For moving to a new phone. Protected by a passphrase.", AppIcons.Upload, onClick = onBackup)
+                SettingsRow("Restore from a file", "Replaces everything on this phone", AppIcons.Download, onClick = onRestore)
             }
 
             SettingsSection.Connection -> {
