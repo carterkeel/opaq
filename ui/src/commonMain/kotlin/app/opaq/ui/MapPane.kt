@@ -196,6 +196,8 @@ fun MapPane(
         }
     }
     val geoJson = remember(faces) { facesToGeoJson(faces) }
+    val pinsJson = remember(faces) { pinsToGeoJson(faces) }
+    val pinIcons = remember { listOf(PinPainter(SINGLE_PIN), PinPainter(GROUP_PIN)) }
     // Set just below; the tap handler only runs on a tap, after the map exists.
     var stateRef by remember { mutableStateOf<org.maplibre.compose.map.MapState?>(null) }
     // A person on their own opens their profile. A stack lists who's in it to pick from, with a
@@ -253,8 +255,21 @@ fun MapPane(
             textHaloWidth = const(1.5.dp),
         )
         val people = rememberGeoJsonSource(GeoJsonData.JsonString(geoJson))
+        // Each face (or stack) stands on a white pointer whose tip is the spot, like a map pin. Drawn
+        // under the faces, so its top tucks in behind them.
+        val pins = rememberGeoJsonSource(GeoJsonData.JsonString(pinsJson))
+        val single = image(pinIcons[0], size = DpSize(SINGLE_PIN.imageWidthDp.dp, SINGLE_PIN.imageHeightDp.dp))
+        val group = image(pinIcons[1], size = DpSize(GROUP_PIN.imageWidthDp.dp, GROUP_PIN.imageHeightDp.dp))
+        SymbolLayer(
+            id = "people-pin",
+            source = pins,
+            iconImage = switch(feature["pin"].asString(), listOf(case("group", group)), fallback = single),
+            iconOffset = feature["off"].asDpOffset(),
+            iconAllowOverlap = const(true),
+            iconIgnorePlacement = const(true),
+        )
         if (faceIcons.isNotEmpty()) {
-            val icons = faceIcons.map { (key, painter) -> key to image(painter, size = DpSize(FACE_DP.dp, FACE_DP.dp)) }
+            val icons = faceIcons.map { (key, painter) -> key to image(painter, size = DpSize(FACE_IMAGE_DP.dp, FACE_IMAGE_DP.dp)) }
             SymbolLayer(
                 id = "people-face",
                 source = people,
@@ -577,8 +592,32 @@ private fun facesToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
     }
 }.toString()
 
-/** A face as drawn: at its person's own spot, shifted by ([dx], [dy]) dp, its drawing order, and its stack's people. */
-private data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?)
+/** One pointer per stack (or person on their own), at the spot of the face it stands on. */
+private fun pinsToGeoJson(faces: List<StackedFace>): String = buildJsonObject {
+    put("type", "FeatureCollection")
+    putJsonArray("features") {
+        faces.filter { it.anchor }.forEach { f ->
+            val pin = if (f.ids != null) GROUP_PIN else SINGLE_PIN
+            addJsonObject {
+                put("type", "Feature")
+                putJsonObject("geometry") {
+                    put("type", "Point")
+                    putJsonArray("coordinates") { add(f.marker.lon); add(f.marker.lat) }
+                }
+                putJsonObject("properties") {
+                    put("pin", if (f.ids != null) "group" else "single")
+                    putJsonArray("off") { add(0.0); add(pin.offsetDp.toDouble()) }
+                }
+            }
+        }
+    }
+}.toString()
+
+/**
+ * A face as drawn: at its person's own spot, shifted by ([dx], [dy]) dp, its drawing order, its
+ * stack's people, and whether it's the one the stack's pointer stands on ([anchor]).
+ */
+private data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?, val anchor: Boolean = false)
 
 /** Where a face belongs: [anchor]'s spot plus ([sx], [sy]) dp. Someone on their own is their own anchor. */
 private data class Slot(val anchor: String, val sx: Double, val sy: Double, val order: Int, val ids: String?)
@@ -589,9 +628,11 @@ private const val STACK_MILLIS = 400.0
 private fun slots(groups: List<List<MapMarker>>): Map<String, Slot> = buildMap {
     groups.forEach { g ->
         val ids = if (g.size > 1) g.joinToString(",") { it.id } else null
+        // Raised so the faces rest on their pointer, whose tip is the spot.
+        val lift = stackLift(g.size)
         g.forEachIndexed { i, m ->
             val (sx, sy) = stackSlot(i, g.size)
-            put(m.id, Slot(g.first().id, sx, sy, g.size - i, ids))
+            put(m.id, Slot(g.first().id, sx, sy - lift, g.size - i, ids))
         }
     }
 }
@@ -649,11 +690,11 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
         val f = glide?.let { ((t - it.second) / STACK_MILLIS).coerceIn(0.0, 1.0) } ?: 1.0
         if (f >= 1.0) {
             glides.remove(m.id)
-            StackedFace(m, tx, ty, slot.order, slot.ids)
+            StackedFace(m, tx, ty, slot.order, slot.ids, slot.anchor == m.id)
         } else {
             val (fx, fy) = offset(m, glide!!.first)
             val e = 1 - (1 - f) * (1 - f) * (1 - f) // ease out
-            StackedFace(m, fx + (tx - fx) * e, fy + (ty - fy) * e, slot.order, slot.ids)
+            StackedFace(m, fx + (tx - fx) * e, fy + (ty - fy) * e, slot.order, slot.ids, slot.anchor == m.id)
         }
     }
 }
