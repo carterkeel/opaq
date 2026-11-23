@@ -115,6 +115,7 @@ object OpaqIos {
 
     /** Join/leave notifications and the monthly sharing reminder. */
     val notifier: IosNotifier by lazy { IosNotifier(engine, scope) }
+    private val metrics: IosMetrics by lazy { IosMetrics(engine) }
 
     internal val platform: IosPlatform by lazy { IosPlatform(location) }
 
@@ -170,6 +171,7 @@ object OpaqIos {
         watchNetwork()
         coverInAppSwitcher()
         notifier // follow notices from now on, even if the screen never opens (background relaunch)
+        metrics.start() // Apple's daily energy and exit report, into the diagnostic log (#165)
     }
 
     /** Before the phone's first unlock since it started, the saved state can't be read yet. */

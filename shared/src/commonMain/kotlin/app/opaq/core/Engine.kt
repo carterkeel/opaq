@@ -6,7 +6,7 @@ import app.opaq.core.crypto.PlatformCrypto
 import app.opaq.core.crypto.constantTimeEquals
 import app.opaq.core.crypto.hexToBytes
 import app.opaq.core.crypto.toHex
-import app.opaq.core.model.ADDED_DEFAULT_RELAYS
+import app.opaq.core.model.RELAY_DEFAULTS_CHANGES
 import app.opaq.core.model.Activity
 import app.opaq.core.model.AppState
 import app.opaq.core.model.THEME_DARK
@@ -235,7 +235,7 @@ class Engine(
     private fun checkReady() = check(_recovery.value == null) { "Opaq can't read its saved data yet" }
 
     /** A new install's state: a new identity and the current default relays. */
-    private fun newState() = AppState(identitySecretHex = KeyPair.generate().secret.toHex(), relayDefaultsVersion = ADDED_DEFAULT_RELAYS.size)
+    private fun newState() = AppState(identitySecretHex = KeyPair.generate().secret.toHex(), relayDefaultsVersion = RELAY_DEFAULTS_CHANGES.size)
 
     private fun decode(data: String): AppState? = runCatching { json.decodeFromString(AppState.serializer(), data) }.getOrNull()?.withNewDefaultRelays()
 
