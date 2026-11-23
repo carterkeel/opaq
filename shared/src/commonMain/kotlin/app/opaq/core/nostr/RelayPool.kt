@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -183,21 +185,24 @@ class RelayPool(
                 while (isActive) {
                     setStatus(RelayStatus.CONNECTING)
                     try {
-                        client.webSocket(url) {
-                            connected = true
-                            synced.value = emptySet()
-                            backoff = 2_000L
-                            wake.tryReceive()
-                            setStatus(RelayStatus.CONNECTED)
-                            val subs = mutex.withLock { subscriptions }
-                            subs.forEach { (id, filters) -> if (mayRequest(id)) send(Frame.Text(ClientMessages.req(id, filters))) }
-                            val writer = launch { for (m in outbox) send(Frame.Text(m)) }
-                            try {
-                                for (frame in incoming) {
-                                    if (frame is Frame.Text) handle(frame.readText())
+                        withConnectTimeout(if (proxy != null) TOR_CONNECT_TIMEOUT_MILLIS else CONNECT_TIMEOUT_MILLIS) { connectedNow ->
+                            client.webSocket(url) {
+                                connectedNow()
+                                connected = true
+                                synced.value = emptySet()
+                                backoff = 2_000L
+                                wake.tryReceive()
+                                setStatus(RelayStatus.CONNECTED)
+                                val subs = mutex.withLock { subscriptions }
+                                subs.forEach { (id, filters) -> if (mayRequest(id)) send(Frame.Text(ClientMessages.req(id, filters))) }
+                                val writer = launch { for (m in outbox) send(Frame.Text(m)) }
+                                try {
+                                    for (frame in incoming) {
+                                        if (frame is Frame.Text) handle(frame.readText())
+                                    }
+                                } finally {
+                                    writer.cancel()
                                 }
-                            } finally {
-                                writer.cancel()
                             }
                         }
                     } catch (t: Throwable) {
@@ -209,9 +214,8 @@ class RelayPool(
                     setStatus(RelayStatus.DISCONNECTED)
                     // Wait before retrying, unless the network comes back in the meantime.
                     if (withTimeoutOrNull(backoff) { wake.receive() } != null) backoff = 2_000L
-                    // Up to 5 minutes: a relay that's down or blocks this network isn't worth waking
-                    // the phone for every minute. A network change still retries at once.
-                    else backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF_MILLIS)
+                    // A network change still retries at once.
+                    else backoff = nextBackoff(backoff, othersConnected = live.value.any { it !== this@Connection && it.isConnected })
                 }
             }
         }
@@ -245,7 +249,38 @@ class RelayPool(
         private fun setStatus(s: RelayStatus) = _status.update { it + (url to s) }
     }
 
-    private companion object {
+    /**
+     * Runs [block], failing it with [ConnectTimeout] if it hasn't called the function it's given
+     * (the websocket opened) within [millis]. The platforms' own limits are a minute or more, and
+     * a relay that never answers then holds the radio up for that whole minute on every retry.
+     */
+    private suspend fun withConnectTimeout(millis: Long, block: suspend (connectedNow: () -> Unit) -> Unit) = coroutineScope {
+        val timer = launch {
+            delay(millis)
+            throw ConnectTimeout(millis)
+        }
+        block { timer.cancel() }
+        timer.cancel()
+    }
+
+    private class ConnectTimeout(millis: Long) : Exception("no answer within ${millis / 1000} s")
+
+    internal companion object {
+        /**
+         * How long to wait before the next try after one failed after waiting [current]: doubling,
+         * up to 5 minutes while no other relay is connected (updates need at least one), and up to
+         * an hour while others are. A relay that's down or blocks this network isn't worth waking
+         * the phone for every few minutes all night (#165).
+         */
+        fun nextBackoff(current: Long, othersConnected: Boolean): Long =
+            (current * 2).coerceAtMost(if (othersConnected) MAX_BACKOFF_OTHERS_UP_MILLIS else MAX_BACKOFF_MILLIS)
+
+        /** Long enough for a slow mobile network's DNS, TCP and TLS; a working relay answers in a second or two. */
+        const val CONNECT_TIMEOUT_MILLIS = 20_000L
+
+        /** Through Tor the handshake crosses three hops first. */
+        const val TOR_CONNECT_TIMEOUT_MILLIS = 60_000L
+
         /**
          * A dead connection is noticed within about two of these. Every ping wakes the phone's radio,
          * once per relay, so not too often: a minute keeps connections through home routers and
@@ -254,5 +289,6 @@ class RelayPool(
         const val PING_MILLIS = 60_000L
 
         const val MAX_BACKOFF_MILLIS = 5 * 60_000L
+        const val MAX_BACKOFF_OTHERS_UP_MILLIS = 60 * 60_000L
     }
 }
