@@ -2,6 +2,10 @@ package app.opaq.ios
 
 import app.opaq.ui.epochSeconds
 import app.opaq.ui.formatClock
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 
 /** A circle as Shortcuts lists it. */
 class ShortcutCircle(val id: String, val name: String, val paused: Boolean)
@@ -30,6 +34,17 @@ object OpaqShortcuts {
         engine.state.value.circles.filter { it.confirmed }.map { ShortcutCircle(it.id, it.name, it.paused) }
 
     fun isSharing(): Boolean = engine.state.value.sharing
+
+    /**
+     * Calls [onChange] on the main thread with whether sharing is on, now and whenever it changes
+     * (in the app, from a shortcut or control, or when a timed pause ends), so the Control Center
+     * toggle shows the truth. Call once.
+     */
+    fun watchSharing(onChange: (Boolean) -> Unit) {
+        OpaqIos.scope.launch(Dispatchers.Main) {
+            engine.state.map { it.sharing }.distinctUntilChanged().collect { onChange(it) }
+        }
+    }
 
     /** Turns sharing on, or pauses it for [minutes] (0 = until turned back on). */
     suspend fun setSharing(on: Boolean, minutes: Int): String {

@@ -17,9 +17,19 @@ targets:
     platform: iOS
     sources:
       - path: iosApp
+      # Control Center intents, shared with OpaqControls; OPAQ_APP marks the half that runs here.
+      - path: Shared
+    dependencies:
+      - target: OpaqControls
+    entitlements:
+      path: iosApp/Opaq.entitlements
+      properties:
+        # Lets the Control Center extension read whether sharing is on (OpaqSharedState).
+        com.apple.security.application-groups: [group.me.opaq.app]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: me.opaq.app # as listed on the App Store and Google Play
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) OPAQ_APP"
         PRODUCT_NAME: Opaq
         # Assets.xcassets/AppIcon: one 1024px PNG, drawn from the Android launcher icon.
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -50,3 +60,32 @@ targets:
           fi
           cd "$SRCROOT/.."
           ./gradlew :ui:embedAndSignAppleFrameworkForXcode
+
+  # Control Center controls (iOS 18+): "Share My Location" toggle and "Update My Location".
+  # Draws the controls only; their actions run in the app (Shared/OpaqControlIntents.swift).
+  OpaqControls:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: OpaqControls
+      - path: Shared
+    entitlements:
+      path: OpaqControls/OpaqControls.entitlements
+      properties:
+        com.apple.security.application-groups: [group.me.opaq.app]
+    info:
+      path: OpaqControls/Info.plist
+      properties:
+        CFBundleDisplayName: Opaq
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: me.opaq.app.controls
+        PRODUCT_NAME: OpaqControls
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
+        CODE_SIGN_STYLE: Automatic
