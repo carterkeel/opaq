@@ -3,25 +3,44 @@ package app.opaq.core.model
 import kotlinx.serialization.Serializable
 
 val DEFAULT_RELAYS = listOf(
-    "wss://relay.damus.io",
     "wss://nos.lol",
     "wss://relay.primal.net",
-    "wss://nostr.mom",
-    "wss://offchain.pub",
+    "wss://relay.snort.social",
+    "wss://relay.coinos.io",
+    "wss://nostr.bitcoiner.social",
 )
 
+/** One change to [DEFAULT_RELAYS] after release. */
+class RelayDefaultsChange(val add: List<String> = emptyList(), val remove: List<String> = emptyList())
+
 /**
- * Relays added to [DEFAULT_RELAYS] after release, oldest first. Saved states get each one once
- * ([AppState.relayDefaultsVersion] counts how many they've had), so someone who removes it keeps it removed.
+ * Changes to [DEFAULT_RELAYS] after release, oldest first. Saved states get each one once
+ * ([AppState.relayDefaultsVersion] counts how many they've had), so a relay someone removes stays removed
+ * and one they add stays added. Keep at least one relay from the old defaults in the new ones, so phones
+ * that haven't updated still share a relay with those that have.
  * Read sealed DMs (joins, rosters) need a relay that serves them without NIP-42 sign-in, which Opaq doesn't do.
  */
-val ADDED_DEFAULT_RELAYS = listOf("wss://offchain.pub")
+val RELAY_DEFAULTS_CHANGES = listOf(
+    RelayDefaultsChange(add = listOf("wss://offchain.pub")),
+    // #165: damus refuses connections (503), wants sign-in for sealed DMs and rate-limits while driving;
+    // offchain.pub refuses updates (web of trust); nostr.mom had no answer from some networks. Each
+    // failing relay costs battery in retries. The three added accept and serve both kinds without sign-in.
+    RelayDefaultsChange(
+        add = listOf("wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social"),
+        remove = listOf("wss://relay.damus.io", "wss://offchain.pub", "wss://nostr.mom"),
+    ),
+)
 
-/** [this] with any default relays added since it was saved. */
+/** [this] with any changes to the default relays made since it was saved. */
 fun AppState.withNewDefaultRelays(): AppState {
-    if (relayDefaultsVersion >= ADDED_DEFAULT_RELAYS.size) return this
-    val add = ADDED_DEFAULT_RELAYS.drop(relayDefaultsVersion).filter { it !in relays }
-    return copy(relays = relays + add, relayDefaultsVersion = ADDED_DEFAULT_RELAYS.size)
+    if (relayDefaultsVersion >= RELAY_DEFAULTS_CHANGES.size) return this
+    var list = relays
+    RELAY_DEFAULTS_CHANGES.drop(relayDefaultsVersion).forEach { c ->
+        val kept = list.filter { it !in c.remove }
+        // Never leave nothing: someone who only kept removed relays keeps them.
+        list = (kept + c.add.filter { it !in kept }).ifEmpty { list }
+    }
+    return copy(relays = list, relayDefaultsVersion = RELAY_DEFAULTS_CHANGES.size)
 }
 
 /** Values of [AppState.themeMode]. */
@@ -37,7 +56,7 @@ data class AppState(
     val identitySecretHex: String,
     val myName: String = "",
     val relays: List<String> = DEFAULT_RELAYS,
-    /** How many of [ADDED_DEFAULT_RELAYS] this state has already been given. */
+    /** How many of [RELAY_DEFAULTS_CHANGES] this state has already been given. */
     val relayDefaultsVersion: Int = 0,
     val sharing: Boolean = true,
     /** When a timed "pause all sharing" ends (unix seconds), turning [sharing] back on; 0 = no timer. */
