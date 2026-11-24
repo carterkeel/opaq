@@ -301,7 +301,11 @@ class CreateCircleTest {
         zoomMapOut()
         tapDescUntil("Switch circle", expected = "Everyone")
         waitFor("Everyone").click()
-        waitFor("people from all your circles")
+        // "1 person from all your circles" or "N people …": the test's circles may hold just you.
+        device.wait(Until.findObject(By.textContains("from all your circles")), 20_000) ?: run {
+            logScreen()
+            error("Everyone's caption didn't appear within 20 s")
+        }
         Thread.sleep(3_000)
         shot("everyone")
         zoomMapOut()
