@@ -7,7 +7,7 @@ val DEFAULT_RELAYS = listOf(
     "wss://relay.primal.net",
     "wss://relay.snort.social",
     "wss://relay.coinos.io",
-    "wss://nostr.bitcoiner.social",
+    "wss://relay.angor.io",
 )
 
 /** One change to [DEFAULT_RELAYS] after release. */
@@ -29,6 +29,9 @@ val RELAY_DEFAULTS_CHANGES = listOf(
         add = listOf("wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social"),
         remove = listOf("wss://relay.damus.io", "wss://offchain.pub", "wss://nostr.mom"),
     ),
+    // nostr.bitcoiner.social refuses a burst of updates from keys it doesn't know ("not in our web of trust"),
+    // and every Opaq publisher key is new to it. relay.angor.io takes bursts and serves sealed DMs without sign-in.
+    RelayDefaultsChange(add = listOf("wss://relay.angor.io"), remove = listOf("wss://nostr.bitcoiner.social")),
 )
 
 /** [this] with any changes to the default relays made since it was saved. */
