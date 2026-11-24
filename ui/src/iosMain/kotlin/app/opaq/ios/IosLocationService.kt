@@ -39,7 +39,7 @@ import platform.CoreLocation.kCLAuthorizationStatusAuthorizedWhenInUse
 import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
 import platform.CoreLocation.kCLDistanceFilterNone
 import platform.CoreLocation.kCLLocationAccuracyBest
-import platform.CoreLocation.kCLLocationAccuracyHundredMeters
+import platform.CoreLocation.kCLLocationAccuracyThreeKilometers
 import platform.CoreMotion.CMMotionActivity
 import platform.CoreMotion.CMMotionActivityConfidenceLow
 import platform.CoreMotion.CMMotionActivityManager
@@ -86,19 +86,22 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private var activityUpdatesOn = false
 
     /**
-     * Last fix passed on while still, for the 25 m filter applied here rather than by iOS. With a
-     * distance filter on CLLocationManager a resting phone gets no fixes at all, and iOS then
-     * suspends the app about 10 s after it leaves the screen (nothing was sent until a geofence
-     * exit, a ~500 m move or opening the app). Taking every fix keeps it running, with no blue pill
-     * forced on.
+     * While still, the last accurate fix: where the phone stopped. Coarse fixes keep arriving (no
+     * distance filter: with one, a resting phone gets no fixes at all and iOS suspends the app
+     * about 10 s after it leaves the screen), but they only keep Opaq running. A 3 km fix isn't
+     * passed on as a position; one whose whole error circle is clear of this spot means the phone
+     * has moved.
      */
-    private var lastStillFix: CLLocation? = null
+    private var stillSpot: CLLocation? = null
 
     /** When Core Motion started saying "walking", until it has said so for [WALK_CONFIRM_SECONDS]. */
     private var walkingSince: Long? = null
 
     /** Geofence around where the phone stopped; null until iOS hands it over. */
     private var monitor: CLMonitor? = null
+
+    /** How far off [stillSpot] may be, in metres (its fix's accuracy). */
+    private var stillSpotAccuracy = 0.0
 
     /** Wakes the publish loop early: a fix arrived while an update is due. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
@@ -276,7 +279,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
-        lastStillFix = null
+        stillSpot = null
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
         walkingSince = null
@@ -346,17 +349,19 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private fun nowSeconds(): Long = NSDate().timeIntervalSince1970.toLong()
 
     /**
-     * GPS while moving; coarse location while still, which still keeps the app running. While
-     * still, the 25 m distance filter plays the part of Android's significant-motion sensor: the
-     * first fix after moving that far shows movement, and the next tick switches to GPS.
+     * GPS while moving; the coarsest location iOS has (about 3 km, mostly from cell towers) while
+     * still, which keeps the app running for the still updates at far less battery than GPS (#165).
+     * Leaving the geofence, Core Motion, a significant location change or a coarse fix clearly
+     * away from [stillSpot] switches back to GPS.
      */
     private fun setAccuracy(high: Boolean) {
         if (high == highAccuracy) return
         highAccuracy = high
         engine.diagnostic(if (high) "Location: GPS (moving)" else "Location: coarse (still)")
-        manager.desiredAccuracy = if (high) kCLLocationAccuracyBest else kCLLocationAccuracyHundredMeters
-        manager.distanceFilter = kCLDistanceFilterNone // filtered in onLocation instead, see lastStillFix
-        lastStillFix = null
+        manager.desiredAccuracy = if (high) kCLLocationAccuracyBest else kCLLocationAccuracyThreeKilometers
+        manager.distanceFilter = kCLDistanceFilterNone // see stillSpot
+        stillSpot = if (high) null else policy.latest?.let { CLLocation(latitude = it.lat, longitude = it.lon) }
+        stillSpotAccuracy = policy.latest?.accuracy?.toDouble() ?: 0.0
         if (high) monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION) else placeStillRegion()
     }
 
@@ -366,9 +371,13 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     private fun onLocation(location: CLLocation) {
         if (location.horizontalAccuracy < 0) return // invalid fix
         if (highAccuracy == false) {
-            val last = lastStillFix
-            if (last != null && location.distanceFromLocation(last) < STILL_FILTER_METERS) return
-            lastStillFix = location
+            // Still: a coarse fix isn't a position worth sharing (the still update keeps the last
+            // accurate one). Only a fix whose error circle is clear of where the phone stopped,
+            // with the geofence's margin on top, says it moved.
+            val spot = stillSpot ?: return
+            val clear = location.horizontalAccuracy + stillSpotAccuracy + STILL_RADIUS
+            if (location.distanceFromLocation(spot) > clear) onMovementHint()
+            return
         }
         val (lat, lon) = location.coordinate.useContents { latitude to longitude }
         policy.add(
@@ -411,9 +420,6 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         const val MONITOR_NAME = "opaq"
         const val STILL_REGION = "still"
         const val STILL_RADIUS = 100.0
-
-        /** While still, a fix is passed on only once it's this far from the last one. */
-        const val STILL_FILTER_METERS = 25.0
 
         /** Background updates crash unless Info.plist declares the `location` background mode. */
         val canRunInBackground: Boolean by lazy {
