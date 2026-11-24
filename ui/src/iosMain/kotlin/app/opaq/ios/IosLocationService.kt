@@ -106,6 +106,9 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     /** The last update reached no relay (offline, or relays still confirming the circle key). */
     private var missed = false
 
+    /** When the current run of missed updates began (seconds). */
+    private var missedAt = 0L
+
     private val _authorization = MutableStateFlow(manager.authorizationStatus)
     /** Current location permission; recomposes the UI when the user changes it. */
     val authorization: StateFlow<CLAuthorizationStatus> = _authorization.asStateFlow()
@@ -251,12 +254,17 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                     val status = if (battery != null && battery <= 5) "low battery" else null
                     policy.snapshot(battery, status, now)?.let { loc ->
                         policy.markPublished(now)
-                        missed = !withContext(Dispatchers.Default) { runCatching { engine.publishLocation(loc) }.getOrDefault(false) }
+                        val sent = withContext(Dispatchers.Default) { runCatching { engine.publishLocation(loc) }.getOrDefault(false) }
+                        if (!sent && !missed) missedAt = now
+                        missed = !sent
                     }
                 }
-                // Every 2 s while moving or confirming a walk; while still, only when the next update
-                // is due (at most 30 s), instead of waking all night for nothing.
-                val wait = if (walkingSince != null) MotionPolicy.FAST_CHECK_MILLIS else policy.nextCheckMillis(nowSeconds())
+                // Every 2 s while moving, confirming a walk or just after a missed update (right after a
+                // relaunch the first one waits for relays to confirm the circle key, usually a second or
+                // two); while still, only when the next update is due (at most 30 s), instead of waking
+                // all night for nothing.
+                val retrying = missed && nowSeconds() - missedAt < MotionPolicy.MISSED_RETRY_SECONDS
+                val wait = if (walkingSince != null || retrying) MotionPolicy.FAST_CHECK_MILLIS else policy.nextCheckMillis(nowSeconds())
                 withTimeoutOrNull(wait) { wake.receive() }
             }
         }

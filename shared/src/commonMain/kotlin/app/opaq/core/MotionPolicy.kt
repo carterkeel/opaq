@@ -251,6 +251,9 @@ class MotionPolicy {
         const val MOVING_INTERVAL = 10L
         const val STILL_INTERVAL = 300L
         const val FAST_CHECK_MILLIS = 2_000L
+
+        /** After an update reached no relay, check every [FAST_CHECK_MILLIS] for this long to resend it. */
+        const val MISSED_RETRY_SECONDS = 60L
         private const val SLOW_CHECK_SECONDS = 30L
         private const val MIN_GAP_SECONDS = 10L
 
