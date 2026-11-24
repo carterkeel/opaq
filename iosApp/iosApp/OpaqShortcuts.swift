@@ -221,10 +221,10 @@ struct OpaqAppShortcuts: AppShortcutsProvider {
 enum ShortcutNotices {
     private static let pauseEndId = "opaq-pause-end"
 
-    /** Sharing started from a shortcut or automation: always say so. */
+    /** Sharing started from a shortcut, automation or Control Center: always say so. */
     static func sharingStarted() {
         post(id: UUID().uuidString, title: "Opaq is sharing your location",
-             body: "Sharing was turned on from Shortcuts. Open Opaq to see who can see you.", after: nil)
+             body: "Sharing was turned on from Shortcuts or Control Center. Open Opaq to see who can see you.", after: nil)
     }
 
     /**

@@ -5,6 +5,7 @@
   binary calls. These come from the Kotlin/Native runtime, Compose, Ktor and our own settings, not
   from tracking:
     - UserDefaults: app settings and Compose state, read only by this app.
+      Also one value (whether sharing is on) in the App Group, read by the Control Center extension.
     - File timestamps (stat, fstat, lstat): files inside the app's own container.
     - Disk space (statfs, fstatfs): checking there's room before writing files.
     - System boot time (systemUptime): measuring elapsed time inside the app (timers, monotonic clock).
@@ -28,6 +29,7 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+				<string>1C8F.1</string>
 			</array>
 		</dict>
 		<dict>

@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import WidgetKit
 import OpaqUI
 
 /// Hosts the shared Compose screens. Everything else lives in Kotlin (`OpaqIos`).
@@ -21,6 +22,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         OpaqIos.shared.start()
+        // The Control Center toggle (OpaqControls) reads whether sharing is on from the App Group.
+        OpaqShortcuts.shared.watchSharing { on in
+            OpaqSharedState.save(sharing: on.boolValue)
+            if #available(iOS 18.0, *) { ControlCenter.shared.reloadControls(ofKind: OpaqControlKind.sharing) }
+        }
         // Lets Shortcuts and Siri offer the circle actions ("Pause Family in Opaq") with the circles
         // this phone has now. Done again whenever the app comes to the front, after circles change.
         OpaqAppShortcuts.updateAppShortcutParameters()

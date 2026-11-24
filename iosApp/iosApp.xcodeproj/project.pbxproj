@@ -8,17 +8,53 @@
 
 /* Begin PBXBuildFile section */
 		20649A0067065C298247DD36 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */; };
+		24FC99398B546A147950E01A /* OpaqControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F85ECB83B5CDDDFD049667 /* OpaqControlIntents.swift */; };
+		2A3F1CDD8F0596594D120349 /* OpaqControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = A58EFF23C096DEC47DAD6E31 /* OpaqControls.swift */; };
 		4B50305B9ACF8FF8A8325B68 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = F543015C899423D4B01CEB2E /* Assets.xcassets */; };
+		624FF92E110AA9C7348BD896 /* OpaqControlIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16F85ECB83B5CDDDFD049667 /* OpaqControlIntents.swift */; };
+		75098201B5C89CB16DAD9585 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5B4CF1BA7A90B684CBC42352 /* PrivacyInfo.xcprivacy */; };
 		9CBE7F79A153562936D20565 /* OpaqShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9E75550297597F280C6D258 /* OpaqShortcuts.swift */; };
+		EE7E509D09B4FC47FB4BD5FE /* OpaqControls.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 07FD7D2712105FF80C04D83A /* OpaqControls.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F3FB1ABF1C83138AB2C23D36 /* OpaqApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09EBE9AA2E4634B26C2BDA0E /* OpaqApp.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		B4DD0A82205084129597DA84 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 242FB5348943441C388468CE /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = F7C55B954FBE3D24AE2EC63E;
+			remoteInfo = OpaqControls;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A1DC7292CA711770B1A5F7B6 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				EE7E509D09B4FC47FB4BD5FE /* OpaqControls.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		07FD7D2712105FF80C04D83A /* OpaqControls.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OpaqControls.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		09EBE9AA2E4634B26C2BDA0E /* OpaqApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpaqApp.swift; sourceTree = "<group>"; };
+		16F85ECB83B5CDDDFD049667 /* OpaqControlIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpaqControlIntents.swift; sourceTree = "<group>"; };
 		51470B21F0E0E33EFDD67B7D /* Opaq.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Opaq.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5B4CF1BA7A90B684CBC42352 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		7B43F1072C6E35004EDCE110 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A58EFF23C096DEC47DAD6E31 /* OpaqControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpaqControls.swift; sourceTree = "<group>"; };
+		B0BCC9FFBDA988EFBA5B3EDF /* Opaq.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Opaq.entitlements; sourceTree = "<group>"; };
 		B9E75550297597F280C6D258 /* OpaqShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpaqShortcuts.swift; sourceTree = "<group>"; };
 		C117AD187833E2513BD2F553 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		E54CFA7ADFA99C68ED68B1AD /* OpaqControls.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = OpaqControls.entitlements; sourceTree = "<group>"; };
 		F543015C899423D4B01CEB2E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -28,6 +64,7 @@
 			children = (
 				F543015C899423D4B01CEB2E /* Assets.xcassets */,
 				C117AD187833E2513BD2F553 /* Info.plist */,
+				B0BCC9FFBDA988EFBA5B3EDF /* Opaq.entitlements */,
 				09EBE9AA2E4634B26C2BDA0E /* OpaqApp.swift */,
 				B9E75550297597F280C6D258 /* OpaqShortcuts.swift */,
 				C6D2DD7FE2E0BF5DB2A96B4B /* PrivacyInfo.xcprivacy */,
@@ -39,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				1DB4B685CAEE8BEFEBBAEF94 /* iosApp */,
+				A21DB9FA52E8EAF48156AA65 /* OpaqControls */,
+				D729CB25B4FA03B3484F4F1E /* Shared */,
 				94C98B8B3A2BFC1966447269 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -47,8 +86,28 @@
 			isa = PBXGroup;
 			children = (
 				51470B21F0E0E33EFDD67B7D /* Opaq.app */,
+				07FD7D2712105FF80C04D83A /* OpaqControls.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A21DB9FA52E8EAF48156AA65 /* OpaqControls */ = {
+			isa = PBXGroup;
+			children = (
+				7B43F1072C6E35004EDCE110 /* Info.plist */,
+				E54CFA7ADFA99C68ED68B1AD /* OpaqControls.entitlements */,
+				A58EFF23C096DEC47DAD6E31 /* OpaqControls.swift */,
+				5B4CF1BA7A90B684CBC42352 /* PrivacyInfo.xcprivacy */,
+			);
+			path = OpaqControls;
+			sourceTree = "<group>";
+		};
+		D729CB25B4FA03B3484F4F1E /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				16F85ECB83B5CDDDFD049667 /* OpaqControlIntents.swift */,
+			);
+			path = Shared;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -61,10 +120,12 @@
 				B0A2BC2C61FEFEB70ABE2234 /* Build Kotlin framework */,
 				13C1B9E24186A1F3850D12A7 /* Sources */,
 				B82D20F3D709D65D1ACE7AD8 /* Resources */,
+				A1DC7292CA711770B1A5F7B6 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				86D6354051CAB9CE40AEEF53 /* PBXTargetDependency */,
 			);
 			name = Opaq;
 			packageProductDependencies = (
@@ -72,6 +133,24 @@
 			productName = Opaq;
 			productReference = 51470B21F0E0E33EFDD67B7D /* Opaq.app */;
 			productType = "com.apple.product-type.application";
+		};
+		F7C55B954FBE3D24AE2EC63E /* OpaqControls */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 209B536D7D4DDFBD542C1042 /* Build configuration list for PBXNativeTarget "OpaqControls" */;
+			buildPhases = (
+				0E8A3882CF10B8CB8A2D80A7 /* Sources */,
+				5F96E8BAA727E7E4F8A01FAE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OpaqControls;
+			packageProductDependencies = (
+			);
+			productName = OpaqControls;
+			productReference = 07FD7D2712105FF80C04D83A /* OpaqControls.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -83,6 +162,9 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					42C5D0659456F7FDD099EE67 = {
+						ProvisioningStyle = Automatic;
+					};
+					F7C55B954FBE3D24AE2EC63E = {
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -102,11 +184,20 @@
 			projectRoot = "";
 			targets = (
 				42C5D0659456F7FDD099EE67 /* Opaq */,
+				F7C55B954FBE3D24AE2EC63E /* OpaqControls */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		5F96E8BAA727E7E4F8A01FAE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				75098201B5C89CB16DAD9585 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		B82D20F3D709D65D1ACE7AD8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -141,16 +232,34 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0E8A3882CF10B8CB8A2D80A7 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				624FF92E110AA9C7348BD896 /* OpaqControlIntents.swift in Sources */,
+				2A3F1CDD8F0596594D120349 /* OpaqControls.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		13C1B9E24186A1F3850D12A7 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				F3FB1ABF1C83138AB2C23D36 /* OpaqApp.swift in Sources */,
+				24FC99398B546A147950E01A /* OpaqControlIntents.swift in Sources */,
 				9CBE7F79A153562936D20565 /* OpaqShortcuts.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		86D6354051CAB9CE40AEEF53 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = F7C55B954FBE3D24AE2EC63E /* OpaqControls */;
+			targetProxy = B4DD0A82205084129597DA84 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		07EBCFC61AA992BA04514D40 /* Debug */ = {
@@ -158,6 +267,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = iosApp/Opaq.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -173,6 +283,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app;
 				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) OPAQ_APP";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -232,6 +343,46 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		2A6D588193A1070ADEA44F2D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OpaqControls/OpaqControls.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = OpaqControls/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app.controls;
+				PRODUCT_NAME = OpaqControls;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		2BE0C750F6CC89EAF4FEE896 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = OpaqControls/OpaqControls.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				INFOPLIST_FILE = OpaqControls/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app.controls;
+				PRODUCT_NAME = OpaqControls;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -305,6 +456,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = iosApp/Opaq.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -320,6 +472,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = me.opaq.app;
 				PRODUCT_NAME = Opaq;
 				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) OPAQ_APP";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -327,6 +480,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		209B536D7D4DDFBD542C1042 /* Build configuration list for PBXNativeTarget "OpaqControls" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				2A6D588193A1070ADEA44F2D /* Debug */,
+				2BE0C750F6CC89EAF4FEE896 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		D1CC845746A79E7528205667 /* Build configuration list for PBXNativeTarget "Opaq" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
