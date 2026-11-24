@@ -96,22 +96,25 @@ class EngineTest {
     fun savedStatesGetDefaultRelayChangesOnce() = runTest {
         val store = MemoryStore()
         val a = engine(store)
-        val now = listOf("wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social")
+        val now = listOf("wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://relay.coinos.io", "wss://relay.angor.io")
         suspend fun savedAt(version: Int, relays: List<String>): Engine {
             a.setRelays(relays)
             store.data = store.data!!.replace(Regex("\"relayDefaultsVersion\":\\d+"), "\"relayDefaultsVersion\":$version")
             return engine(store)
         }
-        // Saved before offchain.pub was a default: gets it, then loses it with damus and nostr.mom (#165).
+        // Saved before offchain.pub was a default: gets it, then loses it with damus and nostr.mom (#165),
+        // and bitcoiner.social is swapped for angor.io.
         assertEquals(now, savedAt(0, listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://nostr.mom")).state.value.relays)
         // Saved with the previous defaults, plus a relay the user added themselves, which stays.
         val b = savedAt(1, listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://offchain.pub", "wss://my.relay"))
-        assertEquals(listOf("wss://nos.lol", "wss://relay.primal.net", "wss://my.relay", "wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social"), b.state.value.relays)
+        assertEquals(listOf("wss://nos.lol", "wss://relay.primal.net", "wss://my.relay", "wss://relay.snort.social", "wss://relay.coinos.io", "wss://relay.angor.io"), b.state.value.relays)
+        // Saved with bitcoiner.social as a default: swapped for angor.io.
+        assertEquals(now, savedAt(2, listOf("wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social")).state.value.relays)
         // Changing the list afterwards sticks: nothing is added or removed on the next launch.
         b.setRelays(listOf("wss://relay.damus.io", "wss://nos.lol"))
         assertEquals(listOf("wss://relay.damus.io", "wss://nos.lol"), engine(store).state.value.relays)
         // Someone who kept only relays that were removed gets the new defaults in their place.
-        assertEquals(listOf("wss://relay.snort.social", "wss://relay.coinos.io", "wss://nostr.bitcoiner.social"), savedAt(1, listOf("wss://relay.damus.io")).state.value.relays)
+        assertEquals(listOf("wss://relay.snort.social", "wss://relay.coinos.io", "wss://relay.angor.io"), savedAt(1, listOf("wss://relay.damus.io")).state.value.relays)
         // New installs start with the current defaults, and removing one there sticks too.
         val freshStore = MemoryStore()
         val c = engine(freshStore)

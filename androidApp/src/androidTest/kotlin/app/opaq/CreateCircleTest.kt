@@ -112,18 +112,25 @@ class CreateCircleTest {
         Thread.sleep(2_500)
     }
 
-    /** Closes the on-screen keyboard if it's showing (Back would otherwise leave the screen). */
-    /** Like [tapUntil], for a button found by its content description. */
+    /** Whether [label] is on screen, as a content description (icon buttons) or as text (list rows). */
+    private fun shows(label: String) = device.hasObject(By.desc(label)) || device.hasObject(By.text(label))
+
+    /**
+     * Like [tapUntil], for a button found by its content description. [expected] may be either a
+     * description or text: the circle picker's rows ("New circle", "Everyone") are plain text.
+     */
     private fun tapDescUntil(label: String, expected: String) {
         repeat(3) {
             dismissSystemDialogs()
             device.wait(Until.findObject(By.desc(label)), 10_000)?.click()
-            if (device.wait(Until.hasObject(By.desc(expected)), 10_000)) return
+            val until = System.currentTimeMillis() + 10_000
+            while (System.currentTimeMillis() < until) {
+                if (shows(expected)) return
+                Thread.sleep(250)
+            }
         }
-        device.wait(Until.findObject(By.desc(expected)), 1_000) ?: run {
-            logScreen()
-            error("\"$expected\" didn't appear")
-        }
+        logScreen()
+        error("\"$expected\" didn't appear")
     }
 
     /** Pinches the map several times, from the middle of the screen, to zoom far out. */
@@ -151,6 +158,15 @@ class CreateCircleTest {
                 list.scroll(if (up) androidx.test.uiautomator.Direction.UP else androidx.test.uiautomator.Direction.DOWN, 0.9f)
             }
             Thread.sleep(500)
+            // That scroll sometimes doesn't move the setup checklist at all (it missed "Open the map"
+            // 15 times in a row in CI), so also drag the middle of the screen like a finger would,
+            // well clear of both edges.
+            if (device.findObject(By.text(text)) == null) {
+                val x = device.displayWidth / 2
+                val (from, to) = (device.displayHeight * 0.65).toInt() to (device.displayHeight * 0.35).toInt()
+                if (up) device.swipe(x, to, x, from, 25) else device.swipe(x, from, x, to, 25)
+                Thread.sleep(500)
+            }
         }
         return waitFor(text, 2_000)
     }
@@ -285,7 +301,11 @@ class CreateCircleTest {
         zoomMapOut()
         tapDescUntil("Switch circle", expected = "Everyone")
         waitFor("Everyone").click()
-        waitFor("people from all your circles")
+        // "1 person from all your circles" or "N people …": the test's circles may hold just you.
+        device.wait(Until.findObject(By.textContains("from all your circles")), 20_000) ?: run {
+            logScreen()
+            error("Everyone's caption didn't appear within 20 s")
+        }
         Thread.sleep(3_000)
         shot("everyone")
         zoomMapOut()
