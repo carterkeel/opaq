@@ -14,7 +14,8 @@ android {
         // stays in the app.opaq package; only the installed id changes.
         applicationId = "me.opaq.app"
         minSdk = 26
-        targetSdk = 35
+        // Google Play needs at least 36 (Android 16) for new apps and updates.
+        targetSdk = 36
         // CI builds count up, so each new APK installs over the previous one.
         // A Play bundle sets both (play-bundle.yml); test builds use the CI run number.
         versionCode = providers.environmentVariable("OPAQ_VERSION_CODE").orNull?.toIntOrNull()
@@ -60,6 +61,9 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             if (uploadKeystore != null) signingConfig = signingConfigs.getByName("upload")
+            // Puts the native libraries' symbol tables in the bundle, so Play can show readable
+            // native crashes and ANRs (MapLibre and secp256k1 ship native code).
+            ndk { debugSymbolLevel = "SYMBOL_TABLE" }
         }
         // Optimised like the release but signed with the test key, so it installs anywhere.
         // Compose is much smoother in this build than in debug.
