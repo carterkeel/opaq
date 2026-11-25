@@ -172,6 +172,11 @@ internal fun MapOverlayScope.PeopleOverlay(
     var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     val nowMs = maxOf(clock.elapsedNow().inWholeMilliseconds, tick)
     handoffs.keys.retainAll(spotOf.keys)
+    // A jump rather than a zoom (another circle or Everyone, or the camera flying somewhere): any
+    // handover under way finishes at once, rather than racing across the screen to catch up.
+    val lastZoom = androidx.compose.runtime.remember { doubleArrayOf(zoom) }
+    if (kotlin.math.abs(zoom - lastZoom[0]) > 0.75) handoffs.replaceAll { _, h -> h.copy(start = Long.MIN_VALUE / 2) }
+    lastZoom[0] = zoom
     // Your stack on top, then the rest in a steady order.
     val ordered = groups.sortedBy { g -> if (g.any { it.kind == MapMarker.Kind.ME }) 1 else 0 }
     val drawn = mutableListOf<FaceHit>()
@@ -200,7 +205,13 @@ internal fun MapOverlayScope.PeopleOverlay(
                 members.forEach { id ->
                     val h = handoffs[id]
                     if (h == null) handoffs[id] = Handoff(carrier, carrier, members, members, pin, pin, Long.MIN_VALUE / 2)
-                    else if (h.to != carrier || h.toPin != pin || h.toPeople != members) handoffs[id] = Handoff(h.to, carrier, h.toPeople, members, h.toPin, pin, nowMs)
+                    else if (h.to != carrier || h.toPin != pin || h.toPeople != members) {
+                        // Only a short slide between faces close together; anything farther (a
+                        // different circle, a face that was far away) moves at once.
+                        val was = faceFrom(h.to, ax, ay)
+                        val near = was != null && (was - (faceFrom(carrier, ax, ay) ?: was)).getDistance() < HANDOFF_REACH_DP
+                        handoffs[id] = Handoff(h.to, carrier, h.toPeople, members, h.toPin, pin, if (near) nowMs else Long.MIN_VALUE / 2)
+                    }
                 }
                 val h = handoffs.getValue(members.first())
                 val e = h.progress(nowMs)
@@ -271,6 +282,9 @@ internal fun MapOverlayScope.PeopleOverlay(
 
 /** How long a pointer takes to move from one face to another. */
 private const val HANDOFF_MILLIS = 350L
+
+/** A pointer slides between faces at most this far apart, in dp; farther, it moves at once. */
+private const val HANDOFF_REACH_DP = 120f
 
 /**
  * A pointer moving from face [from] (pointing at [fromPeople]'s spot, [fromPin] wide) to face [to]
