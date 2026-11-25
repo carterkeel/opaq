@@ -42,6 +42,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
 
+      # AGP needs the NDK's tools to strip the native libraries and extract their debug symbols
+      # for Play; the version is the one pinned in androidApp/build.gradle.kts.
+      - name: Install the NDK
+        run: |
+          ndk=$(sed -n 's/^ *ndkVersion = "\(.*\)"/\1/p' androidApp/build.gradle.kts)
+          [ -n "$ndk" ] || { echo "::error::No ndkVersion in androidApp/build.gradle.kts"; exit 1; }
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          ls "$ANDROID_HOME/ndk"
+
       - name: Unit tests (crypto and protocol)
         run: ./gradlew :shared:testAndroidHostTest --warning-mode all --stacktrace
 
@@ -70,7 +79,12 @@ jobs:
           export OPAQ_VERSION_NAME="$VERSION_NAME"
           export OPAQ_VERSION_CODE="${VERSION_CODE:-$((GITHUB_RUN_NUMBER + 100))}"
           echo "Building $OPAQ_VERSION_NAME ($OPAQ_VERSION_CODE)"
-          ./gradlew :androidApp:bundleRelease --warning-mode all --stacktrace
+          ./gradlew :androidApp:bundleRelease --warning-mode all --stacktrace 2>&1 | tee "$RUNNER_TEMP/bundle.log"
+          # Without the NDK's tools AGP only warns, and Play then says the bundle has no debug symbols.
+          if grep -q "Unable to strip" "$RUNNER_TEMP/bundle.log"; then
+            echo "::error::AGP couldn't strip the native libraries, so the bundle has no native debug symbols."
+            exit 1
+          fi
 
       # Fails unless the bundle is signed; prints only the certificate's SHA-256 fingerprint, to
       # match with the upload certificate in Play Console. Not its owner fields: this repo's
@@ -81,6 +95,14 @@ jobs:
           jarsigner -verify "$aab" | tail -n 3
           jarsigner -verify "$aab" | grep -q "jar verified"
           keytool -printcert -jarfile "$aab" | grep -E "SHA256:" | head -1
+
+      # Play reads native debug symbols from this folder in the bundle; without it, it warns.
+      - name: Check the bundle has native debug symbols
+        run: |
+          aab=$(ls androidApp/build/outputs/bundle/release/*.aab)
+          unzip -l "$aab" | grep "BUNDLE-METADATA/com.android.tools.build.debugsymbols/" | awk '{print $1, $4}'
+          unzip -l "$aab" | grep -q "BUNDLE-METADATA/com.android.tools.build.debugsymbols/.*\.so\.sym" \
+            || { echo "::error::The bundle has no native debug symbols."; exit 1; }
 
       - name: Upload the bundle
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

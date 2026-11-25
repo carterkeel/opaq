@@ -8,6 +8,11 @@ plugins {
 android {
     namespace = "app.opaq"
     compileSdk = 37
+    // The NDK isn't used to compile anything: AGP uses its tools to strip the native libraries and
+    // to pull out their symbol tables for Play. Pinned so CI can install exactly this one
+    // (play-bundle.yml reads it from here). Without it the libraries ship unstripped and Play
+    // warns that the bundle has no native debug symbols.
+    ndkVersion = "28.2.13676358"
 
     defaultConfig {
         // The id the app is listed under on Google Play (the App Store uses the same one). The code
