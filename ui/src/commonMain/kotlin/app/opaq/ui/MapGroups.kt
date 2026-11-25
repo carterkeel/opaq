@@ -6,8 +6,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
@@ -148,8 +146,9 @@ internal fun hexColor(hex: String): Color =
  * shape. A pointer's tip is the spot. While faces glide into or out of a stack, their pointers
  * stretch along with them.
  *
- * [faces] gives each face's centre relative to its own person's spot, in dp, at [zoom]. Tapping a
- * person on their own calls [onPerson]; tapping a stack calls [onGroup] with everyone in it.
+ * [faces] gives each face's centre relative to its own person's spot, in dp, at [zoom]. The faces
+ * take no touches, so a pinch or drag that starts on one still moves the map; [hits] keeps where
+ * each face is drawn so the map's own tap can be matched to it.
  */
 @Composable
 internal fun MapOverlayScope.PeopleOverlay(
@@ -158,8 +157,7 @@ internal fun MapOverlayScope.PeopleOverlay(
     painters: Map<String, Painter>,
     keyOf: (MapMarker) -> String,
     zoom: Double,
-    onPerson: (String) -> Unit,
-    onGroup: (List<String>) -> Unit,
+    hits: FaceHits,
 ) {
     val byId = faces.associateBy { it.marker.id }
     val world = 512.0 * kotlin.math.exp(zoom * kotlin.math.ln(2.0))
@@ -176,6 +174,7 @@ internal fun MapOverlayScope.PeopleOverlay(
     handoffs.keys.retainAll(spotOf.keys)
     // Your stack on top, then the rest in a steady order.
     val ordered = groups.sortedBy { g -> if (g.any { it.kind == MapMarker.Kind.ME }) 1 else 0 }
+    val drawn = mutableListOf<FaceHit>()
     ordered.forEach { g ->
         val anchor = g.first()
         androidx.compose.runtime.key(anchor.id) {
@@ -220,20 +219,11 @@ internal fun MapOverlayScope.PeopleOverlay(
             val top = (-(centres.minOf { it.y }.takeIf { it.isFinite() } ?: 0f)).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
             val faceOrder = g.indices.sortedBy { byId[g[it].id]?.order ?: 0 }
             val ids = g.map { it.id }
-            // The tap handler outlives this composition, so it reads the latest positions.
-            val hitCentres by androidx.compose.runtime.rememberUpdatedState(centres)
-            val hitOrder by androidx.compose.runtime.rememberUpdatedState(faceOrder)
+            faceOrder.forEach { i -> drawn += FaceHit(anchor.lat, anchor.lon, centres[i], g[i].id, if (g.size > 1) ids else null) }
             Box(
                 Modifier
                     .placedAt(org.maplibre.spatialk.geojson.Position(anchor.lon, anchor.lat), Alignment.BottomCenter)
                     .size((half * 2).dp, top.coerceAtLeast(1f).dp)
-                    .pointerInput(ids) {
-                        detectTapGestures { p ->
-                            val at = Offset(p.x - size.width / 2f, p.y - size.height) / density
-                            val hit = hitOrder.reversed().firstOrNull { (hitCentres.getOrNull(it)?.let { c -> (c - at).getDistance() } ?: Float.MAX_VALUE) <= FACE_DP / 2 + 4 }
-                            if (hit != null) { if (g.size > 1) onGroup(ids) else onPerson(g[hit].id) }
-                        }
-                    }
                     .drawBehind {
                         translate(size.width / 2f, size.height) {
                             val u = density
@@ -267,6 +257,7 @@ internal fun MapOverlayScope.PeopleOverlay(
             )
         }
     }
+    hits.targets = drawn
     // Keep redrawing while a pointer is handing over from one face to another.
     if (handoffs.values.any { it.progress(nowMs) < 1f }) {
         androidx.compose.runtime.LaunchedEffect(handoffs.values.maxOf { it.start }) {
@@ -302,3 +293,20 @@ private data class Handoff(
 }
 
 private fun mix(a: Offset, b: Offset, e: Float) = Offset(a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e)
+
+/** A face as drawn: its stack's spot ([lat], [lon]), its centre in dp from there, who it is, and its stack. */
+internal data class FaceHit(val lat: Double, val lon: Double, val centre: Offset, val id: String, val group: List<String>?)
+
+/** Where the faces are drawn, front last, so a tap on the map can be matched to one. */
+internal class FaceHits {
+    var targets: List<FaceHit> = emptyList()
+
+    /** The front face under [at] (screen dp), using [screen] to find a spot on screen. */
+    fun at(at: androidx.compose.ui.unit.DpOffset, screen: (lat: Double, lon: Double) -> androidx.compose.ui.unit.DpOffset?): FaceHit? =
+        targets.asReversed().firstOrNull { t ->
+            val spot = screen(t.lat, t.lon) ?: return@firstOrNull false
+            val dx = spot.x.value + t.centre.x - at.x.value
+            val dy = spot.y.value + t.centre.y - at.y.value
+            dx * dx + dy * dy <= (FACE_DP / 2 + 4) * (FACE_DP / 2 + 4)
+        }
+}

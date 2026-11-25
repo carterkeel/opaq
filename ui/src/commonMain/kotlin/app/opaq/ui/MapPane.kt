@@ -199,6 +199,27 @@ fun MapPane(
     val placesGeo = remember(places) { placesToGeoJson(places) }
     // People sharing only roughly where they are (#157): the area they could be anywhere in.
     val roughGeo = remember(shown.map { Triple(it.id, it.location?.precision, it.lat to it.lon) }) { approximateAreasToGeoJson(shown) }
+    // Faces are drawn over the map but take no touches themselves, so a pinch or drag that starts on
+    // a face still moves the map. A tap is matched to a face here instead.
+    val hits = remember { FaceHits() }
+    val mapRef = remember { arrayOfNulls<org.maplibre.compose.map.MapState>(1) }
+    val peopleInteractions = remember {
+        MapInteractions(MapInteractions.Standard) {
+            camera { rotate { enabled = false } }
+            callbacks {
+                click {
+                    onEvent { e ->
+                        val hit = mapRef[0]?.let { state -> hits.at(e.screenOffset) { lat, lon -> state.screenLocationFromPosition(Position(lon, lat)) } }
+                        when {
+                            hit == null -> ClickResult.Pass
+                            hit.group != null -> { onGroup(hit.group); ClickResult.Consume }
+                            else -> { onPerson(hit.id); ClickResult.Consume }
+                        }
+                    }
+                }
+            }
+        }
+    }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val rough = rememberGeoJsonSource(GeoJsonData.JsonString(roughGeo))
         FillLayer(id = "rough-fill", source = rough, color = feature["color"].convertToColor(), opacity = const(0.10f))
@@ -225,6 +246,7 @@ fun MapPane(
             textHaloWidth = const(1.5.dp),
         )
     }
+    mapRef[0] = mapState
 
     // Regroup every half zoom level, as the map zooms.
     LaunchedEffect(mapState) {
@@ -278,9 +300,9 @@ fun MapPane(
             state = mapState,
             viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
             cameraConstraints = worldFills(maxHeight),
-            interactions = Interactions,
+            interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
-            overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, onPerson, onGroup) },
+            overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits) },
         )
     }
 }
