@@ -298,6 +298,8 @@ fun MapPane(
                 }
             }
         }
+        val boxWidth = maxWidth
+        val boxHeight = maxHeight
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
@@ -309,7 +311,7 @@ fun MapPane(
             interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
             overlay = {
-                WorldEdges(darkMap, mapState.cameraPosition.center.longitude, maxWidth, maxHeight)
+                WorldEdges(darkMap, mapState.cameraPosition.center.longitude, boxWidth, boxHeight)
                 PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits)
             },
         )

@@ -187,6 +187,43 @@ internal fun MapOverlayScope.PeopleOverlay(
     popping.keys.retainAll(spotOf.keys)
     popping.entries.removeAll { nowMs - it.value > POP_MILLIS }
     fun pop(id: String): Float = popping[id]?.let { popScale(((nowMs - it).toFloat() / POP_MILLIS).coerceIn(0f, 1f)) } ?: 1f
+    // People who just left the map (not in the circle switched to) shrink away one after another,
+    // drawn where they last were.
+    val lastSeen = androidx.compose.runtime.remember { HashMap<String, Pair<StackedFace, Painter?>>() }
+    val leaving = androidx.compose.runtime.remember { HashMap<String, Leaving>() }
+    lastSeen.keys.filter { it !in spotOf }.sortedBy { mercatorOf(lastSeen.getValue(it).first.marker.lat, lastSeen.getValue(it).first.marker.lon).first }
+        .forEachIndexed { k, id -> lastSeen.getValue(id).let { (f, p) -> leaving[id] = Leaving(f, p, nowMs + k * POP_STAGGER_MILLIS) } }
+    leaving.keys.removeAll(spotOf.keys)
+    leaving.entries.removeAll { nowMs - it.value.start > POP_MILLIS }
+    lastSeen.clear()
+    faces.forEach { f -> lastSeen[f.marker.id] = f to painters[keyOf(f.marker)] }
+    leaving.forEach { (id, l) ->
+        androidx.compose.runtime.key("leaving-$id") {
+            val f = ((nowMs - l.start).toFloat() / POP_MILLIS).coerceIn(0f, 1f)
+            val s = 1f - f * f
+            val centre = Offset(l.face.dx.toFloat(), l.face.dy.toFloat())
+            val half = kotlin.math.abs(centre.x).coerceAtMost(MAX_REACH_DP) + FACE_DP / 2 + 2
+            val top = (-centre.y).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
+            Box(
+                Modifier
+                    .placedAt(org.maplibre.spatialk.geojson.Position(l.face.marker.lon, l.face.marker.lat), Alignment.BottomCenter)
+                    .size((half * 2).dp, top.dp)
+                    .drawBehind {
+                        if (s <= 0f) return@drawBehind
+                        translate(size.width / 2f, size.height) {
+                            val u = density
+                            val c = centre * u
+                            val baseY = c.y + (FACE_DP / 2 - PIN_OVERLAP_DP) * u
+                            val w = SINGLE_PIN.widthDp * u
+                            drawPath(Path().apply { moveTo(c.x - w / 2, baseY); lineTo(c.x + w / 2, baseY); lineTo(0f, 0f); close() }, Color.White.copy(alpha = s))
+                            val painter = l.painter ?: return@translate
+                            val side = FACE_DP * u * s
+                            translate(c.x - side / 2, c.y - side / 2) { with(painter) { draw(Size(side, side), alpha = s) } }
+                        }
+                    },
+            )
+        }
+    }
     // Your stack on top, then the rest in a steady order.
     val ordered = groups.sortedBy { g -> if (g.any { it.kind == MapMarker.Kind.ME }) 1 else 0 }
     val drawn = mutableListOf<FaceHit>()
@@ -287,9 +324,9 @@ internal fun MapOverlayScope.PeopleOverlay(
     }
     hits.targets = drawn
     // Keep redrawing while a pointer is handing over from one face to another, or faces pop in.
-    fun busy(now: Long) = handoffs.values.any { it.progress(now) < 1f } || popping.values.any { now - it <= POP_MILLIS }
+    fun busy(now: Long) = handoffs.values.any { it.progress(now) < 1f } || popping.values.any { now - it <= POP_MILLIS } || leaving.values.any { now - it.start <= POP_MILLIS }
     if (busy(nowMs)) {
-        androidx.compose.runtime.LaunchedEffect(maxOf(handoffs.values.maxOfOrNull { it.start } ?: 0L, popping.values.maxOrNull() ?: 0L)) {
+        androidx.compose.runtime.LaunchedEffect(maxOf(handoffs.values.maxOfOrNull { it.start } ?: 0L, popping.values.maxOrNull() ?: 0L, leaving.values.maxOfOrNull { it.start } ?: 0L)) {
             while (busy(clock.elapsedNow().inWholeMilliseconds)) {
                 androidx.compose.runtime.withFrameMillis { tick = clock.elapsedNow().inWholeMilliseconds }
             }
@@ -298,7 +335,10 @@ internal fun MapOverlayScope.PeopleOverlay(
     }
 }
 
-/** How long a face takes to pop in, and the gap between one face and the next. */
+/** Someone who just left the map: their face as last drawn, its picture, and when it starts shrinking away. */
+private class Leaving(val face: StackedFace, val painter: Painter?, val start: Long)
+
+/** How long a face takes to pop in or out, and the gap between one face and the next. */
 private const val POP_MILLIS = 280L
 private const val POP_STAGGER_MILLIS = 45L
 
