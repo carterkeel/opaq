@@ -57,14 +57,20 @@ class StoreScreenshots {
         const val ME_LAT = 37.75960
         const val ME_LON = -122.42690
 
-        // Sam's drive: up Valencia Street, then along Market Street towards the Ferry Building.
+        // Sam's drive: from home along 24th Street, then up Valencia Street.
         val DRIVE = listOf(
+            37.75160 to -122.43000, // 24th & Sanchez (home)
             37.75222 to -122.42063, // Valencia & 24th
             37.76505 to -122.42188, // Valencia & 16th
-            37.77235 to -122.42250, // Valencia & Market
-            37.77525 to -122.41930, // Market & Van Ness
-            37.78395 to -122.40780, // Market & 5th
+            37.76800 to -122.42215, // Valencia & 14th
         )
+
+        /**
+         * Moving people's updates are stamped this far ahead, so they still read "Driving · 25 mph ·
+         * just now" when the pictures are taken a minute or two after [seed] (an update over 50 s
+         * old reads "Was driving"). The app treats a future time as just now and doesn't move them.
+         */
+        const val AHEAD = 150L
     }
 
     @Test
@@ -89,20 +95,21 @@ class StoreScreenshots {
         val leo = KeyPair.generate().publicHex
         val nora = KeyPair.generate().publicHex
 
-        // Sam's drive: a point every 10 s at about 11 m/s (25 mph), ending at Market & 5th.
+        // Sam's drive: a point every 10 s at about 11 m/s (25 mph), ending at Valencia & 14th.
         val path = drivePoints(end = now - 15, stepSeconds = 10, metersPerSecond = 11.0)
         val last = path.last()
         val heading = bearing(path[path.size - 2], last)
+        val live = path.map { it.copy(t = it.t + 15 + AHEAD) }
 
         val locations = mapOf(
             me to MemberLocation(ME_LAT, ME_LON, 6f, activity = Activity.STILL, battery = 86, time = now - 20),
             sam to MemberLocation(
                 last.lat, last.lon, 5f, speed = 11.2f, heading = heading.toFloat(), activity = Activity.DRIVING,
-                battery = 72, time = last.t, points = path.dropLast(1).takeLast(6),
+                battery = 72, time = live.last().t, points = live.dropLast(1).takeLast(6),
             ),
-            // Maya and Leo together at a café on Valencia Street: drawn as one stack.
-            maya to MemberLocation(37.75870, -122.42150, 8f, activity = Activity.STILL, battery = 64, time = now - 95),
-            leo to MemberLocation(37.75885, -122.42132, 10f, speed = 1.3f, activity = Activity.WALKING, battery = 15, time = now - 40),
+            // Maya and Leo together near Mission & 24th: drawn as one stack.
+            maya to MemberLocation(37.75215, -122.41850, 8f, activity = Activity.STILL, battery = 64, time = now - 95),
+            leo to MemberLocation(37.75232, -122.41828, 10f, speed = 1.3f, activity = Activity.WALKING, battery = 15, time = now + AHEAD),
             // Nora shares an approximate location with this circle.
             nora to LocationPrecision.apply(
                 MemberLocation(37.75020, -122.43370, 12f, activity = Activity.STILL, battery = 91, time = now - 240),
@@ -133,7 +140,7 @@ class StoreScreenshots {
         // Sam's history for today: at home in the morning, then the drive.
         val history = LocationHistory(FileHistory(context))
         val key = historyKey.hexToBytes()
-        val home = 37.75100 to -122.42800
+        val home = DRIVE.first()
         for (i in 0..6) {
             history.record(key, sam, MemberLocation(home.first, home.second, 8f, activity = Activity.STILL, time = path.first().t - 3_000 + i * 400L))
         }
@@ -158,8 +165,29 @@ class StoreScreenshots {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
         waitFor("Sam", 40_000)
-        Thread.sleep(12_000) // map tiles
+        Thread.sleep(10_000) // map tiles
         shot("map")
+
+        // Dark mode with the dark map, then the quick menu on Maya's row.
+        darkMap(true)
+        device.executeShellCommand("cmd uimode night yes")
+        Thread.sleep(3_000)
+        waitFor("Sam")
+        Thread.sleep(6_000)
+        shot("dark-map")
+        // Pull the people sheet up so everyone's row shows.
+        val handleY = waitFor("Family", 5_000).visibleBounds.top - 40
+        device.swipe(device.displayWidth / 2, handleY, device.displayWidth / 2, device.displayHeight / 3, 40)
+        Thread.sleep(1_500)
+        waitFor("Maya").longClick()
+        Thread.sleep(1_500)
+        shot("dark-menu")
+        // Tapping elsewhere closes it (Back on the map could leave the app).
+        device.click(device.displayWidth / 2, device.displayHeight / 6)
+        Thread.sleep(500)
+        device.executeShellCommand("cmd uimode night no")
+        Thread.sleep(3_000)
+        darkMap(false)
 
         // Sam's profile, from the info button on his row.
         profileButtonFor("Sam").click()
@@ -184,18 +212,20 @@ class StoreScreenshots {
         shot("invite")
         device.pressBack()
         waitFor("Invite")
+    }
 
-        // Dark mode: the map, then the quick menu on someone's row.
-        device.executeShellCommand("cmd uimode night yes")
-        Thread.sleep(4_000)
-        waitFor("Sam")
-        Thread.sleep(8_000)
-        shot("dark-map")
-        waitFor("Maya").longClick()
-        Thread.sleep(1_500)
-        shot("dark-menu")
+    /** Settings → Appearance → Dark map, then back to the map. */
+    private fun darkMap(on: Boolean) {
+        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+        waitFor("Appearance").click()
+        val row = waitFor("Dark map")
+        val switch = device.findObjects(By.checkable(true)).minByOrNull { kotlin.math.abs(it.visibleBounds.centerY() - row.visibleBounds.centerY()) }
+        if (switch == null || switch.isChecked != on) row.click()
+        Thread.sleep(800)
         device.pressBack()
-        device.executeShellCommand("cmd uimode night no")
+        waitFor("Appearance")
+        device.pressBack()
+        waitFor("Invite")
     }
 
     private fun drivePoints(end: Long, stepSeconds: Long, metersPerSecond: Double): List<Point> {
