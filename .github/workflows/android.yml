@@ -1,8 +1,8 @@
 name: Android
 
-# Every push runs the tests and compiles the app, including pushes to pull request branches.
-# The APKs (and the emulator test that installs one) are only built for main, which a merge
-# pushes to, or when the workflow is run by hand from the Actions tab on any branch.
+# Every push runs the tests and compiles the app, including pushes to main and to pull request
+# branches. The APKs (and the emulator test that installs one) are only built when the workflow
+# is run by hand: Actions → Android → Run workflow, on any branch.
 # (A separate pull_request trigger would build the same code twice and race for the log.)
 on:
   push:
@@ -24,8 +24,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      # true on main and on manual runs: build, check and upload the APKs and run the emulator test.
-      APKS: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+      # true only on manual runs: build, check and upload the APKs and run the emulator test.
+      APKS: ${{ github.event_name == 'workflow_dispatch' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
