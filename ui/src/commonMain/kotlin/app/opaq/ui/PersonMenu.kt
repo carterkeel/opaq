@@ -97,12 +97,18 @@ fun PersonMenu(state: AppState, me: String, circleId: String, pubkey: String, ac
 
     // Shown while opening, and kept while it shrinks away after closing.
     val shown = remember { MutableTransitionState(false) }
-    var lastAt by remember { mutableStateOf(Offset.Zero) }
-    if (at != null) lastAt = at
     LaunchedEffect(at != null) { shown.targetState = at != null }
     if (shown.currentState || shown.targetState) {
-        var origin by remember { mutableStateOf(TransformOrigin(0f, 0f)) }
-        val position = remember(lastAt) { NearPress(lastAt) { origin = it } }
+        // Below the row (above it when there's no room), so the name and picture stay in view,
+        // with an arrow in the menu's edge pointing at their picture.
+        var below by remember { mutableStateOf(true) }
+        var arrowX by remember { mutableStateOf(0f) }
+        var width by remember { mutableStateOf(1f) }
+        val origin = TransformOrigin(arrowX / width, if (below) 0f else 1f)
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val position = remember(density) {
+            BesideRow(with(density) { PICTURE_CENTRE.roundToPx() }, with(density) { ARROW_INSET.roundToPx() }) { b, x, w -> below = b; arrowX = x; width = w }
+        }
         Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
             AnimatedVisibility(
                 visibleState = shown,
@@ -111,13 +117,13 @@ fun PersonMenu(state: AppState, me: String, circleId: String, pubkey: String, ac
                 exit = scaleOut(tween(130), targetScale = 0.85f, transformOrigin = origin) + fadeOut(tween(130)),
             ) {
                 Surface(
-                    shape = RoundedCornerShape(18.dp),
+                    shape = remember(below, arrowX) { Bubble(below, arrowX) },
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 3.dp,
                     shadowElevation = 10.dp,
                     modifier = Modifier.widthIn(min = 232.dp, max = 300.dp),
                 ) {
-                    Column(Modifier.padding(vertical = 6.dp)) {
+                    Column(Modifier.padding(top = if (below) ARROW_HEIGHT + 6.dp else 6.dp, bottom = if (below) 6.dp else ARROW_HEIGHT + 6.dp)) {
                         val why = cantAskBecause(info.name, loc, now)
                         MenuItem(
                             "Ask for their location",
@@ -178,20 +184,57 @@ private fun MenuItem(
 }
 
 /**
- * Puts the menu's corner at the finger ([at], inside the row), below it, or above it when there's
- * no room below, and keeps it on screen. Tells [onOrigin] which corner that is, so it grows from
- * the finger.
+ * Where a person's picture is across their row, and the arrow's size. The popup's anchor is the
+ * row's content, inside its 24 dp gutter, so a 48 dp picture's middle is 24 dp in.
  */
-private class NearPress(private val at: Offset, private val onOrigin: (TransformOrigin) -> Unit) : PopupPositionProvider {
+private val PICTURE_CENTRE = 24.dp
+private val ARROW_INSET = 30.dp
+private val ARROW_HEIGHT = 9.dp
+private val ARROW_WIDTH = 20.dp
+
+/**
+ * Puts the menu just below the row it belongs to, or just above it when there's no room below,
+ * with its arrow over the person's picture, kept on screen. Tells [onPlaced] which way it went,
+ * where the arrow is across the menu and how wide the menu is (pixels), so the arrow is drawn there
+ * and the menu grows from it.
+ */
+private class BesideRow(
+    private val pictureX: Int,
+    private val arrowInset: Int,
+    private val onPlaced: (below: Boolean, arrowX: Float, width: Float) -> Unit,
+) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         val margin = (windowSize.width * 0.03f).toInt().coerceAtLeast(16)
-        val fx = anchorBounds.left + at.x.toInt()
-        val fy = anchorBounds.top + at.y.toInt()
-        val below = fy + popupContentSize.height + margin <= windowSize.height
-        val left = fx + popupContentSize.width + margin <= windowSize.width
-        val x = (if (left) fx else fx - popupContentSize.width).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
-        val y = (if (below) fy else fy - popupContentSize.height).coerceIn(margin, (windowSize.height - popupContentSize.height - margin).coerceAtLeast(margin))
-        onOrigin(TransformOrigin(if (left) 0f else 1f, if (below) 0f else 1f))
-        return IntOffset(x, y)
+        val pointAt = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left + pictureX else anchorBounds.right - pictureX
+        val below = anchorBounds.bottom + popupContentSize.height + margin <= windowSize.height
+        val x = (pointAt - arrowInset).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
+        val y = if (below) anchorBounds.bottom else anchorBounds.top - popupContentSize.height
+        onPlaced(below, (pointAt - x).toFloat().coerceIn(0f, popupContentSize.width.toFloat()), popupContentSize.width.toFloat().coerceAtLeast(1f))
+        return IntOffset(x, y.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)))
+    }
+}
+
+/**
+ * The menu's outline: a rounded card with an arrow in its top edge ([below]) or bottom edge,
+ * [arrowX] pixels across, as one shape so the shadow goes round both.
+ */
+private class Bubble(private val below: Boolean, private val arrowX: Float) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: LayoutDirection, density: Density): androidx.compose.ui.graphics.Outline {
+        val h = with(density) { ARROW_HEIGHT.toPx() }
+        val w = with(density) { ARROW_WIDTH.toPx() }
+        val r = with(density) { 18.dp.toPx() }
+        val top = if (below) h else 0f
+        val bottom = if (below) size.height else size.height - h
+        val card = androidx.compose.ui.graphics.Path().apply {
+            addRoundRect(androidx.compose.ui.geometry.RoundRect(0f, top, size.width, bottom, androidx.compose.ui.geometry.CornerRadius(r)))
+        }
+        val x = arrowX.coerceIn(r + w / 2, (size.width - r - w / 2).coerceAtLeast(r + w / 2))
+        val arrow = androidx.compose.ui.graphics.Path().apply {
+            if (below) { moveTo(x - w / 2, top + 1); lineTo(x, 0f); lineTo(x + w / 2, top + 1) } else { moveTo(x - w / 2, bottom - 1); lineTo(x, size.height); lineTo(x + w / 2, bottom - 1) }
+            close()
+        }
+        val both = androidx.compose.ui.graphics.Path()
+        both.op(card, arrow, androidx.compose.ui.graphics.PathOperation.Union)
+        return androidx.compose.ui.graphics.Outline.Generic(both)
     }
 }
