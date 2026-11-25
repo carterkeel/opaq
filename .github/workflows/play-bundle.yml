@@ -48,7 +48,11 @@ jobs:
         run: |
           ndk=$(sed -n 's/^ *ndkVersion = "\(.*\)"/\1/p' androidApp/build.gradle.kts)
           [ -n "$ndk" ] || { echo "::error::No ndkVersion in androidApp/build.gradle.kts"; exit 1; }
+          # `yes` dies of a broken pipe when sdkmanager stops reading; without pipefail the
+          # pipeline's result is sdkmanager's own.
+          set +o pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ndk" > /dev/null
+          set -o pipefail
           ls "$ANDROID_HOME/ndk"
 
       - name: Unit tests (crypto and protocol)
