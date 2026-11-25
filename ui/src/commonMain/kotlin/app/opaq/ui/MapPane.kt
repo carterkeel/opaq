@@ -308,7 +308,10 @@ fun MapPane(
             cameraConstraints = worldFills(maxHeight + bottomInset),
             interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
-            overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits) },
+            overlay = {
+                WorldEdges(darkMap, mapState.cameraPosition.center.longitude, maxWidth, maxHeight)
+                PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits)
+            },
         )
     }
 }
