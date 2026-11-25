@@ -1,0 +1,74 @@
+name: Store screenshots
+
+# Google Play screenshots, made by hand: Actions → Store screenshots → Run workflow.
+# Runs androidTest/StoreScreenshots.kt on an emulator with made-up people (ci/store-screenshots.sh)
+# and saves 1080 x 1920 PNGs as the opaq-store-screenshots artifact and on the store-screenshots
+# branch (force-pushed, latest run only).
+on:
+  workflow_dispatch:
+  push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
+    branches: [store-listing]
+
+# Write access is only for pushing the screenshots to the store-screenshots branch.
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+
+      - name: Enable KVM for the emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Take the screenshots on an emulator
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: ./ci/store-screenshots.sh
+
+      - name: Upload the screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: opaq-store-screenshots
+          path: store-screens/*.png
+          if-no-files-found: warn
+
+      # Also on a branch, so they can be fetched with git. Made-up data only.
+      - name: Push the screenshots to the store-screenshots branch
+        if: always()
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          out=$(mktemp -d)
+          mkdir -p "$out/screens"
+          cp store-screens/*.png "$out/screens/" 2>/dev/null || true
+          { echo "Run ${GITHUB_RUN_ID} on ${GITHUB_REF_NAME} (${GITHUB_SHA})"
+            grep -nE "FATAL EXCEPTION|AndroidRuntime|OpaqStore|Exception" store-logcat.txt 2>/dev/null | head -80 || true
+          } > "$out/log.txt"
+          cd "$out"
+          git init -q -b store-screenshots
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Store screenshots from run ${GITHUB_RUN_ID}"
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" store-screenshots

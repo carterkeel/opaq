@@ -110,4 +110,6 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.test.uiautomator)
+    // Store screenshots (StoreScreenshots.kt) write made-up saved state.
+    androidTestImplementation(libs.kotlinx.serialization.json)
 }
