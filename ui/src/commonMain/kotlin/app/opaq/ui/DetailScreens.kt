@@ -263,13 +263,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         // and they see nothing but their location going out, so it only works while they're online,
         // sharing with this circle and sharing exactly; and only once their update is 5 minutes old.
         if (!isMe && circle.confirmed) {
-            val age = loc?.let { now - it.time }
-            val why = when {
-                loc?.status == MemberLocation.PAUSED -> "${info.name} paused sharing, so their phone won't answer"
-                loc?.precision == Precision.NEIGHBORHOOD || loc?.precision == Precision.CITY -> "${info.name} shares only roughly where they are, so their phone won't answer"
-                age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 5 minutes old"
-                else -> null
-            }
+            val why = cantAskBecause(info.name, loc, now)
             SettingsRow(
                 "Ask for their location",
                 why ?: "Their phone sends a fresh update if it's online",
@@ -344,42 +338,7 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
         }
     }
 
-    if (directions && loc != null) {
-        ModalBottomSheet(onDismissRequest = { directions = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-            Text("Directions to ${info.name}", style = MaterialTheme.typography.titleMedium, modifier = Gutter)
-            Caption(
-                "Directions go to where they were at their last update. The map app you pick will see the destination.",
-                Gutter.padding(top = 4.dp, bottom = 8.dp),
-            )
-            platform.directionsApps.forEach { app ->
-                // The app's own icon where the phone lets us read it; otherwise a turn arrow for
-                // Google Maps and a folded map for any other app, so the rows never look alike.
-                val appIcon = remember(app) { platform.directionsAppIcon(app) }
-                Row(
-                    Modifier.fillMaxWidth().clickable {
-                        directions = false
-                        platform.openDirections(app, loc.lat, loc.lon, info.name)
-                    }.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
-                        if (appIcon != null) {
-                            Image(appIcon, contentDescription = null, modifier = Modifier.requiredSize(30.dp))
-                        } else {
-                            Icon(
-                                if ("Google" in app) AppIcons.Directions else AppIcons.Map,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
-                    Spacer(Modifier.width(24.dp))
-                    Text(app, style = MaterialTheme.typography.bodyLarge)
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-        }
-    }
+    if (directions && loc != null) DirectionsSheet(info.name, loc) { directions = false }
     if (renaming) {
         TextSheet("Rename", "Name shown on your phone", contact?.label ?: published, "Save", { renaming = false }) {
             actions.setLabel(pubkey, it); renaming = false
@@ -1216,3 +1175,59 @@ fun RestoreScreen(actions: Actions, onBack: () -> Unit, onRestored: () -> Unit) 
 const val PRIVACY_URL = "https://opaq.me/privacy"
 const val TERMS_URL = "https://opaq.me/terms"
 const val REPORT_URL = "https://opaq.me/report"
+
+/**
+ * Why you can't ask [name]'s phone for their location now ([loc] is their latest update), or null
+ * if you can (#149): their phone answers only while sharing exactly, and only once their update
+ * is 5 minutes old.
+ */
+internal fun cantAskBecause(name: String, loc: MemberLocation?, now: Long): String? {
+    val age = loc?.let { now - it.time }
+    return when {
+        loc?.status == MemberLocation.PAUSED -> "$name paused sharing, so their phone won't answer"
+        loc?.precision == Precision.NEIGHBORHOOD || loc?.precision == Precision.CITY -> "$name shares only roughly where they are, so their phone won't answer"
+        age != null && age < Engine.LOCATION_REQUEST_AFTER_SECONDS -> "Updated ${Format.ago(age)}. You can ask once it's 5 minutes old"
+        else -> null
+    }
+}
+
+/** Picks a map app for directions to [name], at [loc] (their last update). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun DirectionsSheet(name: String, loc: MemberLocation, onDismiss: () -> Unit) {
+    val platform = LocalPlatform.current
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+        Text("Directions to $name", style = MaterialTheme.typography.titleMedium, modifier = Gutter)
+        Caption(
+            "Directions go to where they were at their last update. The map app you pick will see the destination.",
+            Gutter.padding(top = 4.dp, bottom = 8.dp),
+        )
+        platform.directionsApps.forEach { app ->
+            // The app's own icon where the phone lets us read it; otherwise a turn arrow for
+            // Google Maps and a folded map for any other app, so the rows never look alike.
+            val appIcon = remember(app) { platform.directionsAppIcon(app) }
+            Row(
+                Modifier.fillMaxWidth().clickable {
+                    onDismiss()
+                    platform.openDirections(app, loc.lat, loc.lon, name)
+                }.heightIn(min = 56.dp).padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                    if (appIcon != null) {
+                        Image(appIcon, contentDescription = null, modifier = Modifier.requiredSize(30.dp))
+                    } else {
+                        Icon(
+                            if ("Google" in app) AppIcons.Directions else AppIcons.Map,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(24.dp))
+                Text(app, style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+        Spacer(Modifier.height(24.dp))
+    }
+}

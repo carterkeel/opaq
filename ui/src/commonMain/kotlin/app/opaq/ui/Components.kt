@@ -277,6 +277,7 @@ class Haptics(private val feedback: HapticFeedback) {
     fun confirm() = feedback.performHapticFeedback(HapticFeedbackType.Confirm)
     fun reject() = feedback.performHapticFeedback(HapticFeedbackType.Reject)
     fun toggle(on: Boolean) = feedback.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+    fun longPress() = feedback.performHapticFeedback(HapticFeedbackType.LongPress)
 }
 
 @Composable

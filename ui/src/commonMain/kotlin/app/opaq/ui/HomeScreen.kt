@@ -159,6 +159,10 @@ fun HomeScreen(
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
+        // A long press on someone in a list: quick actions in the circle their profile would open in.
+        val personMenu: @Composable (String, Offset?, () -> Unit) -> Unit = { pubkey, at, dismiss ->
+            PersonMenu(state, me, profileCircleFor(state, circle.id, pubkey), pubkey, actions, at, dismiss)
+        }
         // Everything a face is drawn from, so a new photo, name or colour shows on the map at once,
         // stacked or not.
         val markers = remember(circle.members, locs, state.profiles, state.contacts, state.myColor, state.myPhoto, state.myName, state.showPhotos, now, state.sharing, state.circles) {
@@ -363,6 +367,7 @@ fun HomeScreen(
                     onDismissRefusal = { actions.dismissJoinRefusal(it) },
                     onPerson = onPerson,
                     onProfile = openProfile,
+                    personMenu = personMenu,
                 )
             }
             // The locate button also checks where you are (#115): the phone takes a fresh GPS fix and
@@ -541,6 +546,7 @@ fun HomeScreen(
                 ring = { id -> if (id == me) myRing(state, circle) else Format.ring(locs[id], now) },
                 onPerson = { pubkey -> together = null; if (!flyTo(pubkey)) openProfile(pubkey) },
                 onProfile = { together = null; openProfile(it) },
+                personMenu = personMenu,
                 onDismiss = { together = null },
             )
         }
@@ -717,6 +723,7 @@ private fun PeopleList(
     onDismissRefusal: (String) -> Unit,
     onPerson: (String) -> Unit,
     onProfile: (String) -> Unit,
+    personMenu: @Composable (pubkey: String, at: Offset?, onDismiss: () -> Unit) -> Unit,
 ) {
     val requests = state.joinRequests.filter { it.circleId == circle.id }
     val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
@@ -774,14 +781,16 @@ private fun PeopleList(
             val info = avatarFor(state, m.pubkey, me, m.name)
             val loc = locs[m.pubkey]
             val offline = m.pubkey != me && Format.isOffline(loc, now)
+            var menuAt by remember { mutableStateOf<Offset?>(null) }
             Row(
                 Modifier
                     .animateItem()
                     .fillMaxWidth()
-                    .clickable(onClickLabel = "Show on map") { onPerson(m.pubkey) }
+                    .personPress(enabled = m.pubkey != me, onClick = { onPerson(m.pubkey) }, onLongPress = { menuAt = it })
                     .padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                if (m.pubkey != me) personMenu(m.pubkey, menuAt) { menuAt = null }
                 val paused = m.pubkey == me && (!state.sharing || circle.paused)
                 // Your own ring follows what this circle is set to see, since your phone keeps your exact spot.
                 val ring = if (m.pubkey == me) myRing(state, circle) else Format.ring(loc, now)
@@ -920,7 +929,7 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, ring: (String) -> Format.Ring, onPerson: (String) -> Unit, onProfile: (String) -> Unit, onDismiss: () -> Unit) {
+internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, ring: (String) -> Format.Ring, onPerson: (String) -> Unit, onProfile: (String) -> Unit, personMenu: @Composable (String, Offset?, () -> Unit) -> Unit, onDismiss: () -> Unit) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
@@ -928,10 +937,13 @@ internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: 
                 val info = avatarFor(state, id, me, name(id))
                 val loc = location(id)
                 val offline = id != me && Format.isOffline(loc, now)
+                var menuAt by remember { mutableStateOf<Offset?>(null) }
                 Row(
-                    Modifier.fillMaxWidth().clickable(onClickLabel = "Show on map") { onPerson(id) }.padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
+                    Modifier.fillMaxWidth().personPress(enabled = id != me, onClick = { onPerson(id) }, onLongPress = { menuAt = it })
+                        .padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    if (id != me) personMenu(id, menuAt) { menuAt = null }
                     Avatar(info, size = 48.dp, dimmed = offline, ring = ring(id))
                     Spacer(Modifier.width(16.dp))
                     Column(Modifier.weight(1f)) {
