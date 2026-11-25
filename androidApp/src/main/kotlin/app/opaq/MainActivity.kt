@@ -32,7 +32,9 @@ import androidx.lifecycle.repeatOnLifecycle
 import android.provider.Settings
 import android.view.WindowManager
 import androidx.lifecycle.lifecycleScope
+import app.opaq.ui.ConfirmSheet
 import app.opaq.ui.OpaqScreens
+import app.opaq.ui.OpaqTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -88,26 +90,8 @@ class MainActivity : ComponentActivity() {
         if (granted) OpaqApp.from(this).ensureSharingService()
     }
 
-    /**
-     * Google Play's prominent disclosure for background location, shown before Android's
-     * "Allow all the time" screen: what's collected, that it happens when the app is closed or not
-     * in use, and what it's for. Keep it in step with the background location declaration in Play
-     * Console (and the demo video, which shows it).
-     */
-    private fun showBackgroundLocationDisclosure() {
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Share your location in the background")
-            .setMessage(
-                "Opaq collects your location to share it with the people in the circles you choose, " +
-                    "even when the app is closed or not in use. It's end-to-end encrypted, so only they can see it, " +
-                    "and your recent locations are kept on this phone for your location history. " +
-                    "You can pause or stop sharing at any time.\n\n" +
-                    "On the next screen, choose \u201cAllow all the time\u201d.",
-            )
-            .setPositiveButton("Continue") { _, _ -> backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
-            .setNegativeButton("Not now", null)
-            .show()
-    }
+    /** True while the background location disclosure is showing ([BackgroundDisclosure]). */
+    private val backgroundDisclosure = MutableStateFlow(false)
 
     /** System photo picker: no storage permission needed. */
     private val photoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -166,7 +150,7 @@ class MainActivity : ComponentActivity() {
                 fileOpener.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
             },
             requestBackgroundLocation = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) showBackgroundLocationDisclosure()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundDisclosure.value = true
             },
             confirmScreen = { intent, cb ->
                 onConfirmed = cb
@@ -190,7 +174,10 @@ class MainActivity : ComponentActivity() {
         // Only on a fresh start: when Android recreates the activity (dark mode, font size) the
         // launch intent is the same one, and its invite link was already handled.
         if (savedInstanceState == null) incomingLink.value = intent?.dataString
-        setContent { Root(incomingLink, platform) }
+        setContent {
+            Root(incomingLink, platform)
+            BackgroundDisclosure(backgroundDisclosure) { backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -261,6 +248,37 @@ private fun Root(incomingLink: MutableStateFlow<String?>, platform: AndroidPlatf
         sharingBlocked = if (blocked) "Sharing is paused because Opaq's notification is turned off. It has to be visible so you always know your location is being shared." else null,
         onFixSharing = fixNotifications,
     )
+}
+
+/**
+ * Google Play's prominent disclosure for background location, shown before Android's "Allow all
+ * the time" screen: that Opaq collects location, that it does so when the app is closed or not in
+ * use, and what for. Keep it in step with the background location declaration in Play Console
+ * (and its demo video, StoreScreenshots.demo).
+ */
+@Composable
+private fun BackgroundDisclosure(showing: MutableStateFlow<Boolean>, onContinue: () -> Unit) {
+    val show by showing.collectAsStateWithLifecycle()
+    if (!show) return
+    val app = OpaqApp.from(LocalContext.current)
+    val state by app.engine.state.collectAsStateWithLifecycle()
+    OpaqTheme(state.themeMode) {
+        ConfirmSheet(
+            title = "Share your location in the background",
+            text = "Opaq collects your location to share it with the people in the circles you choose, " +
+                "even when the app is closed or not in use. It's end-to-end encrypted, so only they can see it, " +
+                "and your recent locations are kept on this phone for your location history. " +
+                "You can pause or stop sharing at any time.\n\n" +
+                "On the next screen, choose \u201cAllow all the time\u201d.",
+            confirm = "Continue",
+            dismiss = "Not now",
+            onConfirm = {
+                showing.value = false
+                onContinue()
+            },
+            onDismiss = { showing.value = false },
+        )
+    }
 }
 
 /** Largest backup file accepted. Real backups are a few tens of KB. */
