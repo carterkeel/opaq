@@ -9,7 +9,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -199,6 +198,27 @@ fun MapPane(
     val placesGeo = remember(places) { placesToGeoJson(places) }
     // People sharing only roughly where they are (#157): the area they could be anywhere in.
     val roughGeo = remember(shown.map { Triple(it.id, it.location?.precision, it.lat to it.lon) }) { approximateAreasToGeoJson(shown) }
+    // Faces are drawn over the map but take no touches themselves, so a pinch or drag that starts on
+    // a face still moves the map. A tap is matched to a face here instead.
+    val hits = remember { FaceHits() }
+    val mapRef = remember { arrayOfNulls<org.maplibre.compose.map.MapState>(1) }
+    val peopleInteractions = remember {
+        MapInteractions(MapInteractions.Standard) {
+            camera { rotate { enabled = false } }
+            callbacks {
+                click {
+                    onEvent { e ->
+                        val hit = mapRef[0]?.let { state -> hits.at(e.screenOffset) { lat, lon -> state.screenLocationFromPosition(Position(lon, lat)) } }
+                        when {
+                            hit == null -> ClickResult.Pass
+                            hit.group != null -> { onGroup(hit.group); ClickResult.Consume }
+                            else -> { onPerson(hit.id); ClickResult.Consume }
+                        }
+                    }
+                }
+            }
+        }
+    }
     val mapState = rememberMapState(baseStyle = mapStyle(darkMap)) {
         val rough = rememberGeoJsonSource(GeoJsonData.JsonString(roughGeo))
         FillLayer(id = "rough-fill", source = rough, color = feature["color"].convertToColor(), opacity = const(0.10f))
@@ -225,6 +245,7 @@ fun MapPane(
             textHaloWidth = const(1.5.dp),
         )
     }
+    mapRef[0] = mapState
 
     // Regroup every half zoom level, as the map zooms.
     LaunchedEffect(mapState) {
@@ -234,19 +255,34 @@ fun MapPane(
         }
     }
 
-    // Open once per circle at city level around me (or whoever has a location first).
+    // Where to aim the camera so [lat], [lon] shows in the middle of the map above the people sheet
+    // (and left of the side panel in landscape) at [z].
+    fun clearOfSheet(lat: Double, lon: Double, z: Double): Position {
+        val world = 512.0 * kotlin.math.exp(z * ln(2.0))
+        val (x, y) = mercatorOf(lat, lon)
+        val cx = x + endInset.value / 2 / world
+        val cy = (y + bottomInset.value / 2 / world).coerceIn(0.0, 1.0)
+        val clon = cx * 360.0 - 180.0
+        val clat = kotlin.math.atan(kotlin.math.sinh(PI * (1 - 2 * cy))) * 180.0 / PI
+        return Position(((clon + 540.0) % 360.0) - 180.0, clat)
+    }
+
+    // Open at city level around me (or whoever has a location first), once. Switching to another
+    // circle or Everyone keeps the map where it is and as zoomed in as it was.
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
     LaunchedEffect(mapState, focusKey, markers.isEmpty()) {
         if (markers.isEmpty() || framedFor == focusKey) return@LaunchedEffect
+        val first = framedFor == Unit
         framedFor = focusKey
+        if (!first) return@LaunchedEffect
         val center = markers.firstOrNull { it.kind == MapMarker.Kind.ME } ?: markers.first()
-        mapState.setCameraPosition(CameraPosition(center = Position(center.lon, center.lat), zoom = CITY_ZOOM))
+        mapState.setCameraPosition(CameraPosition(center = clearOfSheet(center.lat, center.lon, CITY_ZOOM), zoom = CITY_ZOOM))
     }
 
     // Glide to a requested point.
     LaunchedEffect(mapState, focus) {
         val f = focus ?: return@LaunchedEffect
-        mapState.animateCamera(CameraUpdate(center = Position(f.lon, f.lat), zoom = STREET_ZOOM))
+        mapState.animateCamera(CameraUpdate(center = clearOfSheet(f.lat, f.lon, STREET_ZOOM), zoom = STREET_ZOOM))
     }
 
     BoxWithConstraints(modifier) {
@@ -273,14 +309,22 @@ fun MapPane(
                 }
             }
         }
+        val boxWidth = maxWidth
+        val boxHeight = maxHeight
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
-            viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
+            // No viewport insets: MapLibre keeps the world filling the screen top to bottom only for
+            // the inset area, so with the sheet's room as an inset, the map could be dragged until
+            // a band past the bottom of the world showed below it. Points are kept clear of the
+            // sheet by aiming the camera a little south instead ([clearOfSheet]).
             cameraConstraints = worldFills(maxHeight),
-            interactions = Interactions,
+            interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
-            overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, onPerson, onGroup) },
+            overlay = {
+                WorldEdges(darkMap, mapState.cameraPosition.center.longitude, boxWidth, boxHeight)
+                PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits)
+            },
         )
     }
 }
@@ -519,22 +563,78 @@ internal fun faceKey(m: MapMarker): String = "${m.id}:${m.kind.ordinal}:${m.ring
  */
 internal data class StackedFace(val marker: MapMarker, val dx: Double, val dy: Double, val order: Int, val ids: String?, val anchor: Boolean = false)
 
-/** Where a face belongs: [anchor]'s spot plus ([sx], [sy]) dp. Someone on their own is their own anchor. */
-private data class Slot(val anchor: String, val sx: Double, val sy: Double, val order: Int, val ids: String?)
+/**
+ * Where a face belongs: [anchor]'s spot plus ([sx], [sy]) dp, in place [ring] round its stack.
+ * Someone on their own is their own anchor.
+ */
+private data class Slot(val anchor: String, val sx: Double, val sy: Double, val order: Int, val ids: String?, val ring: Int = 0)
 
 /** How long a face takes to glide into or out of a stack. */
 private const val STACK_MILLIS = 400.0
 
-private fun slots(groups: List<List<MapMarker>>): Map<String, Slot> = buildMap {
+private fun slots(groups: List<List<MapMarker>>, zoom: Double, previous: Map<String, Slot>): Map<String, Slot> = buildMap {
+    val world = 512.0 * kotlin.math.exp(zoom * ln(2.0))
     groups.forEach { g ->
         val ids = if (g.size > 1) g.joinToString(",") { it.id } else null
         // Raised so the faces rest on their pointer, whose tip is the spot.
         val lift = stackLift(g.size)
+        val places = ringPlaces(g, ids, world, previous)
         g.forEachIndexed { i, m ->
-            val (sx, sy) = stackSlot(i, g.size)
-            put(m.id, Slot(g.first().id, sx, sy - lift, g.size - i, ids))
+            val k = places[i]
+            val (sx, sy) = stackSlot(k, g.size)
+            put(m.id, Slot(g.first().id, sx, sy - lift, g.size - k, ids, k))
         }
     }
+}
+
+/**
+ * Which place round the ring each person in stack [g] takes: the one on the side of the stack
+ * nearest where they really are, so someone to the west sits on the left and pointers fanning out
+ * to different places never cross. (The arrangement with the shortest total distance from faces
+ * to spots never has two pointers crossing.) The arrangement already shown is kept unless a new
+ * one is clearly better, so faces don't swap back and forth as people move a little.
+ */
+private fun ringPlaces(g: List<MapMarker>, ids: String?, world: Double, previous: Map<String, Slot>): IntArray {
+    val n = g.size
+    if (n < 2) return IntArray(n)
+    val pts = g.map { mercatorOf(it.lat, it.lon) }
+    val cx = pts.sumOf { it.first } / n
+    val cy = pts.sumOf { it.second } / n
+    val rel = pts.map { (x, y) -> (x - cx) * world to (y - cy) * world }
+    val ring = (0 until n).map { stackSlot(it, n) }
+    fun cost(a: IntArray) = (0 until n).sumOf { i -> kotlin.math.hypot(ring[a[i]].first - rel[i].first, ring[a[i]].second - rel[i].second) }
+    var best = IntArray(n) { it }
+    var bestCost = cost(best)
+    if (n <= 6) {
+        // Every arrangement: at most 720.
+        val a = IntArray(n) { it }
+        fun permute(k: Int) {
+            if (k == n) { val c = cost(a); if (c < bestCost - 1e-6) { bestCost = c; best = a.copyOf() }; return }
+            for (j in k until n) {
+                a[k] = a[j].also { a[j] = a[k] }
+                permute(k + 1)
+                a[k] = a[j].also { a[j] = a[k] }
+            }
+        }
+        permute(0)
+    } else {
+        // Larger stacks: people in order of direction from the middle, matched to the ring's places
+        // in the same order, at whichever turn fits best.
+        val byAngle = (0 until n).sortedBy { kotlin.math.atan2(rel[it].second, rel[it].first) }
+        val placesByAngle = (0 until n).sortedBy { kotlin.math.atan2(ring[it].second, ring[it].first) }
+        for (turn in 0 until n) {
+            val a = IntArray(n)
+            byAngle.forEachIndexed { k, person -> a[person] = placesByAngle[(k + turn) % n] }
+            val c = cost(a)
+            if (c < bestCost - 1e-6) { bestCost = c; best = a }
+        }
+    }
+    val shown = g.map { previous[it.id] }
+    if (shown.all { it != null && it.ids == ids } && shown.map { it!!.ring }.toSet().size == n) {
+        val kept = IntArray(n) { shown[it]!!.ring }
+        if (cost(kept) <= bestCost * 1.15 + 3.0) return kept
+    }
+    return best
 }
 
 /** Web Mercator, as a fraction of the world across and down. */
@@ -559,7 +659,7 @@ private fun rememberStackedFaces(groups: List<List<MapMarker>>, zoom: Double): L
     val current = remember { HashMap<String, Slot>() }
     val glides = remember { HashMap<String, Pair<Slot, Double>>() }
     var now by remember { mutableStateOf(0.0) }
-    val targets = remember(groups) { slots(groups) }
+    val targets = remember(groups) { slots(groups, zoom, HashMap(current)) }
     val byId = remember(groups) { groups.flatten().associateBy { it.id } }
     // A changed slot starts a glide from the old one.
     val start = clock.elapsedNow().inWholeMilliseconds.toDouble()

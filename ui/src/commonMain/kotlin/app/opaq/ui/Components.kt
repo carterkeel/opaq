@@ -5,6 +5,10 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.widthIn
@@ -174,33 +178,50 @@ fun StatusLine(text: String, battery: Int?, modifier: Modifier = Modifier, color
 }
 
 /**
- * A battery with the percentage inside it: dark on a light screen, white on a dark one, and red
- * at 20% or below.
+ * A battery with the percentage inside it, filled to match like the one in a phone's status bar:
+ * the charged part dark on a light screen and white on a dark one (red at 20% or below), the
+ * drained part grey. The number is drawn in two colours, each clipped to its part, so it reads
+ * across both.
  */
 @Composable
 fun BatteryBadge(percent: Int, modifier: Modifier = Modifier) {
-    val low = percent <= 20
-    val body = if (low) Palette.Red else MaterialTheme.colorScheme.onSurface
-    val digits = if (low) Color.White else MaterialTheme.colorScheme.surface
-    Row(modifier.clearAndSetSemantics { contentDescription = "Battery $percent%" }, verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            Modifier.heightIn(min = 15.dp).widthIn(min = 25.dp).clip(RoundedCornerShape(4.5.dp)).background(body).padding(horizontal = 3.dp, vertical = 1.dp),
-            contentAlignment = Alignment.Center,
-        ) {
+    val level = percent.coerceIn(0, 100)
+    val low = level <= 20
+    val fill = if (low) Palette.Red else MaterialTheme.colorScheme.onSurface
+    val drained = if (LocalDarkTheme.current) Color(0xFF4A4F57) else Color(0xFFB4B8BF)
+    val onFill = if (low) Color.White else MaterialTheme.colorScheme.surface
+    val onDrained = MaterialTheme.colorScheme.onSurface
+    val style = TextStyle(
+        fontSize = 10.5.sp,
+        lineHeight = 12.sp,
+        fontWeight = FontWeight.Bold,
+        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+    )
+    val split = level / 100f
+    Row(modifier.clearAndSetSemantics { contentDescription = "Battery $level%" }, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.clip(RoundedCornerShape(4.5.dp))) {
+            Box(Modifier.matchParentSize().drawBehind {
+                drawRect(drained)
+                drawRect(fill, size = Size(size.width * split, size.height))
+            })
+            Box(Modifier.matchParentSize().drawWithContent { clipRect(right = size.width * split) { this@drawWithContent.drawContent() } }, contentAlignment = Alignment.Center) {
+                Text(level.toString(), color = onFill, style = style, maxLines = 1)
+            }
+            Box(Modifier.matchParentSize().drawWithContent { clipRect(left = size.width * split) { this@drawWithContent.drawContent() } }, contentAlignment = Alignment.Center) {
+                Text(level.toString(), color = onDrained, style = style, maxLines = 1)
+            }
+            // Sets the size; not drawn.
             Text(
-                percent.coerceIn(0, 100).toString(),
-                color = digits,
-                style = TextStyle(
-                    fontSize = 10.5.sp,
-                    lineHeight = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
-                ),
+                level.toString(),
+                style = style,
                 maxLines = 1,
+                color = Color.Transparent,
+                modifier = Modifier.heightIn(min = 15.dp).widthIn(min = 25.dp).padding(horizontal = 3.dp, vertical = 1.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
         }
         Spacer(Modifier.width(1.dp))
-        Box(Modifier.width(2.dp).height(5.dp).clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp)).background(body))
+        Box(Modifier.width(2.dp).height(5.dp).clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp)).background(if (level >= 97) fill else drained))
     }
 }
 
@@ -256,6 +277,7 @@ class Haptics(private val feedback: HapticFeedback) {
     fun confirm() = feedback.performHapticFeedback(HapticFeedbackType.Confirm)
     fun reject() = feedback.performHapticFeedback(HapticFeedbackType.Reject)
     fun toggle(on: Boolean) = feedback.performHapticFeedback(if (on) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+    fun longPress() = feedback.performHapticFeedback(HapticFeedbackType.LongPress)
 }
 
 @Composable

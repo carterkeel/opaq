@@ -6,14 +6,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -147,8 +146,9 @@ internal fun hexColor(hex: String): Color =
  * shape. A pointer's tip is the spot. While faces glide into or out of a stack, their pointers
  * stretch along with them.
  *
- * [faces] gives each face's centre relative to its own person's spot, in dp, at [zoom]. Tapping a
- * person on their own calls [onPerson]; tapping a stack calls [onGroup] with everyone in it.
+ * [faces] gives each face's centre relative to its own person's spot, in dp, at [zoom]. The faces
+ * take no touches, so a pinch or drag that starts on one still moves the map; [hits] keeps where
+ * each face is drawn so the map's own tap can be matched to it.
  */
 @Composable
 internal fun MapOverlayScope.PeopleOverlay(
@@ -157,13 +157,76 @@ internal fun MapOverlayScope.PeopleOverlay(
     painters: Map<String, Painter>,
     keyOf: (MapMarker) -> String,
     zoom: Double,
-    onPerson: (String) -> Unit,
-    onGroup: (List<String>) -> Unit,
+    hits: FaceHits,
 ) {
     val byId = faces.associateBy { it.marker.id }
     val world = 512.0 * kotlin.math.exp(zoom * kotlin.math.ln(2.0))
+    // Where anyone's spot and face are, in dp from a given spot, so a pointer can hand over
+    // smoothly from a face in another stack.
+    val spotOf = faces.associate { it.marker.id to mercatorOf(it.marker.lat, it.marker.lon) }
+    fun spotFrom(id: String, ax: Double, ay: Double): Offset? = spotOf[id]?.let { (x, y) -> Offset(((x - ax) * world).toFloat(), ((y - ay) * world).toFloat()) }
+    fun faceFrom(id: String, ax: Double, ay: Double): Offset? = byId[id]?.let { f -> spotFrom(id, ax, ay)?.plus(Offset(f.dx.toFloat(), f.dy.toFloat())) }
+    // Which face carries each person's pointer, and the handover under way when that changes.
+    val clock = androidx.compose.runtime.remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    val handoffs = androidx.compose.runtime.remember { HashMap<String, Handoff>() }
+    var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    val nowMs = maxOf(clock.elapsedNow().inWholeMilliseconds, tick)
+    handoffs.keys.retainAll(spotOf.keys)
+    // A jump rather than a zoom (another circle or Everyone, or the camera flying somewhere): any
+    // handover under way finishes at once, rather than racing across the screen to catch up.
+    val lastZoom = androidx.compose.runtime.remember { doubleArrayOf(zoom) }
+    if (kotlin.math.abs(zoom - lastZoom[0]) > 0.75) handoffs.replaceAll { _, h -> h.copy(start = Long.MIN_VALUE / 2) }
+    lastZoom[0] = zoom
+    // People who weren't on the map a moment ago (switching to another circle or Everyone, or
+    // someone's first update) pop in one after another, west to east, rather than all at once.
+    val onMap = androidx.compose.runtime.remember { HashSet<String>() }
+    val popping = androidx.compose.runtime.remember { HashMap<String, Long>() }
+    spotOf.keys.filter { it !in onMap }.sortedBy { spotOf.getValue(it).first }
+        .forEachIndexed { k, id -> popping[id] = nowMs + k * POP_STAGGER_MILLIS }
+    onMap.clear(); onMap.addAll(spotOf.keys)
+    popping.keys.retainAll(spotOf.keys)
+    popping.entries.removeAll { nowMs - it.value > POP_MILLIS }
+    fun pop(id: String): Float = popping[id]?.let { popScale(((nowMs - it).toFloat() / POP_MILLIS).coerceIn(0f, 1f)) } ?: 1f
+    // People who just left the map (not in the circle switched to) shrink away one after another,
+    // drawn where they last were.
+    val lastSeen = androidx.compose.runtime.remember { HashMap<String, Pair<StackedFace, Painter?>>() }
+    val leaving = androidx.compose.runtime.remember { HashMap<String, Leaving>() }
+    lastSeen.keys.filter { it !in spotOf }.sortedBy { mercatorOf(lastSeen.getValue(it).first.marker.lat, lastSeen.getValue(it).first.marker.lon).first }
+        .forEachIndexed { k, id -> lastSeen.getValue(id).let { (f, p) -> leaving[id] = Leaving(f, p, nowMs + k * POP_STAGGER_MILLIS) } }
+    leaving.keys.removeAll(spotOf.keys)
+    leaving.entries.removeAll { nowMs - it.value.start > POP_MILLIS }
+    lastSeen.clear()
+    faces.forEach { f -> lastSeen[f.marker.id] = f to painters[keyOf(f.marker)] }
+    leaving.forEach { (id, l) ->
+        androidx.compose.runtime.key("leaving-$id") {
+            val f = ((nowMs - l.start).toFloat() / POP_MILLIS).coerceIn(0f, 1f)
+            val s = 1f - f * f
+            val centre = Offset(l.face.dx.toFloat(), l.face.dy.toFloat())
+            val half = kotlin.math.abs(centre.x).coerceAtMost(MAX_REACH_DP) + FACE_DP / 2 + 2
+            val top = (-centre.y).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
+            Box(
+                Modifier
+                    .placedAt(org.maplibre.spatialk.geojson.Position(l.face.marker.lon, l.face.marker.lat), Alignment.BottomCenter)
+                    .size((half * 2).dp, top.dp)
+                    .drawBehind {
+                        if (s <= 0f) return@drawBehind
+                        translate(size.width / 2f, size.height) {
+                            val u = density
+                            val c = centre * u
+                            val baseY = c.y + (FACE_DP / 2 - PIN_OVERLAP_DP) * u
+                            val w = SINGLE_PIN.widthDp * u
+                            drawPath(Path().apply { moveTo(c.x - w / 2, baseY); lineTo(c.x + w / 2, baseY); lineTo(0f, 0f); close() }, Color.White.copy(alpha = s))
+                            val painter = l.painter ?: return@translate
+                            val side = FACE_DP * u * s
+                            translate(c.x - side / 2, c.y - side / 2) { with(painter) { draw(Size(side, side), alpha = s) } }
+                        }
+                    },
+            )
+        }
+    }
     // Your stack on top, then the rest in a steady order.
     val ordered = groups.sortedBy { g -> if (g.any { it.kind == MapMarker.Kind.ME }) 1 else 0 }
+    val drawn = mutableListOf<FaceHit>()
     ordered.forEach { g ->
         val anchor = g.first()
         androidx.compose.runtime.key(anchor.id) {
@@ -178,13 +241,37 @@ internal fun MapOverlayScope.PeopleOverlay(
                 if (near != null) near += i else clusters += mutableListOf(i)
             }
             // Each pointer starts inside one face, the one of its people nearest the spot, so its
-            // top is always hidden by that face and never shows in the gaps between faces.
+            // top is always hidden by that face and never shows in the gaps between faces. When the
+            // face carrying it changes (people join or leave as you zoom), it slides across from the
+            // old face to the new one, and its tip and width move with it, rather than jumping.
+            // How far each face has popped in (0 to 1, a touch over on the way), and each pointer
+            // with the first of its faces to appear.
+            val pops = g.map { pop(it.id) }
+            val tailPops = clusters.map { c -> c.maxOf { pops[it] }.coerceIn(0f, 1f) }
             val tails = clusters.map { c ->
                 val pin = if (c.size > 1) GROUP_PIN else SINGLE_PIN
+                val members = c.map { g[it].id }
                 val tip = c.map { spots[it] }.reduce { acc, o -> acc + o } / c.size.toFloat()
-                val from = centres[c.minBy { (centres[it] - tip).getDistance() }]
-                val baseY = from.y + FACE_DP / 2 - PIN_OVERLAP_DP
-                Triple(Offset(from.x - pin.widthDp / 2, baseY), Offset(from.x + pin.widthDp / 2, baseY), tip)
+                val carrier = g[c.minBy { (centres[it] - tip).getDistance() }].id
+                members.forEach { id ->
+                    val h = handoffs[id]
+                    if (h == null) handoffs[id] = Handoff(carrier, carrier, members, members, pin, pin, Long.MIN_VALUE / 2)
+                    else if (h.to != carrier || h.toPin != pin || h.toPeople != members) {
+                        // Only a short slide between faces close together; anything farther (a
+                        // different circle, a face that was far away) moves at once.
+                        val was = faceFrom(h.to, ax, ay)
+                        val near = was != null && (was - (faceFrom(carrier, ax, ay) ?: was)).getDistance() < HANDOFF_REACH_DP
+                        handoffs[id] = Handoff(h.to, carrier, h.toPeople, members, h.toPin, pin, if (near) nowMs else Long.MIN_VALUE / 2)
+                    }
+                }
+                val h = handoffs.getValue(members.first())
+                val e = h.progress(nowMs)
+                val face = mix(faceFrom(h.from, ax, ay) ?: centres[c.first()], faceFrom(h.to, ax, ay) ?: centres[c.first()], e)
+                val oldTip = h.fromPeople.mapNotNull { spotFrom(it, ax, ay) }.takeIf { it.isNotEmpty() }?.let { it.reduce { a, o -> a + o } / it.size.toFloat() } ?: tip
+                val point = mix(oldTip, tip, e)
+                val width = h.fromPin.widthDp + (h.toPin.widthDp - h.fromPin.widthDp) * e
+                val baseY = face.y + FACE_DP / 2 - PIN_OVERLAP_DP
+                Triple(Offset(face.x - width / 2, baseY), Offset(face.x + width / 2, baseY), point)
             }
             // A box from the faces down to the spot, so a tap on the stack lands here and a drag
             // anywhere else still moves the map. Everything is drawn from its bottom centre.
@@ -194,30 +281,22 @@ internal fun MapOverlayScope.PeopleOverlay(
             val top = (-(centres.minOf { it.y }.takeIf { it.isFinite() } ?: 0f)).coerceIn(0f, MAX_REACH_DP) + FACE_DP / 2 + 2
             val faceOrder = g.indices.sortedBy { byId[g[it].id]?.order ?: 0 }
             val ids = g.map { it.id }
-            // The tap handler outlives this composition, so it reads the latest positions.
-            val hitCentres by androidx.compose.runtime.rememberUpdatedState(centres)
-            val hitOrder by androidx.compose.runtime.rememberUpdatedState(faceOrder)
+            faceOrder.forEach { i -> drawn += FaceHit(anchor.lat, anchor.lon, centres[i], g[i].id, if (g.size > 1) ids else null) }
             Box(
                 Modifier
                     .placedAt(org.maplibre.spatialk.geojson.Position(anchor.lon, anchor.lat), Alignment.BottomCenter)
                     .size((half * 2).dp, top.coerceAtLeast(1f).dp)
-                    .pointerInput(ids) {
-                        detectTapGestures { p ->
-                            val at = Offset(p.x - size.width / 2f, p.y - size.height) / density
-                            val hit = hitOrder.reversed().firstOrNull { (hitCentres.getOrNull(it)?.let { c -> (c - at).getDistance() } ?: Float.MAX_VALUE) <= FACE_DP / 2 + 4 }
-                            if (hit != null) { if (g.size > 1) onGroup(ids) else onPerson(g[hit].id) }
-                        }
-                    }
                     .drawBehind {
                         translate(size.width / 2f, size.height) {
                             val u = density
                             // Each piece drawn on its own: in one path, a pointer and a circle wound in
                             // opposite directions cancel out where they overlap, leaving a gap.
                             fun shape(grow: Float) {
-                                tails.forEach { (l, r, tip) ->
+                                tails.forEachIndexed { k, (l, r, tip) ->
+                                    if (tailPops[k] < 0.5f) return@forEachIndexed
                                     drawPath(Path().apply { moveTo(l.x * u - grow, l.y * u - grow); lineTo(r.x * u + grow, r.y * u - grow); lineTo(tip.x * u, tip.y * u + grow); close() }, Color.Black)
                                 }
-                                centres.forEach { c -> drawCircle(Color.Black, (FACE_DP / 2) * u + grow, c * u) }
+                                centres.forEachIndexed { i, c -> if (pops[i] > 0f) drawCircle(Color.Black, ((FACE_DP / 2) * u + grow) * pops[i], c * u) }
                             }
                             // One soft shadow under the whole shape, faces and pointers together:
                             // each layer is drawn solid, then faded as a whole, so overlaps don't darken.
@@ -227,18 +306,118 @@ internal fun MapOverlayScope.PeopleOverlay(
                                 translate(0f, 1.5f * u) { shape(spread * u) }
                                 drawContext.canvas.restore()
                             }
-                            tails.forEach { (l, r, tip) ->
-                                drawPath(Path().apply { moveTo(l.x * u, l.y * u); lineTo(r.x * u, r.y * u); lineTo(tip.x * u, tip.y * u); close() }, Color.White)
+                            tails.forEachIndexed { k, (l, r, tip) ->
+                                if (tailPops[k] <= 0f) return@forEachIndexed
+                                drawPath(Path().apply { moveTo(l.x * u, l.y * u); lineTo(r.x * u, r.y * u); lineTo(tip.x * u, tip.y * u); close() }, Color.White.copy(alpha = tailPops[k]))
                             }
-                            val side = FACE_DP * u
                             faceOrder.forEach { i ->
                                 val painter = painters[keyOf(g[i])] ?: return@forEach
+                                if (pops[i] <= 0f) return@forEach
+                                val side = FACE_DP * u * pops[i]
                                 val c = centres[i] * u
-                                translate(c.x - side / 2, c.y - side / 2) { with(painter) { draw(Size(side, side)) } }
+                                translate(c.x - side / 2, c.y - side / 2) { with(painter) { draw(Size(side, side), alpha = pops[i].coerceAtMost(1f)) } }
                             }
                         }
                     },
             )
         }
     }
+    hits.targets = drawn
+    // Keep redrawing while a pointer is handing over from one face to another, or faces pop in.
+    fun busy(now: Long) = handoffs.values.any { it.progress(now) < 1f } || popping.values.any { now - it <= POP_MILLIS } || leaving.values.any { now - it.start <= POP_MILLIS }
+    if (busy(nowMs)) {
+        androidx.compose.runtime.LaunchedEffect(maxOf(handoffs.values.maxOfOrNull { it.start } ?: 0L, popping.values.maxOrNull() ?: 0L, leaving.values.maxOfOrNull { it.start } ?: 0L)) {
+            while (busy(clock.elapsedNow().inWholeMilliseconds)) {
+                androidx.compose.runtime.withFrameMillis { tick = clock.elapsedNow().inWholeMilliseconds }
+            }
+            tick = clock.elapsedNow().inWholeMilliseconds
+        }
+    }
 }
+
+/** Someone who just left the map: their face as last drawn, its picture, and when it starts shrinking away. */
+private class Leaving(val face: StackedFace, val painter: Painter?, val start: Long)
+
+/** How long a face takes to pop in or out, and the gap between one face and the next. */
+private const val POP_MILLIS = 280L
+private const val POP_STAGGER_MILLIS = 45L
+
+/** A face's size as it pops in, [f] from 0 to 1: grows quickly, a little past full size, and settles. */
+private fun popScale(f: Float): Float {
+    if (f <= 0f) return 0f
+    val c = 1.2f
+    val t = f - 1
+    return 1 + (c + 1) * t * t * t + c * t * t
+}
+
+/** How long a pointer takes to move from one face to another. */
+private const val HANDOFF_MILLIS = 350L
+
+/** A pointer slides between faces at most this far apart, in dp; farther, it moves at once. */
+private const val HANDOFF_REACH_DP = 120f
+
+/**
+ * A pointer moving from face [from] (pointing at [fromPeople]'s spot, [fromPin] wide) to face [to]
+ * (pointing at [toPeople]'s spot, [toPin] wide), starting at [start] ms.
+ */
+private data class Handoff(
+    val from: String,
+    val to: String,
+    val fromPeople: List<String>,
+    val toPeople: List<String>,
+    val fromPin: Pin,
+    val toPin: Pin,
+    val start: Long,
+) {
+    /** 0 at the start, 1 once it's there, eased out. */
+    fun progress(now: Long): Float {
+        val f = ((now - start).toFloat() / HANDOFF_MILLIS).coerceIn(0f, 1f)
+        return 1 - (1 - f) * (1 - f) * (1 - f)
+    }
+}
+
+private fun mix(a: Offset, b: Offset, e: Float) = Offset(a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e)
+
+/** A face as drawn: its stack's spot ([lat], [lon]), its centre in dp from there, who it is, and its stack. */
+internal data class FaceHit(val lat: Double, val lon: Double, val centre: Offset, val id: String, val group: List<String>?)
+
+/** Where the faces are drawn, front last, so a tap on the map can be matched to one. */
+internal class FaceHits {
+    var targets: List<FaceHit> = emptyList()
+
+    /** The front face under [at] (screen dp), using [screen] to find a spot on screen. */
+    fun at(at: androidx.compose.ui.unit.DpOffset, screen: (lat: Double, lon: Double) -> androidx.compose.ui.unit.DpOffset?): FaceHit? =
+        targets.asReversed().firstOrNull { t ->
+            val spot = screen(t.lat, t.lon) ?: return@firstOrNull false
+            val dx = spot.x.value + t.centre.x - at.x.value
+            val dy = spot.y.value + t.centre.y - at.y.value
+            dx * dx + dy * dy <= (FACE_DP / 2 + 4) * (FACE_DP / 2 + 4)
+        }
+}
+
+/**
+ * Beyond the top and bottom of the world the map draws nothing, which showed as a white band when
+ * the map was dragged right up or down with the people sheet out of the way. These fill it with the
+ * colour the map has at that edge: the Arctic Ocean above, Antarctic ice below (as the OpenFreeMap
+ * styles colour them). They're placed at the camera's longitude and twice the screen wide, so they
+ * always cover it.
+ */
+@Composable
+internal fun MapOverlayScope.WorldEdges(dark: Boolean, lon: Double, width: androidx.compose.ui.unit.Dp, height: androidx.compose.ui.unit.Dp) {
+    val north = if (dark) Color(0xFF1B1B1D) else Color(0xFF9EBDFF)
+    val south = if (dark) Color(0xFF0C0C0C) else Color(0xFFE0ECEC)
+    val at = lon.takeIf { it.isFinite() } ?: 0.0
+    Box(
+        Modifier.placedAt(org.maplibre.spatialk.geojson.Position(at, -WORLD_EDGE_LAT), Alignment.TopCenter)
+            .size(width * 2, height)
+            .drawBehind { drawRect(south) },
+    )
+    Box(
+        Modifier.placedAt(org.maplibre.spatialk.geojson.Position(at, WORLD_EDGE_LAT), Alignment.BottomCenter)
+            .size(width * 2, height)
+            .drawBehind { drawRect(north) },
+    )
+}
+
+/** Just inside Web Mercator's edge (85.0511°), so the fill overlaps the map by a hair and no seam shows. */
+private const val WORLD_EDGE_LAT = 85.04
