@@ -256,11 +256,14 @@ fun MapPane(
         }
     }
 
-    // Open once per circle at city level around me (or whoever has a location first).
+    // Open at city level around me (or whoever has a location first), once. Switching to another
+    // circle or Everyone keeps the map where it is and as zoomed in as it was.
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
     LaunchedEffect(mapState, focusKey, markers.isEmpty()) {
         if (markers.isEmpty() || framedFor == focusKey) return@LaunchedEffect
+        val first = framedFor == Unit
         framedFor = focusKey
+        if (!first) return@LaunchedEffect
         val center = markers.firstOrNull { it.kind == MapMarker.Kind.ME } ?: markers.first()
         mapState.setCameraPosition(CameraPosition(center = Position(center.lon, center.lat), zoom = CITY_ZOOM))
     }
@@ -299,7 +302,10 @@ fun MapPane(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
             viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
-            cameraConstraints = worldFills(maxHeight),
+            // The people sheet's room shifts the map's middle up, so zoomed right out the world
+            // must reach that much further down: otherwise dragging the sheet down showed an empty
+            // white band below the bottom of the world.
+            cameraConstraints = worldFills(maxHeight + bottomInset),
             interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
             overlay = { PeopleOverlay(groups, faces, faceIcons.toMap(), ::faceKey, zoom, hits) },
