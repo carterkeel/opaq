@@ -5,12 +5,14 @@ name: Store screenshots
 # and saves the PNGs as an artifact and on a store-screenshots-<set> branch (force-pushed, latest
 # run only). Sets: phone (1080 x 1920) or foldable (1:1, 4:3, 3:4 unfolded; 10:16 outer screen).
 on:
+  push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
+    branches: [store-listing]
   workflow_dispatch:
     inputs:
       set:
         description: Which screenshots
         type: choice
-        options: [phone, foldable]
+        options: [phone, foldable, video]
         default: phone
 
 # Write access is only for pushing the screenshots to the store-screenshots-<set> branch.
@@ -26,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      SCREENSHOT_SET: ${{ inputs.set || 'phone' }}
+      SCREENSHOT_SET: ${{ github.event_name == 'push' && 'video' || inputs.set || 'phone' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -58,7 +60,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: opaq-store-screenshots-${{ env.SCREENSHOT_SET }}
-          path: store-screens/*.png
+          path: store-screens/*
           if-no-files-found: warn
 
       # Also on a branch, so they can be fetched with git. Made-up data only.
@@ -69,7 +71,7 @@ jobs:
         run: |
           out=$(mktemp -d)
           mkdir -p "$out/screens"
-          cp store-screens/*.png "$out/screens/" 2>/dev/null || true
+          cp store-screens/* "$out/screens/" 2>/dev/null || true
           { echo "Run ${GITHUB_RUN_ID} on ${GITHUB_REF_NAME} (${GITHUB_SHA})"
             grep -nE "FATAL EXCEPTION|AndroidRuntime|OpaqStore|Exception" store-logcat.txt 2>/dev/null | head -80 || true
           } > "$out/log.txt"
