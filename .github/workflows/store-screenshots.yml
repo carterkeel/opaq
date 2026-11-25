@@ -5,8 +5,6 @@ name: Store screenshots
 # and saves the PNGs as an artifact and on a store-screenshots-<set> branch (force-pushed, latest
 # run only). Sets: phone (1080 x 1920) or foldable (1:1, 4:3, 3:4 unfolded; 10:16 outer screen).
 on:
-  push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
-    branches: [store-listing]
   workflow_dispatch:
     inputs:
       set:
@@ -28,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      SCREENSHOT_SET: ${{ github.event_name == 'push' && 'video' || inputs.set || 'phone' }}
+      SCREENSHOT_SET: ${{ inputs.set || 'phone' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
