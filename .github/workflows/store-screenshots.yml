@@ -6,6 +6,8 @@ name: Store screenshots
 # branch (force-pushed, latest run only).
 on:
   workflow_dispatch:
+  push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
+    branches: [store-listing]
 
 # Write access is only for pushing the screenshots to the store-screenshots branch.
 permissions:

@@ -20,6 +20,7 @@ import app.opaq.core.model.LocationPrecision
 import app.opaq.core.model.Member
 import app.opaq.core.model.MemberLocation
 import app.opaq.core.model.MemberProfile
+import app.opaq.core.model.Place
 import app.opaq.core.model.Point
 import app.opaq.core.model.Precision
 import kotlinx.coroutines.runBlocking
@@ -70,7 +71,7 @@ class StoreScreenshots {
          * just now" when the pictures are taken a minute or two after [seed] (an update over 50 s
          * old reads "Was driving"). The app treats a future time as just now and doesn't move them.
          */
-        const val AHEAD = 150L
+        const val AHEAD = 240L
     }
 
     @Test
@@ -135,6 +136,11 @@ class StoreScreenshots {
             contacts = s.contacts + mapOf(sam to Contact(verified = true), maya to Contact(verified = true), nora to Contact(verified = true)),
             locations = s.locations + (circle.id to locations),
             lastCircleId = circle.id,
+            places = listOf(
+                Place("home", "Home", DRIVE.first().first, DRIVE.first().second, radius = 120.0, circleId = circle.id, onArrive = true, onLeave = true),
+                Place("school", "School", 37.76170, -122.42830, radius = 200.0, circleId = circle.id),
+                Place("work", "Sam's work", 37.77230, -122.41450, radius = 150.0, circleId = circle.id),
+            ),
         )
 
         // Sam's history for today: at home in the morning, then the drive.
@@ -168,17 +174,6 @@ class StoreScreenshots {
         Thread.sleep(10_000) // map tiles
         shot("map")
 
-        // Dark mode with the dark map.
-        darkMap(true)
-        device.executeShellCommand("cmd uimode night yes")
-        Thread.sleep(3_000)
-        waitFor("Sam")
-        Thread.sleep(6_000)
-        shot("dark-map")
-        device.executeShellCommand("cmd uimode night no")
-        Thread.sleep(3_000)
-        darkMap(false)
-
         // Sam's profile, from the info button on his row.
         profileButtonFor("Sam").click()
         waitFor("Location history")
@@ -202,6 +197,48 @@ class StoreScreenshots {
         shot("invite")
         device.pressBack()
         waitFor("Invite")
+
+        // Dark mode with the dark map.
+        darkMap(true)
+        device.executeShellCommand("cmd uimode night yes")
+        Thread.sleep(3_000)
+        waitFor("Sam")
+        Thread.sleep(6_000)
+        shot("dark-map")
+
+        // The people sheet pulled up, so everyone's row shows. Dragged by its title, inside the sheet
+        // (a drag that starts above it moves the map instead).
+        runCatching {
+            waitFor("Family", 5_000)
+            // The sheet's title, not the circle picker at the top that says the same.
+            val title = device.findObjects(By.text("Family")).maxByOrNull { it.visibleBounds.top }!!.visibleBounds
+            device.swipe(title.centerX(), title.centerY(), title.centerX(), device.displayHeight / 4, 60)
+            Thread.sleep(2_000)
+            shot("dark-people")
+        }.onFailure { Log.e(TAG, "people sheet: ${it.message}") }
+
+        // Sam's history on the dark map.
+        runCatching {
+            profileButtonFor("Sam").click()
+            waitFor("Location history").click()
+            waitFor("Sam's history")
+            Thread.sleep(8_000)
+            shot("dark-history")
+            device.pressBack()
+            waitFor("Location history")
+            device.pressBack()
+            waitFor("Invite")
+        }.onFailure { Log.e(TAG, "dark history: ${it.message}") }
+
+        // A place alert, with its area on the map.
+        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+        waitFor("Appearance")
+        if (device.findObject(By.text("Place alerts")) == null) waitFor("Circles").click()
+        waitFor("Place alerts").click()
+        waitFor("School").click()
+        waitFor("Edit place")
+        Thread.sleep(8_000) // map tiles
+        shot("dark-place")
     }
 
     /** Settings → Appearance → Dark map, then back to the map. */
