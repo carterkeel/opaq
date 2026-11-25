@@ -174,30 +174,38 @@ class StoreScreenshots {
         Thread.sleep(10_000) // map tiles
         shot("map")
 
-        // Sam's profile, from the info button on his row.
-        profileButtonFor("Sam").click()
-        waitFor("Location history")
-        Thread.sleep(2_000)
-        shot("profile")
+        // Only the steps that lead to a wanted shot run, so one that doesn't fit a screen size
+        // (a row that's off screen, say) can't stop the others.
+        if (want("profile", "history")) {
+            // Sam's profile, from the info button on his row.
+            profileButtonFor("Sam").click()
+            waitFor("Location history")
+            Thread.sleep(2_000)
+            shot("profile")
+            if (want("history")) {
+                waitFor("Location history").click()
+                waitFor("Sam's history")
+                Thread.sleep(8_000) // history map
+                shot("history")
+                device.pressBack()
+                waitFor("Location history")
+            }
+            device.pressBack()
+            waitFor("Invite")
+        }
 
-        waitFor("Location history").click()
-        waitFor("Sam's history")
-        Thread.sleep(8_000) // history map
-        shot("history")
-        device.pressBack()
-        waitFor("Location history")
-        device.pressBack()
-        waitFor("Invite")
+        if (want("invite")) {
+            // Invite with its QR code.
+            waitFor("Invite").click()
+            waitFor("Create invite").click()
+            device.wait(Until.hasObject(By.textContains("Share link")), 15_000)
+            Thread.sleep(2_000)
+            shot("invite")
+            device.pressBack()
+            waitFor("Invite")
+        }
 
-        // Invite with its QR code.
-        waitFor("Invite").click()
-        waitFor("Create invite").click()
-        device.wait(Until.hasObject(By.textContains("Share link")), 15_000)
-        Thread.sleep(2_000)
-        shot("invite")
-        device.pressBack()
-        waitFor("Invite")
-
+        if (!want("dark-map", "dark-people", "dark-history", "dark-place")) return
         // Dark mode with the dark map.
         darkMap(true)
         device.executeShellCommand("cmd uimode night yes")
@@ -206,19 +214,19 @@ class StoreScreenshots {
         Thread.sleep(6_000)
         shot("dark-map")
 
-        // The people sheet pulled up, so everyone's row shows. Dragged by its title, inside the sheet
-        // (a drag that starts above it moves the map instead).
-        runCatching {
+        if (want("dark-people")) {
+            // The people sheet pulled up, so everyone's row shows. Dragged by its title, inside the
+            // sheet (a drag that starts above it moves the map instead).
             waitFor("Family", 5_000)
             // The sheet's title, not the circle picker at the top that says the same.
             val title = device.findObjects(By.text("Family")).maxByOrNull { it.visibleBounds.top }!!.visibleBounds
             device.swipe(title.centerX(), title.centerY(), title.centerX(), device.displayHeight / 4, 60)
             Thread.sleep(2_000)
             shot("dark-people")
-        }.onFailure { Log.e(TAG, "people sheet: ${it.message}") }
+        }
 
-        // Sam's history on the dark map.
-        runCatching {
+        if (want("dark-history")) {
+            // Sam's history on the dark map.
             profileButtonFor("Sam").click()
             waitFor("Location history").click()
             waitFor("Sam's history")
@@ -228,17 +236,19 @@ class StoreScreenshots {
             waitFor("Location history")
             device.pressBack()
             waitFor("Invite")
-        }.onFailure { Log.e(TAG, "dark history: ${it.message}") }
+        }
 
-        // A place alert, with its area on the map.
-        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
-        waitFor("Appearance")
-        if (device.findObject(By.text("Place alerts")) == null) waitFor("Circles").click()
-        waitFor("Place alerts").click()
-        waitFor("School").click()
-        waitFor("Edit place")
-        Thread.sleep(8_000) // map tiles
-        shot("dark-place")
+        if (want("dark-place")) {
+            // A place alert, with its area on the map.
+            (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+            waitFor("Appearance")
+            if (device.findObject(By.text("Place alerts")) == null) waitFor("Circles").click()
+            waitFor("Place alerts").click()
+            waitFor("School").click()
+            waitFor("Edit place")
+            Thread.sleep(8_000) // map tiles
+            shot("dark-place")
+        }
     }
 
     /** Settings → Appearance → Dark map, then back to the map. */
@@ -298,9 +308,11 @@ class StoreScreenshots {
     private val wanted = args.getString("shots")?.takeIf { it != "all" }?.split(",")?.toSet()
     private val prefix = args.getString("prefix") ?: "phone"
 
+    private fun want(vararg names: String) = wanted == null || names.any { it in wanted }
+
     private fun shot(name: String) {
         shots++
-        if (wanted != null && name !in wanted) return
+        if (!want(name)) return
         device.waitForIdle()
         Thread.sleep(800)
         device.executeShellCommand("mkdir -p $DIR")

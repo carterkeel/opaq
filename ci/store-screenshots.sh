@@ -15,10 +15,12 @@ dir=/sdcard/Download/opaq-store
 case "${SCREENSHOT_SET:-phone}" in
   phone) configs=("1080x1920:420:phone:all") ;;
   foldable) configs=(
-    "1840x1840:420:fold-1x1:map,dark-people"
-    "2208x1656:420:fold-4x3:map,dark-map"
+    # Densities keep the shorter side under 600 dp, where Android would pin its taskbar (with
+    # other apps' icons) along the bottom of every screenshot.
+    "1840x1840:500:fold-1x1:map,dark-people"
+    "2208x1656:480:fold-4x3:map,dark-map"
     "1080x1728:420:fold-10x16:map,profile"
-    "1656x2208:420:fold-3x4:history,dark-place"
+    "1656x2208:480:fold-3x4:history,dark-place"
   ) ;;
   *) echo "Unknown SCREENSHOT_SET ${SCREENSHOT_SET}"; exit 1 ;;
 esac
