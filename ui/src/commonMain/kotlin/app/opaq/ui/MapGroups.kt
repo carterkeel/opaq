@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -162,6 +163,17 @@ internal fun MapOverlayScope.PeopleOverlay(
 ) {
     val byId = faces.associateBy { it.marker.id }
     val world = 512.0 * kotlin.math.exp(zoom * kotlin.math.ln(2.0))
+    // Where anyone's spot and face are, in dp from a given spot, so a pointer can hand over
+    // smoothly from a face in another stack.
+    val spotOf = faces.associate { it.marker.id to mercatorOf(it.marker.lat, it.marker.lon) }
+    fun spotFrom(id: String, ax: Double, ay: Double): Offset? = spotOf[id]?.let { (x, y) -> Offset(((x - ax) * world).toFloat(), ((y - ay) * world).toFloat()) }
+    fun faceFrom(id: String, ax: Double, ay: Double): Offset? = byId[id]?.let { f -> spotFrom(id, ax, ay)?.plus(Offset(f.dx.toFloat(), f.dy.toFloat())) }
+    // Which face carries each person's pointer, and the handover under way when that changes.
+    val clock = androidx.compose.runtime.remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    val handoffs = androidx.compose.runtime.remember { HashMap<String, Handoff>() }
+    var tick by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    val nowMs = maxOf(clock.elapsedNow().inWholeMilliseconds, tick)
+    handoffs.keys.retainAll(spotOf.keys)
     // Your stack on top, then the rest in a steady order.
     val ordered = groups.sortedBy { g -> if (g.any { it.kind == MapMarker.Kind.ME }) 1 else 0 }
     ordered.forEach { g ->
@@ -178,13 +190,27 @@ internal fun MapOverlayScope.PeopleOverlay(
                 if (near != null) near += i else clusters += mutableListOf(i)
             }
             // Each pointer starts inside one face, the one of its people nearest the spot, so its
-            // top is always hidden by that face and never shows in the gaps between faces.
+            // top is always hidden by that face and never shows in the gaps between faces. When the
+            // face carrying it changes (people join or leave as you zoom), it slides across from the
+            // old face to the new one, and its tip and width move with it, rather than jumping.
             val tails = clusters.map { c ->
                 val pin = if (c.size > 1) GROUP_PIN else SINGLE_PIN
+                val members = c.map { g[it].id }
                 val tip = c.map { spots[it] }.reduce { acc, o -> acc + o } / c.size.toFloat()
-                val from = centres[c.minBy { (centres[it] - tip).getDistance() }]
-                val baseY = from.y + FACE_DP / 2 - PIN_OVERLAP_DP
-                Triple(Offset(from.x - pin.widthDp / 2, baseY), Offset(from.x + pin.widthDp / 2, baseY), tip)
+                val carrier = g[c.minBy { (centres[it] - tip).getDistance() }].id
+                members.forEach { id ->
+                    val h = handoffs[id]
+                    if (h == null) handoffs[id] = Handoff(carrier, carrier, members, members, pin, pin, Long.MIN_VALUE / 2)
+                    else if (h.to != carrier || h.toPin != pin || h.toPeople != members) handoffs[id] = Handoff(h.to, carrier, h.toPeople, members, h.toPin, pin, nowMs)
+                }
+                val h = handoffs.getValue(members.first())
+                val e = h.progress(nowMs)
+                val face = mix(faceFrom(h.from, ax, ay) ?: centres[c.first()], faceFrom(h.to, ax, ay) ?: centres[c.first()], e)
+                val oldTip = h.fromPeople.mapNotNull { spotFrom(it, ax, ay) }.takeIf { it.isNotEmpty() }?.let { it.reduce { a, o -> a + o } / it.size.toFloat() } ?: tip
+                val point = mix(oldTip, tip, e)
+                val width = h.fromPin.widthDp + (h.toPin.widthDp - h.fromPin.widthDp) * e
+                val baseY = face.y + FACE_DP / 2 - PIN_OVERLAP_DP
+                Triple(Offset(face.x - width / 2, baseY), Offset(face.x + width / 2, baseY), point)
             }
             // A box from the faces down to the spot, so a tap on the stack lands here and a drag
             // anywhere else still moves the map. Everything is drawn from its bottom centre.
@@ -241,4 +267,38 @@ internal fun MapOverlayScope.PeopleOverlay(
             )
         }
     }
+    // Keep redrawing while a pointer is handing over from one face to another.
+    if (handoffs.values.any { it.progress(nowMs) < 1f }) {
+        androidx.compose.runtime.LaunchedEffect(handoffs.values.maxOf { it.start }) {
+            while (handoffs.values.any { it.progress(clock.elapsedNow().inWholeMilliseconds) < 1f }) {
+                androidx.compose.runtime.withFrameMillis { tick = clock.elapsedNow().inWholeMilliseconds }
+            }
+            tick = clock.elapsedNow().inWholeMilliseconds
+        }
+    }
 }
+
+/** How long a pointer takes to move from one face to another. */
+private const val HANDOFF_MILLIS = 350L
+
+/**
+ * A pointer moving from face [from] (pointing at [fromPeople]'s spot, [fromPin] wide) to face [to]
+ * (pointing at [toPeople]'s spot, [toPin] wide), starting at [start] ms.
+ */
+private data class Handoff(
+    val from: String,
+    val to: String,
+    val fromPeople: List<String>,
+    val toPeople: List<String>,
+    val fromPin: Pin,
+    val toPin: Pin,
+    val start: Long,
+) {
+    /** 0 at the start, 1 once it's there, eased out. */
+    fun progress(now: Long): Float {
+        val f = ((now - start).toFloat() / HANDOFF_MILLIS).coerceIn(0f, 1f)
+        return 1 - (1 - f) * (1 - f) * (1 - f)
+    }
+}
+
+private fun mix(a: Offset, b: Offset, e: Float) = Offset(a.x + (b.x - a.x) * e, a.y + (b.y - a.y) * e)
