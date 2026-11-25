@@ -88,6 +88,27 @@ class MainActivity : ComponentActivity() {
         if (granted) OpaqApp.from(this).ensureSharingService()
     }
 
+    /**
+     * Google Play's prominent disclosure for background location, shown before Android's
+     * "Allow all the time" screen: what's collected, that it happens when the app is closed or not
+     * in use, and what it's for. Keep it in step with the background location declaration in Play
+     * Console (and the demo video, which shows it).
+     */
+    private fun showBackgroundLocationDisclosure() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Share your location in the background")
+            .setMessage(
+                "Opaq collects your location to share it with the people in the circles you choose, " +
+                    "even when the app is closed or not in use. It's end-to-end encrypted, so only they can see it, " +
+                    "and your recent locations are kept on this phone for your location history. " +
+                    "You can pause or stop sharing at any time.\n\n" +
+                    "On the next screen, choose \u201cAllow all the time\u201d.",
+            )
+            .setPositiveButton("Continue") { _, _ -> backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION) }
+            .setNegativeButton("Not now", null)
+            .show()
+    }
+
     /** System photo picker: no storage permission needed. */
     private val photoPicker = registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         val callback = onPhoto ?: return@registerForActivityResult
@@ -145,7 +166,7 @@ class MainActivity : ComponentActivity() {
                 fileOpener.launch(arrayOf("text/plain", "application/octet-stream", "*/*"))
             },
             requestBackgroundLocation = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) backgroundLocation.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) showBackgroundLocationDisclosure()
             },
             confirmScreen = { intent, cb ->
                 onConfirmed = cb

@@ -22,7 +22,7 @@ case "${SCREENSHOT_SET:-phone}" in
     "1080x1728:420:fold-10x16:map,profile"
     "1656x2208:480:fold-3x4:history,dark-place"
   ) ;;
-  # The demo video for Play's foreground service declaration (StoreScreenshots.demo).
+  # The demo video for Play's background location declaration (StoreScreenshots.demo).
   video) configs=("1080x1920:420:video:video") ;;
   *) echo "Unknown SCREENSHOT_SET ${SCREENSHOT_SET}"; exit 1 ;;
 esac
@@ -50,7 +50,10 @@ for config in "${configs[@]}"; do
 
   # Fresh made-up state for each screen, so moving people still read "just now".
   adb shell pm clear "$pkg" >/dev/null
-  for perm in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION ACCESS_BACKGROUND_LOCATION POST_NOTIFICATIONS; do
+  perms="ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION POST_NOTIFICATIONS"
+  # The video shows allowing background location, so it starts without it.
+  [ "$shots" = video ] || perms="$perms ACCESS_BACKGROUND_LOCATION"
+  for perm in $perms; do
     adb shell pm grant "$pkg" "android.permission.$perm" || true
   done
   adb shell dumpsys deviceidle whitelist "+$pkg" >/dev/null || true
@@ -60,7 +63,7 @@ for config in "${configs[@]}"; do
   # "You" are at Mission Dolores Park.
   for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
 
-  if [ "$shots" = video ]; then run seed -e sharing off || { status=1; continue; }; else run seed || { status=1; continue; }; fi
+  run seed || { status=1; continue; }
   adb shell am force-stop "$pkg"
 
   # A tidy status bar: 9:41, full signal and battery, no notification icons.

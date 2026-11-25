@@ -126,8 +126,7 @@ class StoreScreenshots {
             myName = "Alex",
             myColor = 0,
             setupDone = true,
-            // The demo video starts with sharing off, so it can show turning it on.
-            sharing = InstrumentationRegistry.getArguments().getString("sharing") != "off",
+            sharing = true,
             profileChangedAt = now,
             historyKeyHex = historyKey,
             circles = s.circles.map { c ->
@@ -253,9 +252,11 @@ class StoreScreenshots {
     }
 
     /**
-     * The demo video for Google Play's foreground service declaration (the script records the
-     * screen meanwhile): turn sharing on, see the notification, go to the home screen and see it's
-     * still sharing, open the app from the notification, then stop sharing from the notification.
+     * The demo video for Google Play's background location declaration (the script records the
+     * screen meanwhile; sharing is on, background location not yet allowed). It has to show the
+     * in-app disclosure, Android's permission screen, and the feature at work in the background:
+     * Settings → Sharing → Background location → Turn on, the disclosure, Continue, "Allow all the
+     * time", then the home screen with the "Sharing your location" notification still there.
      * Each step logs a "mark" line the script turns into captions.
      */
     @Test
@@ -267,49 +268,37 @@ class StoreScreenshots {
             Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
         )
         waitFor("Sam", 40_000)
-        Thread.sleep(8_000) // map tiles
+        Thread.sleep(6_000) // map tiles
         mark("open")
-        Thread.sleep(3_000)
+        Thread.sleep(2_000)
 
-        mark("start")
-        (device.wait(Until.findObject(By.desc("Paused")), 10_000) ?: error("no Paused button")).click()
-        Thread.sleep(4_000)
+        mark("settings")
+        (device.wait(Until.findObject(By.desc("Settings")), 10_000) ?: error("no Settings button")).click()
+        waitFor("Sharing").click()
+        waitFor("Background location")
+        Thread.sleep(2_000)
+        waitFor("Turn on").click()
 
-        mark("notification")
-        device.openNotification()
-        device.wait(Until.hasObject(By.textContains("Sharing your location")), 10_000) || error("no sharing notification")
-        Thread.sleep(5_000)
+        mark("disclosure")
+        device.wait(Until.hasObject(By.text("Share your location in the background")), 10_000) || error("no disclosure")
+        Thread.sleep(6_000)
+        waitFor("Continue").click()
+
+        mark("prompt")
+        val always = device.wait(Until.findObject(By.text("Allow all the time")), 15_000) ?: error("no permission screen")
+        Thread.sleep(2_000)
+        always.click()
+        Thread.sleep(2_000)
         device.pressBack()
-        Thread.sleep(1_000)
+        device.wait(Until.hasObject(By.textContains("Sharing keeps going in the background")), 10_000)
+        mark("allowed")
+        Thread.sleep(3_000)
 
         mark("background")
         device.pressHome()
-        Thread.sleep(4_000)
-        device.openNotification()
-        device.wait(Until.hasObject(By.textContains("Sharing your location")), 10_000)
-        Thread.sleep(5_000)
-
-        mark("reopen")
-        device.findObject(By.textContains("Sharing your location"))?.click()
-        waitFor("Sam", 15_000)
-        Thread.sleep(4_000)
-
-        mark("stop")
-        device.openNotification()
-        device.wait(Until.hasObject(By.textContains("Sharing your location")), 10_000)
         Thread.sleep(2_000)
-        val stop = device.wait(Until.findObject(By.text("Stop sharing")), 3_000)
-            ?: device.wait(Until.findObject(By.text("STOP SHARING")), 1_000)
-        if (stop != null) {
-            stop.click()
-            Thread.sleep(3_000)
-            device.pressBack()
-        } else {
-            // The action is hidden while the notification is collapsed: pause in the app instead.
-            device.pressBack()
-            Thread.sleep(1_000)
-            (device.wait(Until.findObject(By.desc("Sharing")), 10_000) ?: error("no Sharing button")).click()
-        }
+        device.openNotification()
+        device.wait(Until.hasObject(By.textContains("Sharing your location")), 10_000) || error("no sharing notification")
         Thread.sleep(5_000)
         mark("end")
     }
