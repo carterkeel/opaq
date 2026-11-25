@@ -292,11 +292,18 @@ class StoreScreenshots {
 
     private var shots = 0
 
+    private val args = InstrumentationRegistry.getArguments()
+
+    /** Which shots to save (`-e shots map,history`; all by default), and their file name prefix. */
+    private val wanted = args.getString("shots")?.takeIf { it != "all" }?.split(",")?.toSet()
+    private val prefix = args.getString("prefix") ?: "phone"
+
     private fun shot(name: String) {
+        shots++
+        if (wanted != null && name !in wanted) return
         device.waitForIdle()
         Thread.sleep(800)
-        shots++
         device.executeShellCommand("mkdir -p $DIR")
-        device.executeShellCommand("screencap -p $DIR/%02d-%s.png".format(shots, name))
+        device.executeShellCommand("screencap -p $DIR/%s-%02d-%s.png".format(prefix, shots, name))
     }
 }

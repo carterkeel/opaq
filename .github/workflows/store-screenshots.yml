@@ -2,14 +2,20 @@ name: Store screenshots
 
 # Google Play screenshots, made by hand: Actions → Store screenshots → Run workflow.
 # Runs androidTest/StoreScreenshots.kt on an emulator with made-up people (ci/store-screenshots.sh)
-# and saves 1080 x 1920 PNGs as the opaq-store-screenshots artifact and on the store-screenshots
-# branch (force-pushed, latest run only).
+# and saves the PNGs as an artifact and on a store-screenshots-<set> branch (force-pushed, latest
+# run only). Sets: phone (1080 x 1920) or foldable (1:1, 4:3, 3:4 unfolded; 10:16 outer screen).
 on:
   workflow_dispatch:
+    inputs:
+      set:
+        description: Which screenshots
+        type: choice
+        options: [phone, foldable]
+        default: phone
   push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
     branches: [store-listing]
 
-# Write access is only for pushing the screenshots to the store-screenshots branch.
+# Write access is only for pushing the screenshots to the store-screenshots-<set> branch.
 permissions:
   contents: write
 
@@ -20,7 +26,9 @@ defaults:
 jobs:
   screenshots:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
+    env:
+      SCREENSHOT_SET: ${{ github.event_name == 'push' && 'foldable' || inputs.set }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
@@ -51,12 +59,12 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: opaq-store-screenshots
+          name: opaq-store-screenshots-${{ env.SCREENSHOT_SET }}
           path: store-screens/*.png
           if-no-files-found: warn
 
       # Also on a branch, so they can be fetched with git. Made-up data only.
-      - name: Push the screenshots to the store-screenshots branch
+      - name: Push the screenshots to the store-screenshots-<set> branch
         if: always()
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -68,7 +76,7 @@ jobs:
             grep -nE "FATAL EXCEPTION|AndroidRuntime|OpaqStore|Exception" store-logcat.txt 2>/dev/null | head -80 || true
           } > "$out/log.txt"
           cd "$out"
-          git init -q -b store-screenshots
+          git init -q -b "store-screenshots-$SCREENSHOT_SET"
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Store screenshots from run ${GITHUB_RUN_ID}"
-          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" store-screenshots
+          git push -qf "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "store-screenshots-$SCREENSHOT_SET"
