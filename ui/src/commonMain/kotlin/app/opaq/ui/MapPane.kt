@@ -9,7 +9,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -256,6 +255,18 @@ fun MapPane(
         }
     }
 
+    // Where to aim the camera so [lat], [lon] shows in the middle of the map above the people sheet
+    // (and left of the side panel in landscape) at [z].
+    fun clearOfSheet(lat: Double, lon: Double, z: Double): Position {
+        val world = 512.0 * kotlin.math.exp(z * ln(2.0))
+        val (x, y) = mercatorOf(lat, lon)
+        val cx = x + endInset.value / 2 / world
+        val cy = (y + bottomInset.value / 2 / world).coerceIn(0.0, 1.0)
+        val clon = cx * 360.0 - 180.0
+        val clat = kotlin.math.atan(kotlin.math.sinh(PI * (1 - 2 * cy))) * 180.0 / PI
+        return Position(((clon + 540.0) % 360.0) - 180.0, clat)
+    }
+
     // Open at city level around me (or whoever has a location first), once. Switching to another
     // circle or Everyone keeps the map where it is and as zoomed in as it was.
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
@@ -265,13 +276,13 @@ fun MapPane(
         framedFor = focusKey
         if (!first) return@LaunchedEffect
         val center = markers.firstOrNull { it.kind == MapMarker.Kind.ME } ?: markers.first()
-        mapState.setCameraPosition(CameraPosition(center = Position(center.lon, center.lat), zoom = CITY_ZOOM))
+        mapState.setCameraPosition(CameraPosition(center = clearOfSheet(center.lat, center.lon, CITY_ZOOM), zoom = CITY_ZOOM))
     }
 
     // Glide to a requested point.
     LaunchedEffect(mapState, focus) {
         val f = focus ?: return@LaunchedEffect
-        mapState.animateCamera(CameraUpdate(center = Position(f.lon, f.lat), zoom = STREET_ZOOM))
+        mapState.animateCamera(CameraUpdate(center = clearOfSheet(f.lat, f.lon, STREET_ZOOM), zoom = STREET_ZOOM))
     }
 
     BoxWithConstraints(modifier) {
@@ -303,11 +314,11 @@ fun MapPane(
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
-            viewportInsets = PaddingValues(bottom = bottomInset, end = endInset),
-            // The people sheet's room shifts the map's middle up, so zoomed right out the world
-            // must reach that much further down: otherwise dragging the sheet down showed an empty
-            // white band below the bottom of the world.
-            cameraConstraints = worldFills(maxHeight + bottomInset),
+            // No viewport insets: MapLibre keeps the world filling the screen top to bottom only for
+            // the inset area, so with the sheet's room as an inset, the map could be dragged until
+            // a band past the bottom of the world showed below it. Points are kept clear of the
+            // sheet by aiming the camera a little south instead ([clearOfSheet]).
+            cameraConstraints = worldFills(maxHeight),
             interactions = peopleInteractions,
             uiOptions = remember { overlayMapUiOptions() },
             overlay = {
