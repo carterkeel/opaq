@@ -18,7 +18,9 @@ for perm in ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION ACCESS_BACKGROUND_LOCATI
 done
 adb shell dumpsys deviceidle whitelist "+$pkg" >/dev/null || true
 # Nothing leaves the emulator: the debug app uses only this relay, and nothing answers there.
-adb shell run-as "$pkg" sh -c 'mkdir -p files && echo ws://127.0.0.1:9 > files/test-relay'
+# (adb shell joins its arguments into one remote command line, so the quoting is for that shell.)
+adb shell "run-as $pkg sh -c 'mkdir -p files && echo ws://127.0.0.1:9 > files/test-relay'"
+adb shell "run-as $pkg cat files/test-relay"
 # "You" are at Mission Dolores Park.
 for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
 
