@@ -12,8 +12,6 @@ on:
         type: choice
         options: [phone, foldable]
         default: phone
-  push:  # TEMPORARY: until this workflow is on main (dispatch needs it there)
-    branches: [store-listing]
 
 # Write access is only for pushing the screenshots to the store-screenshots-<set> branch.
 permissions:
@@ -28,7 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      SCREENSHOT_SET: ${{ github.event_name == 'push' && 'foldable' || inputs.set }}
+      SCREENSHOT_SET: ${{ inputs.set || 'phone' }}
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
