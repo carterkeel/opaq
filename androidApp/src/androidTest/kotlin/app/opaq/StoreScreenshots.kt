@@ -168,23 +168,13 @@ class StoreScreenshots {
         Thread.sleep(10_000) // map tiles
         shot("map")
 
-        // Dark mode with the dark map, then the quick menu on Maya's row.
+        // Dark mode with the dark map.
         darkMap(true)
         device.executeShellCommand("cmd uimode night yes")
         Thread.sleep(3_000)
         waitFor("Sam")
         Thread.sleep(6_000)
         shot("dark-map")
-        // Pull the people sheet up so everyone's row shows.
-        val handleY = waitFor("Family", 5_000).visibleBounds.top - 40
-        device.swipe(device.displayWidth / 2, handleY, device.displayWidth / 2, device.displayHeight / 3, 40)
-        Thread.sleep(1_500)
-        waitFor("Maya").longClick()
-        Thread.sleep(1_500)
-        shot("dark-menu")
-        // Tapping elsewhere closes it (Back on the map could leave the app).
-        device.click(device.displayWidth / 2, device.displayHeight / 6)
-        Thread.sleep(500)
         device.executeShellCommand("cmd uimode night no")
         Thread.sleep(3_000)
         darkMap(false)
