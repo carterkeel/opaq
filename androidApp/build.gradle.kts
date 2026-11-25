@@ -16,15 +16,28 @@ android {
         minSdk = 26
         targetSdk = 35
         // CI builds count up, so each new APK installs over the previous one.
-        versionCode = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
-        versionName = "0.1.0"
+        // A Play bundle sets both (play-bundle.yml); test builds use the CI run number.
+        versionCode = providers.environmentVariable("OPAQ_VERSION_CODE").orNull?.toIntOrNull()
+            ?: providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
+        versionName = providers.environmentVariable("OPAQ_VERSION_NAME").orNull?.takeIf { it.isNotBlank() } ?: "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // CI signs test builds with one long-lived key (kept in the Actions cache, never in the repo),
     // so a new APK can be installed over an older one. Local builds use the normal debug key.
     val ciKeystore = providers.environmentVariable("OPAQ_KEYSTORE").orNull?.let { file(it) }?.takeIf { it.exists() }
+    // The Play upload key, only in the "Play bundle" workflow (from GitHub secrets, never in the
+    // repo). Without it a release build is unsigned and Play won't take it.
+    val uploadKeystore = providers.environmentVariable("OPAQ_UPLOAD_KEYSTORE").orNull?.let { file(it) }?.takeIf { it.exists() }
     signingConfigs {
+        if (uploadKeystore != null) {
+            create("upload") {
+                storeFile = uploadKeystore
+                storePassword = providers.environmentVariable("OPAQ_UPLOAD_STORE_PASSWORD").get()
+                keyAlias = providers.environmentVariable("OPAQ_UPLOAD_KEY_ALIAS").get()
+                keyPassword = providers.environmentVariable("OPAQ_UPLOAD_KEY_PASSWORD").get()
+            }
+        }
         if (ciKeystore != null) {
             create("ci") {
                 storeFile = ciKeystore
@@ -41,16 +54,17 @@ android {
             applicationIdSuffix = ".debug"
             signingConfig = testSigning
         }
+        // What goes to Google Play: R8-optimised, signed with the upload key when it's given.
         release {
-            isMinifyEnabled = false
-        }
-        // Optimised like a real release (R8, no debugging) but signed with the debug key, so it
-        // installs anywhere. Compose is much smoother in this build than in debug.
-        create("staging") {
-            initWith(getByName("release"))
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (uploadKeystore != null) signingConfig = signingConfigs.getByName("upload")
+        }
+        // Optimised like the release but signed with the test key, so it installs anywhere.
+        // Compose is much smoother in this build than in debug.
+        create("staging") {
+            initWith(getByName("release"))
             signingConfig = testSigning
             applicationIdSuffix = ".staging"
         }

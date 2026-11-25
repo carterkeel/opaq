@@ -203,6 +203,8 @@ gh api repos/carterkeel/opaq/commits/ci-logs --jq .commit.message
 gh api repos/carterkeel/opaq/contents/log.txt?ref=ci-logs --jq .content | base64 -d
 ```
 
+**Play bundle.** The signed release bundle for Google Play is built by hand: Actions → Play bundle → Run workflow (`.github/workflows/play-bundle.yml`), with a version name and optionally a version code (default: that workflow's run number + 100; it must be higher than any bundle uploaded before). It signs with the upload key from four repository secrets (`OPAQ_UPLOAD_KEYSTORE_B64`, `OPAQ_UPLOAD_STORE_PASSWORD`, `OPAQ_UPLOAD_KEY_ALIAS`, `OPAQ_UPLOAD_KEY_PASSWORD`), never in the repo. The release build type is R8-optimised like staging; its artifact holds the `.aab` and R8's `mapping.txt`.
+
 Two-phone manual testing is described in `TESTING.md`. Simulators and emulators should use the local test relay (`tools/test-relay.sh`, `nak serve` on port 7777) rather than public relays: debug builds read it from the `opaqTestRelay` user default (iOS) or `files/test-relay` (Android) and then use only that relay (`Engine.testRelays`; plain `ws://` is allowed only to localhost and the emulator's 10.0.2.2, and only in debug builds).
 
 ## Toolchain gotchas
