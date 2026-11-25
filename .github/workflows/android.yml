@@ -6,7 +6,7 @@ name: Android
 # (A separate pull_request trigger would build the same code twice and race for the log.)
 on:
   push:
-    branches-ignore: [ci-logs]
+    branches-ignore: [ci-logs, 'store-screenshots*']
   workflow_dispatch:
 
 # Write access is only for pushing the run summary to the ci-logs branch. Third-party actions
