@@ -16,6 +16,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -106,6 +110,16 @@ fun SetupScreen(
             label = "setup",
             modifier = Modifier.weight(1f),
         ) { current ->
+            // The location step lays itself out, with its buttons pinned to the bottom.
+            if (current == SetupStep.Location) {
+                LocationStep(
+                    hasLocationPermission, onRequestLocation, backgroundSettings,
+                    sharing = state.sharing,
+                    onShare = { actions.setSharing(true) },
+                    onDone = { actions.setSetupDone() },
+                )
+                return@AnimatedContent
+            }
             Column(
                 Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -121,12 +135,7 @@ fun SetupScreen(
                         onJoinLink = onJoinLink,
                         onScan = onScan,
                     )
-                    SetupStep.Location -> LocationStep(
-                        hasLocationPermission, onRequestLocation, backgroundSettings,
-                        sharing = state.sharing,
-                        onShare = { actions.setSharing(true) },
-                        onDone = { actions.setSetupDone() },
-                    )
+                    SetupStep.Location -> Unit
                 }
             }
         }
@@ -245,8 +254,14 @@ private fun ColumnScope.CircleStep(actions: Actions, onCreated: (String) -> Unit
     }
 }
 
+/**
+ * The last step: everything sharing depends on, in one short checklist (#158) that fits without
+ * scrolling: location access, the phone settings that keep it going in the background (#131; on
+ * Android "Allow all the time" and no battery saver) and sharing itself, each ticked once done.
+ * Optional switches (like iOS's blue pill) stay in Settings. The buttons stay at the bottom.
+ */
 @Composable
-private fun ColumnScope.LocationStep(
+private fun LocationStep(
     hasPermission: Boolean,
     onRequest: () -> Unit,
     background: List<SettingItem>,
@@ -254,75 +269,100 @@ private fun ColumnScope.LocationStep(
     onShare: () -> Unit,
     onDone: () -> Unit,
 ) {
-    Spacer(Modifier.height(8.dp))
-    BigIcon(AppIcons.LocationPin)
-    StepTitle(
-        "Share your location",
-        "Opaq needs location access to show you to your circle. Your location is encrypted on this phone before it goes anywhere.",
-    )
-    // Everything sharing depends on, in one checklist (#158): location access, the phone settings
-    // that keep it going in the background (#131; on Android "Allow all the time" and no battery
-    // saver) and sharing itself. Each shows a tick once done. Optional switches (like iOS's blue
-    // pill) stay in Settings.
     val needed = background.filter { it.checked == null }
     val done = hasPermission && sharing && needed.all { it.action == null }
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Opaq needs these to work properly", style = MaterialTheme.typography.titleSmall)
-        Caption("Without them, your circle can stop seeing you when Opaq is closed or the phone is resting.")
-        NeedRow(
-            "Location access",
-            if (hasPermission) "Allowed." else "Lets Opaq see where you are.",
-            ok = hasPermission,
-            action = "Allow",
-            onAction = onRequest,
-        )
-        needed.forEach { item ->
-            NeedRow(
-                item.title,
-                if (!hasPermission) "After location access." else item.detail,
-                ok = hasPermission && item.action == null,
-                action = item.action,
-                onAction = item.onAction,
-                enabled = hasPermission,
+    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+        Column(
+            Modifier.weight(1f).verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(56.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(AppIcons.LocationPin, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(28.dp))
+                }
+            }
+            Text("Share your location", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
+            Text(
+                "Your circle sees where you are. It's encrypted on this phone before it goes anywhere.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(2.dp))
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
+                Column {
+                    NeedRow(AppIcons.LocationPin, "Location access", if (hasPermission) "Allowed" else "Lets Opaq see where you are", hasPermission, "Allow", onRequest)
+                    needed.forEach { item ->
+                        NeedDivider()
+                        NeedRow(
+                            item.icon,
+                            item.title,
+                            when {
+                                !hasPermission -> "After location access"
+                                else -> item.brief ?: item.detail
+                            },
+                            ok = hasPermission && item.action == null,
+                            action = item.action,
+                            onAction = item.onAction,
+                            enabled = hasPermission,
+                        )
+                    }
+                    NeedDivider()
+                    NeedRow(AppIcons.Share, "Sharing", if (sharing) "On. Pause any time from the map" else "Off, so nobody sees you", sharing, "Turn on", onShare)
+                }
+            }
+            Caption(
+                "${LocalPlatform.current.sharingIndicatorText}.",
+                Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                textAlign = TextAlign.Center,
             )
         }
-        NeedRow(
-            "Sharing on",
-            if (sharing) "On. Pause any time from the map." else "Off, so nobody sees you.",
-            ok = sharing,
-            action = "Turn on",
-            onAction = onShare,
-        )
-    }
-    InfoCard {
-        Text("You're always in control", style = MaterialTheme.typography.titleSmall)
-        Caption("${LocalPlatform.current.sharingIndicatorText}, and you can pause sharing with one tap on the map.")
-    }
-    Spacer(Modifier.height(8.dp))
-    if (hasPermission) {
-        PrimaryButton("Open the map", onDone)
-        if (!done) Caption("You can finish these later in Settings → Sharing.", Modifier.fillMaxWidth())
-    } else {
-        PrimaryButton("Allow location", onRequest)
-        TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            if (hasPermission) {
+                PrimaryButton("Open the map", onDone)
+                if (!done) {
+                    Spacer(Modifier.height(10.dp))
+                    Caption("You can finish these later in Settings → Sharing.", textAlign = TextAlign.Center)
+                }
+            } else {
+                PrimaryButton("Allow location", onRequest)
+                TextButton(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Not now") }
+            }
+        }
     }
 }
 
-/** One thing sharing needs: a tick once it's done, otherwise a button to do it. */
 @Composable
-private fun NeedRow(title: String, detail: String, ok: Boolean, action: String?, onAction: () -> Unit, enabled: Boolean = true) {
-    InfoCard {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.titleSmall)
-                Caption(detail)
-            }
-            AnimatedContent(ok, label = "need") { isOk ->
-                if (isOk) {
-                    Icon(AppIcons.Check, contentDescription = "Done", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                } else if (action != null) {
-                    TonalButton(action, onAction, enabled = enabled)
+private fun NeedDivider() {
+    HorizontalDivider(Modifier.padding(start = 54.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+}
+
+/** One thing sharing needs, as a row in the checklist: a tick once it's done, otherwise a small button. */
+@Composable
+private fun NeedRow(icon: ImageVector, title: String, detail: String, ok: Boolean, action: String?, onAction: () -> Unit, enabled: Boolean = true) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(24.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled || ok) 1f else 0.6f))
+            Caption(detail)
+        }
+        AnimatedContent(ok, label = "need") { isOk ->
+            if (isOk) {
+                Box(Modifier.size(width = 40.dp, height = 36.dp), contentAlignment = Alignment.Center) {
+                    Icon(AppIcons.Check, contentDescription = "Done", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
                 }
+            } else if (action != null) {
+                FilledTonalButton(
+                    onClick = onAction,
+                    enabled = enabled,
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp),
+                    modifier = Modifier.heightIn(min = 36.dp),
+                ) { Text(action, style = MaterialTheme.typography.labelLarge) }
             }
         }
     }

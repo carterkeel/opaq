@@ -303,6 +303,59 @@ class StoreScreenshots {
         mark("end")
     }
 
+    /**
+     * Setup's location step, which should fit without scrolling: before location access, then with
+     * it allowed, in dark and light mode. Runs on a fresh install without location access (no seed:
+     * setup only shows while there are no circles), going through the earlier steps to get there.
+     */
+    @Test
+    fun setup() {
+        assumeTrue(enabled)
+        val context = instrumentation.targetContext
+        val pkg = context.packageName
+        device.executeShellCommand("cmd uimode night yes")
+        context.startActivity(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+        waitFor("What should people call you?", 30_000)
+        val name = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no name field")
+        name.click()
+        name.text = "Alex"
+        device.pressBack() // close the keyboard
+        waitFor("Continue").click()
+        waitFor("Add a profile photo")
+        waitFor("Skip").click()
+        waitFor("Add a PIN?")
+        waitFor("Not now").click()
+        waitFor("Create a circle")
+        // A tap while the step is still sliding in can be lost, so tap until the next screen shows.
+        repeat(5) {
+            if (device.hasObject(By.text("Create"))) return@repeat
+            device.findObject(By.text("Create a circle"))?.click()
+            device.wait(Until.hasObject(By.text("Create")), 3_000)
+        }
+        waitFor("Create").click()
+        waitFor("Share your location", 30_000)
+        Thread.sleep(2_000)
+        shot("setup-dark")
+        // Changing the theme recreates the screen: setup has to stay on this step.
+        device.executeShellCommand("cmd uimode night no")
+        Thread.sleep(3_000)
+        waitFor("Share your location", 10_000)
+        shot("setup-light")
+        // Allow location: the step stays, with location access ticked and "Open the map".
+        waitFor("Allow location").click()
+        (device.wait(Until.findObject(By.text("While using the app")), 10_000) ?: error("no permission dialog")).click()
+        waitFor("Open the map", 15_000)
+        Thread.sleep(2_000)
+        shot("setup-allowed-light")
+        device.executeShellCommand("cmd uimode night yes")
+        Thread.sleep(3_000)
+        waitFor("Open the map", 10_000)
+        shot("setup-allowed-dark")
+        device.executeShellCommand("cmd uimode night no")
+    }
+
     private fun mark(name: String) = Log.i(TAG, "mark $name")
 
     /** Settings → Appearance → Dark map, then back to the map. */

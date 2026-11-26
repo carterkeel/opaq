@@ -33,6 +33,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -104,8 +105,10 @@ fun OpaqScreens(
     var selectedCircle by remember { mutableStateOf(state.lastCircleId) }
     val selectCircle: (String) -> Unit = { selectedCircle = it; actions.setLastCircle(it) }
     // First-run setup shows for new installs. Existing installs that already have circles skip it.
-    // Recomputed when unreadable saved state is resolved (a fresh start goes through setup).
-    val needsSetup = remember(recovery) { !state.setupDone && state.circles.isEmpty() }
+    // Recomputed when unreadable saved state is resolved (a fresh start goes through setup). Saved,
+    // so turning the phone or changing the theme on the last step (once a circle exists) doesn't
+    // skip the rest of setup.
+    val needsSetup = rememberSaveable(recovery) { !state.setupDone && state.circles.isEmpty() }
     LaunchedEffect(recovery) { if (recovery == null && !needsSetup && !state.setupDone) actions.setSetupDone() }
     val showSetup = needsSetup && !state.setupDone
     fun push(r: Route) { stack.add(r) }

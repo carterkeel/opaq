@@ -143,6 +143,7 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
             else "Needed to keep sharing while Opaq is in the background. Choose Location → Always.",
             if (hasAlways) null else "Open",
             icon = AppIcons.Clock,
+            brief = if (hasAlways) "Allowed" else "Keeps sharing when Opaq is closed",
         ) {
             NSURL.URLWithString(UIApplicationOpenSettingsURLString)?.let {
                 UIApplication.sharedApplication.openURL(it, options = emptyMap<Any?, Any>(), completionHandler = null)

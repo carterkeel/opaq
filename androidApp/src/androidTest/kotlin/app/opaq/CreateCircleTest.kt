@@ -240,10 +240,10 @@ class CreateCircleTest {
         waitFor("Create").click()
 
         // Step 5: location (already granted by the test rule). The checklist of what Opaq needs (#158)
-        // shows background location and the battery saver still to do, and pushes the button down.
-        waitFor("Opaq needs these to work properly")
+        // shows background location and the battery saver still to do; the button stays on screen.
+        waitFor("Share your location")
         shot("setup-location")
-        scrollTo("Open the map").click()
+        waitFor("Open the map").click()
 
         // The home screen with the map and people sheet appears and keeps running.
         waitFor("Invite", 30_000)
