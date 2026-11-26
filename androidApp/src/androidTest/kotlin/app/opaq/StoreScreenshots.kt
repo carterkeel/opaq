@@ -125,7 +125,8 @@ class StoreScreenshots {
         val seeded: AppState = s.copy(
             myName = "Alex",
             myColor = 0,
-            setupDone = true,
+            // The setup check starts on setup's last step: it opens there when circles exist.
+            setupDone = InstrumentationRegistry.getArguments().getString("setup") != "1",
             sharing = true,
             profileChangedAt = now,
             historyKeyHex = historyKey,
@@ -301,6 +302,42 @@ class StoreScreenshots {
         device.wait(Until.hasObject(By.textContains("Sharing your location")), 10_000) || error("no sharing notification")
         Thread.sleep(5_000)
         mark("end")
+    }
+
+    /**
+     * Setup's location step, which should fit without scrolling: before location access, then with
+     * it allowed, in dark and light mode. Seeded with -e setup 1 and run without location access.
+     */
+    @Test
+    fun setup() {
+        assumeTrue(enabled)
+        val context = instrumentation.targetContext
+        val pkg = context.packageName
+        fun open() {
+            context.startActivity(
+                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+            )
+            waitFor("Share your location", 30_000)
+            Thread.sleep(2_000)
+        }
+        device.executeShellCommand("cmd uimode night yes")
+        open()
+        shot("setup-dark")
+        device.executeShellCommand("cmd uimode night no")
+        Thread.sleep(2_000)
+        open()
+        shot("setup-light")
+        device.executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
+        device.executeShellCommand("pm grant $pkg android.permission.ACCESS_COARSE_LOCATION")
+        device.pressHome()
+        Thread.sleep(1_000)
+        open()
+        shot("setup-allowed-light")
+        device.executeShellCommand("cmd uimode night yes")
+        Thread.sleep(2_000)
+        open()
+        shot("setup-allowed-dark")
+        device.executeShellCommand("cmd uimode night no")
     }
 
     private fun mark(name: String) = Log.i(TAG, "mark $name")

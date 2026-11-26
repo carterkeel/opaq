@@ -22,6 +22,8 @@ case "${SCREENSHOT_SET:-phone}" in
     "1080x1728:420:fold-10x16:map,profile"
     "1656x2208:480:fold-3x4:history,dark-place"
   ) ;;
+  # Setup's location step on a short and a tall phone, to check it fits without scrolling.
+  setup) configs=("1080x1920:420:setup-16x9:setup" "1080x2400:420:setup-20x9:setup") ;;
   # The demo video for Play's background location declaration (StoreScreenshots.demo).
   video) configs=("1080x1920:420:video:video") ;;
   *) echo "Unknown SCREENSHOT_SET ${SCREENSHOT_SET}"; exit 1 ;;
@@ -51,6 +53,8 @@ for config in "${configs[@]}"; do
   # Fresh made-up state for each screen, so moving people still read "just now".
   adb shell pm clear "$pkg" >/dev/null
   perms="ACCESS_FINE_LOCATION ACCESS_COARSE_LOCATION POST_NOTIFICATIONS"
+  # Setup's check starts without location access, so it shows the step before it's allowed.
+  [ "$shots" = setup ] && perms="POST_NOTIFICATIONS"
   # The video shows allowing background location, so it starts without it.
   [ "$shots" = video ] || perms="$perms ACCESS_BACKGROUND_LOCATION"
   for perm in $perms; do
@@ -63,7 +67,7 @@ for config in "${configs[@]}"; do
   # "You" are at Mission Dolores Park.
   for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
 
-  run seed || { status=1; continue; }
+  if [ "$shots" = setup ]; then run seed -e setup 1 || { status=1; continue; }; else run seed || { status=1; continue; }; fi
   adb shell am force-stop "$pkg"
 
   # A tidy status bar: 9:41, full signal and battery, no notification icons.
@@ -73,7 +77,10 @@ for config in "${configs[@]}"; do
   demo network -e wifi show -e level 4 -e fully true
   demo network -e mobile show -e datatype none -e level 4 -e fully true
   for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
-  if [ "$shots" = video ]; then
+  if [ "$shots" = setup ]; then
+    demo notifications -e visible false
+    run setup -e prefix "$prefix" || status=1
+  elif [ "$shots" = video ]; then
     # The video shows the sharing notification, so notification icons stay on.
     adb shell rm -f /sdcard/Download/opaq-demo.mp4
     adb logcat -c || true

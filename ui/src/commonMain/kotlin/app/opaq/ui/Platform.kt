@@ -136,6 +136,8 @@ data class SettingItem(
     val checked: Boolean? = null,
     /** The row's icon; each row in a list gets its own. Before the lambdas, so a trailing lambda is still [onAction]. */
     val icon: androidx.compose.ui.graphics.vector.ImageVector = AppIcons.Info,
+    /** A few words for the first-run checklist, where [detail] would be too long; [detail] if null. */
+    val brief: String? = null,
     val onCheckedChange: (Boolean) -> Unit = {},
     val onAction: () -> Unit = {},
 )

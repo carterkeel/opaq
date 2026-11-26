@@ -336,8 +336,8 @@ fun Mono(text: String, size: Int = 13, color: Color = MaterialTheme.colorScheme.
 }
 
 @Composable
-fun Caption(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+fun Caption(text: String, modifier: Modifier = Modifier, textAlign: androidx.compose.ui.text.style.TextAlign? = null) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier, textAlign = textAlign)
 }
 
 // -------------------------------------------------------------------------------------------------

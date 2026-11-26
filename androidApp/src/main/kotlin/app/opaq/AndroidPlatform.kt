@@ -173,6 +173,7 @@ class AndroidPlatform(
                 else "Off. Tap Turn on, then choose “Allow all the time” on the next screen.",
                 if (hasBackgroundPermission) null else "Turn on",
                 icon = AppIcons.Clock,
+                brief = if (hasBackgroundPermission) "Allowed all the time" else "Keeps sharing when Opaq is closed",
             ) {
                 requestBackgroundLocation()
             },
@@ -181,6 +182,7 @@ class AndroidPlatform(
                 if (ignoringBattery) "Off. Updates stay reliable." else "On, so some phones pause updates. Tap Turn off, then choose “Allow”.",
                 if (ignoringBattery) null else "Turn off",
                 icon = AppIcons.Leaf,
+                brief = if (ignoringBattery) "Off, so updates stay on time" else "Can pause your updates",
             ) {
                 try {
                     context.startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${context.packageName}")))
