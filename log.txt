@@ -1,0 +1,81 @@
+Run 45749223952 on battery-dark-number (5a4dcdcd590adb7de6fc570a4a87544152928cb5)
+4739:11-26 03:30:39.566 W/SystemConfig(  517): java.io.FileNotFoundException: /vendor/etc/public.libraries.txt: open failed: ENOENT (No such file or directory)
+4756:11-26 03:30:39.566 W/SystemConfig(  517): Caused by: android.system.ErrnoException: open failed: ENOENT (No such file or directory)
+4888:11-26 03:30:39.758 W/FileUtils(  517): Failed to chmod(/data/system/packages.list): android.system.ErrnoException: chmod failed: ENOENT (No such file or directory)
+5652:11-26 03:30:47.288 E/ArtService(  517): java.io.FileNotFoundException: /data/system/package-dex-usage.pb: open failed: ENOENT (No such file or directory)
+5666:11-26 03:30:47.288 E/ArtService(  517): Caused by: android.system.ErrnoException: open failed: ENOENT (No such file or directory)
+7113:11-26 03:30:56.460 E/DevicePolicyManager(  517): java.nio.file.NoSuchFileException: /data/system/device_policies_version
+7381:11-26 03:30:56.786 E/SoundTriggerMiddlewareImpl(  517): java.util.NoSuchElementException
+7439:11-26 03:30:56.800 E/UsbDeviceManager(  517): java.util.NoSuchElementException
+8024:11-26 03:30:56.937 E/DisplayPowerController2[0](  517): failed to set up display white-balance: java.lang.IllegalStateException: cannot find sensor com.google.sensor.color
+8093:11-26 03:30:56.951 E/AppIdleHistory(  517): java.io.FileNotFoundException: /data/system/users/0/app_idle_stats.xml: open failed: ENOENT (No such file or directory)
+8110:11-26 03:30:56.951 E/AppIdleHistory(  517): Caused by: android.system.ErrnoException: open failed: ENOENT (No such file or directory)
+8117:11-26 03:30:56.952 E/AppWidgetManager(  517): java.lang.IllegalStateException: User 0 must be unlocked for widgets to be available
+8335:11-26 03:30:57.003 W/FileUtils(  517): android.system.ErrnoException: chmod failed: ENOENT (No such file or directory)
+8458:11-26 03:30:57.020 E/WifiChipAidlImpl(  517): getMode failed with service-specific exception: android.os.ServiceSpecificException:  (code 5)
+8469:11-26 03:30:57.024 E/WifiChipAidlImpl(  517): getMode failed with service-specific exception: android.os.ServiceSpecificException:  (code 5)
+8496:11-26 03:30:57.034 E/WifiChipAidlImpl(  517): getWifiChipCapabilities failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8508:11-26 03:30:57.039 E/WifiChipAidlImpl(  517): getSupportedRadioCombinations failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8510:11-26 03:30:57.040 E/WifiChipAidlImpl(  517): getUsableChannels failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8511:11-26 03:30:57.041 E/WifiChipAidlImpl(  517): enableStaChannelForPeerNetwork failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8699:11-26 03:30:57.141 E/WifiChipAidlImpl(  517): getUsableChannels failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8714:11-26 03:30:57.148 E/WifiChipAidlImpl(  517): setMultiStaUseCase failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8715:11-26 03:30:57.148 E/WifiChipAidlImpl(  517): setMultiStaPrimaryConnection failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8723:11-26 03:30:57.151 E/WifiStaIfaceAidlImpl(  517): getBackgroundScanCapabilities failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+8732:11-26 03:30:57.162 W/FileUtils(  517): Failed to chmod(/data/system/game_mode_intervention.list): android.system.ErrnoException: chmod failed: ENOENT (No such file or directory)
+9067:11-26 03:30:57.213 E/HealthConnectResContext(  517): java.lang.IllegalStateException
+10224:11-26 03:30:57.297 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+10816:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): java.lang.SecurityException: Failed to find provider com.google.android.flipendo.api for user 0; expected to find a valid ContentProvider for this authority
+10817:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3057)
+10818:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): 	at android.os.Parcel.createException(Parcel.java:3041)
+10819:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): 	at android.os.Parcel.readException(Parcel.java:3024)
+10820:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): 	at android.os.Parcel.readException(Parcel.java:2966)
+10865:11-26 03:30:57.608 W/BatteryControllerGoogle(  835): Caused by: android.os.RemoteException: Remote stack trace:
+11189:11-26 03:30:57.865 E/AppWidgetManager(  835): java.lang.IllegalStateException: User 0 must be unlocked for widgets to be available
+11190:11-26 03:30:57.865 E/AppWidgetManager(  835): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3065)
+11191:11-26 03:30:57.865 E/AppWidgetManager(  835): 	at android.os.Parcel.createException(Parcel.java:3041)
+11192:11-26 03:30:57.865 E/AppWidgetManager(  835): 	at android.os.Parcel.readException(Parcel.java:3024)
+11193:11-26 03:30:57.865 E/AppWidgetManager(  835): 	at android.os.Parcel.readException(Parcel.java:2966)
+11307:11-26 03:30:57.999 E/AppOps  (  517): java.lang.SecurityException: Specified package "android" under uid 1037 but it is not
+11355:11-26 03:30:58.023 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11357:11-26 03:30:58.027 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11374:11-26 03:30:58.043 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11375:11-26 03:30:58.045 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11419:11-26 03:30:58.055 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11607:11-26 03:30:58.100 I/AndroidRuntime(  963): VM exiting with result code 0, cleanup skipped.
+11826:11-26 03:30:58.177 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11830:11-26 03:30:58.183 E/StatsCompanionService(  517): android.content.pm.PackageManager$NameNotFoundException: com.google.android.trichromelibrary
+11926:11-26 03:30:58.209 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11937:11-26 03:30:58.215 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11946:11-26 03:30:58.235 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+11947:11-26 03:30:58.241 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12007:11-26 03:30:58.264 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12075:11-26 03:30:58.288 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12086:11-26 03:30:58.300 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12088:11-26 03:30:58.302 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12097:11-26 03:30:58.319 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12098:11-26 03:30:58.321 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+12101:11-26 03:30:58.324 E/SystemServiceRegistry( 1004): android.os.ServiceManager$ServiceNotFoundException: No service published for: ethernet
+12131:11-26 03:30:58.338 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+13399:11-26 03:30:58.933 E/CarrierIdProvider( 1053): read carrier list from ota pb failure: java.io.FileNotFoundException: /data/misc/carrierid/carrier_list.pb: open failed: ENOENT (No such file or directory)
+14247:11-26 03:30:59.691 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+14265:11-26 03:30:59.702 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+15305:11-26 03:31:00.302 E/SystemServiceRegistry( 1004): android.os.ServiceManager$ServiceNotFoundException: No service published for: ethernet
+15332:11-26 03:31:00.307 E/SystemServiceRegistry( 1004): android.os.ServiceManager$ServiceNotFoundException: No service published for: ethernet
+15459:11-26 03:31:00.481 E/SystemServiceRegistry( 1004): android.os.ServiceManager$ServiceNotFoundException: No service published for: ethernet
+15481:11-26 03:31:00.482 W/MessageQueue( 1055): java.lang.IllegalStateException: Handler (android.view.Choreographer$FrameHandler) {f4a23e} sending message to a Handler on a dead thread
+15556:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): java.lang.SecurityException: Failed to find provider com.google.android.apps.turbo.estimated_time_remaining for user 0; expected to find a valid ContentProvider for this authority
+15557:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3057)
+15558:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): 	at android.os.Parcel.createException(Parcel.java:3041)
+15559:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): 	at android.os.Parcel.readException(Parcel.java:3024)
+15560:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): 	at android.os.Parcel.readException(Parcel.java:2966)
+15573:11-26 03:31:00.611 E/BatteryInfoBroadcast(  835): Caused by: android.os.RemoteException: Remote stack trace:
+15650:11-26 03:31:00.722 E/SafebootUtils( 1420): java.io.IOException: Failed to create directory
+15691:11-26 03:31:00.738 W/ChimeraCfgMgr( 1420): Failed to read module config: java.io.FileNotFoundException: /data/user_de/0/com.google.android.gms/app_chimera/current_config.fb: open failed: ENOENT (No such file or directory)
+15762:11-26 03:31:01.054 W/ChimeraCfgMgr( 1420): Failed to read module config: java.io.FileNotFoundException: /data/user_de/0/com.google.android.gms/app_chimera/current_config.fb: open failed: ENOENT (No such file or directory)
+15764:11-26 03:31:01.059 W/ChimeraCfgMgr( 1420): Failed to read module config: java.io.FileNotFoundException: /data/user_de/0/com.google.android.gms/app_chimera/current_config.fb: open failed: ENOENT (No such file or directory)
+15766:11-26 03:31:01.061 W/ConfigFileUtils( 1420): Failed to read asset ChimeraModuleSetList.pb: java.io.FileNotFoundException: ChimeraModuleSetList.pb
+15802:11-26 03:31:01.089 W/ChimeraCfgMgr( 1420): Failed to read module config: java.io.FileNotFoundException: /data/user_de/0/com.google.android.gms/app_chimera/current_config.fb: open failed: ENOENT (No such file or directory)
+15803:11-26 03:31:01.089 W/IntentOperation( 1420): Failed to get Chimera config:com.google.android.chimera.config.InvalidConfigException: java.io.FileNotFoundException: /data/user_de/0/com.google.android.gms/app_chimera/current_config.fb: open failed: ENOENT (No such file or directory)
+15869:11-26 03:31:01.360 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
+15871:11-26 03:31:01.372 W/BestClock(  517): java.time.DateTimeException: Missing network time fix
