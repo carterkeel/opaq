@@ -338,20 +338,20 @@ class StoreScreenshots {
         waitFor("Share your location", 30_000)
         Thread.sleep(2_000)
         shot("setup-dark")
+        // Changing the theme recreates the screen: setup has to stay on this step.
         device.executeShellCommand("cmd uimode night no")
         Thread.sleep(3_000)
+        waitFor("Share your location", 10_000)
         shot("setup-light")
-        // Allow location: the step comes back to the front with location access ticked.
-        device.executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
-        device.executeShellCommand("pm grant $pkg android.permission.ACCESS_COARSE_LOCATION")
-        device.pressHome()
-        Thread.sleep(1_500)
-        context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        // Allow location: the step stays, with location access ticked and "Open the map".
+        waitFor("Allow location").click()
+        (device.wait(Until.findObject(By.text("While using the app")), 10_000) ?: error("no permission dialog")).click()
         waitFor("Open the map", 15_000)
         Thread.sleep(2_000)
         shot("setup-allowed-light")
         device.executeShellCommand("cmd uimode night yes")
         Thread.sleep(3_000)
+        waitFor("Open the map", 10_000)
         shot("setup-allowed-dark")
         device.executeShellCommand("cmd uimode night no")
     }

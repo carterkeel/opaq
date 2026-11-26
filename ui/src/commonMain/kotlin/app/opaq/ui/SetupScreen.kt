@@ -275,12 +275,11 @@ private fun LocationStep(
         Column(
             Modifier.weight(1f).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Spacer(Modifier.height(8.dp))
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(64.dp)) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(56.dp)) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(AppIcons.LocationPin, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(30.dp))
+                    Icon(AppIcons.LocationPin, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer, modifier = Modifier.size(28.dp))
                 }
             }
             Text("Share your location", style = MaterialTheme.typography.headlineSmall, textAlign = TextAlign.Center)
@@ -290,7 +289,7 @@ private fun LocationStep(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(Modifier.height(2.dp))
             Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(20.dp), modifier = Modifier.fillMaxWidth()) {
                 Column {
                     NeedRow(AppIcons.LocationPin, "Location access", if (hasPermission) "Allowed" else "Lets Opaq see where you are", hasPermission, "Allow", onRequest)
@@ -319,7 +318,7 @@ private fun LocationStep(
                 textAlign = TextAlign.Center,
             )
         }
-        Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (hasPermission) {
                 PrimaryButton("Open the map", onDone)
                 if (!done) {
@@ -343,7 +342,7 @@ private fun NeedDivider() {
 @Composable
 private fun NeedRow(icon: ImageVector, title: String, detail: String, ok: Boolean, action: String?, onAction: () -> Unit, enabled: Boolean = true) {
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 16.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
