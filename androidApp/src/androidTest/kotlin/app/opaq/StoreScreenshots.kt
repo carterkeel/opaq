@@ -317,7 +317,11 @@ class StoreScreenshots {
             context.startActivity(
                 Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
             )
-            waitFor("Share your location", 30_000)
+            if (!device.wait(Until.hasObject(By.text("Share your location")), 30_000)) {
+                shot("setup-missing")
+                Log.e(TAG, "on screen: " + device.findObjects(By.textContains("")).mapNotNull { it.text }.take(30))
+                error("setup's location step didn't appear")
+            }
             Thread.sleep(2_000)
         }
         device.executeShellCommand("cmd uimode night yes")
