@@ -125,8 +125,7 @@ class StoreScreenshots {
         val seeded: AppState = s.copy(
             myName = "Alex",
             myColor = 0,
-            // The setup check starts on setup's last step: it opens there when circles exist.
-            setupDone = InstrumentationRegistry.getArguments().getString("setup") != "1",
+            setupDone = true,
             sharing = true,
             profileChangedAt = now,
             historyKeyHex = historyKey,
@@ -306,40 +305,53 @@ class StoreScreenshots {
 
     /**
      * Setup's location step, which should fit without scrolling: before location access, then with
-     * it allowed, in dark and light mode. Seeded with -e setup 1 and run without location access.
+     * it allowed, in dark and light mode. Runs on a fresh install without location access (no seed:
+     * setup only shows while there are no circles), going through the earlier steps to get there.
      */
     @Test
     fun setup() {
         assumeTrue(enabled)
         val context = instrumentation.targetContext
         val pkg = context.packageName
-        fun open() {
-            context.startActivity(
-                Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
-            )
-            if (!device.wait(Until.hasObject(By.text("Share your location")), 30_000)) {
-                shot("setup-missing")
-                Log.e(TAG, "on screen: " + device.findObjects(By.textContains("")).mapNotNull { it.text }.take(30))
-                error("setup's location step didn't appear")
-            }
-            Thread.sleep(2_000)
-        }
         device.executeShellCommand("cmd uimode night yes")
-        open()
+        context.startActivity(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+        waitFor("What should people call you?", 30_000)
+        val name = device.wait(Until.findObject(By.clazz("android.widget.EditText")), 10_000) ?: error("no name field")
+        name.click()
+        name.text = "Alex"
+        device.pressBack() // close the keyboard
+        waitFor("Continue").click()
+        waitFor("Add a profile photo")
+        waitFor("Skip").click()
+        waitFor("Add a PIN?")
+        waitFor("Not now").click()
+        waitFor("Create a circle")
+        // A tap while the step is still sliding in can be lost, so tap until the next screen shows.
+        repeat(5) {
+            if (device.hasObject(By.text("Create"))) return@repeat
+            device.findObject(By.text("Create a circle"))?.click()
+            device.wait(Until.hasObject(By.text("Create")), 3_000)
+        }
+        waitFor("Create").click()
+        waitFor("Share your location", 30_000)
+        Thread.sleep(2_000)
         shot("setup-dark")
         device.executeShellCommand("cmd uimode night no")
-        Thread.sleep(2_000)
-        open()
+        Thread.sleep(3_000)
         shot("setup-light")
+        // Allow location: the step comes back to the front with location access ticked.
         device.executeShellCommand("pm grant $pkg android.permission.ACCESS_FINE_LOCATION")
         device.executeShellCommand("pm grant $pkg android.permission.ACCESS_COARSE_LOCATION")
         device.pressHome()
-        Thread.sleep(1_000)
-        open()
+        Thread.sleep(1_500)
+        context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        waitFor("Open the map", 15_000)
+        Thread.sleep(2_000)
         shot("setup-allowed-light")
         device.executeShellCommand("cmd uimode night yes")
-        Thread.sleep(2_000)
-        open()
+        Thread.sleep(3_000)
         shot("setup-allowed-dark")
         device.executeShellCommand("cmd uimode night no")
     }

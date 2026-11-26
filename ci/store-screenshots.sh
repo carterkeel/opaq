@@ -67,7 +67,8 @@ for config in "${configs[@]}"; do
   # "You" are at Mission Dolores Park.
   for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
 
-  if [ "$shots" = setup ]; then run seed -e setup 1 || { status=1; continue; }; else run seed || { status=1; continue; }; fi
+  # Setup only shows on a fresh install, so its check isn't seeded.
+  if [ "$shots" != setup ]; then run seed || { status=1; continue; }; fi
   adb shell am force-stop "$pkg"
 
   # A tidy status bar: 9:41, full signal and battery, no notification icons.
