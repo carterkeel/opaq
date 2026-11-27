@@ -175,7 +175,7 @@ internal fun MapOverlayScope.PeopleOverlay(
     // A jump rather than a zoom (another circle or Everyone, or the camera flying somewhere): any
     // handover under way finishes at once, rather than racing across the screen to catch up.
     val lastZoom = androidx.compose.runtime.remember { doubleArrayOf(zoom) }
-    if (kotlin.math.abs(zoom - lastZoom[0]) > 0.75) handoffs.replaceAll { _, h -> h.copy(start = Long.MIN_VALUE / 2) }
+    if (kotlin.math.abs(zoom - lastZoom[0]) > 0.75) handoffs.entries.forEach { it.setValue(it.value.copy(start = Long.MIN_VALUE / 2)) } // not replaceAll: JVM only, breaks the iOS build
     lastZoom[0] = zoom
     // People who weren't on the map a moment ago (switching to another circle or Everyone, or
     // someone's first update) pop in one after another, west to east, rather than all at once.
