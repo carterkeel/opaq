@@ -26,6 +26,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import platform.CoreLocation.CLAuthorizationStatus
+import platform.CoreLocation.CLBackgroundActivitySession
+import platform.CoreLocation.CLBackgroundActivitySessionDiagnostic
+import platform.CoreLocation.CLServiceSession
+import platform.CoreLocation.CLServiceSessionAuthorizationRequirementAlways
+import platform.CoreLocation.CLServiceSessionAuthorizationRequirementWhenInUse
 import platform.CoreLocation.CLCircularGeographicCondition
 import platform.CoreLocation.CLLocationCoordinate2DMake
 import platform.CoreLocation.CLMonitor
@@ -59,7 +64,8 @@ import platform.darwin.dispatch_get_main_queue
  *
  * iOS suspends apps freely; Opaq stays running only while location updates are on. So
  * updates stay on the whole time sharing is on (GPS while moving, coarse while still) with
- * automatic pausing off. iOS shows the blue location indicator while this runs, the
+ * automatic pausing off, inside a [CLBackgroundActivitySession]: without one, iOS froze Opaq
+ * within minutes of the phone going still and the circle saw it offline (#165). iOS shows the blue location indicator while this runs, the
  * counterpart of Android's persistent notification; people can hide it in Settings
  * ([setShowIndicator]), which leaves no sign of sharing at the top of the screen. Significant-change monitoring makes iOS
  * relaunch the app after a reboot or force-quit once the phone moves about 500 m.
@@ -105,6 +111,18 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
 
     /** Wakes the publish loop early: a fix arrived while an update is due. */
     private val wake = Channel<Unit>(Channel.CONFLATED)
+
+    /** Keeps location running in the background (#165); recreated on every launch, background relaunches included. */
+    private var backgroundSession: CLBackgroundActivitySession? = null
+
+    /** Holds the location permission Opaq uses, alongside [backgroundSession], as Apple asks. */
+    private var serviceSession: CLServiceSession? = null
+
+    /** What iOS last said about [backgroundSession], to log changes only. */
+    private var sessionNote: String? = null
+
+    /** When the publish loop last ran (seconds), to notice iOS freezing the app. */
+    private var lastTick = 0L
 
     /** The last update reached no relay (offline, or relays still confirming the circle key). */
     private var missed = false
@@ -233,14 +251,19 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
             manager.showsBackgroundLocationIndicator = showIndicator.value
         }
         setAccuracy(high = true)
+        startBackgroundSession()
         manager.startUpdatingLocation()
         if (CLLocationManager.significantLocationChangeMonitoringAvailable()) manager.startMonitoringSignificantLocationChanges()
         startActivityUpdates()
         // Same loop as Android's LocationService: MotionPolicy decides each tick whether an update
         // is due (steady moving/still rates, plus one extra when someone starts or stops moving).
         publishJob = scope.launch(Dispatchers.Main) {
+            lastTick = nowSeconds()
             while (isActive) {
                 val now = nowSeconds()
+                // The loop wakes at least every 30 s, so a longer gap means iOS froze the app.
+                if (now - lastTick > FROZEN_SECONDS) engine.diagnostic("iOS froze Opaq for ${(now - lastTick + 30) / 60} min")
+                lastTick = now
                 if (engine.consentDue() && now - lastReminderAt > 24 * 3600) {
                     lastReminderAt = now
                     notifier.sharingReminder()
@@ -279,11 +302,47 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
+        backgroundSession?.invalidate()
+        backgroundSession = null
+        serviceSession?.invalidate()
+        serviceSession = null
+        sessionNote = null
         stillSpot = null
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
         walkingSince = null
         monitor?.removeConditionFromMonitoringWithIdentifier(STILL_REGION)
+    }
+
+    /**
+     * Apple's way to keep an app's location running in the background: a background activity
+     * session plus a service session for the permission in use. Created when sharing starts,
+     * including straight after iOS relaunches the app in the background, which is when Apple asks
+     * for them to be recreated. Its notes about why it might not be working go to the
+     * diagnostic log when they change.
+     */
+    private fun startBackgroundSession() {
+        if (backgroundSession != null || !canRunInBackground) return
+        serviceSession = CLServiceSession.sessionRequiringAuthorization(
+            if (hasAlways) CLServiceSessionAuthorizationRequirementAlways
+            else CLServiceSessionAuthorizationRequirementWhenInUse,
+        )
+        backgroundSession = CLBackgroundActivitySession.backgroundActivitySessionWithQueue(dispatch_get_main_queue()) { d: CLBackgroundActivitySessionDiagnostic? ->
+            val note = d?.let {
+                listOfNotNull(
+                    "location off for Opaq".takeIf { _ -> it.authorizationDenied },
+                    "Location Services off".takeIf { _ -> it.authorizationDeniedGlobally },
+                    "location restricted".takeIf { _ -> it.authorizationRestricted },
+                    "started while not in use".takeIf { _ -> it.insufficientlyInUse },
+                    "needs a service session".takeIf { _ -> it.serviceSessionRequired },
+                    "waiting for permission".takeIf { _ -> it.authorizationRequestInProgress },
+                ).joinToString(", ")
+            }.orEmpty()
+            if (note != sessionNote) {
+                sessionNote = note
+                engine.diagnostic(if (note.isEmpty()) "Background session: ok" else "Background session: $note")
+            }
+        }
     }
 
     /**
@@ -420,6 +479,9 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         const val MONITOR_NAME = "opaq"
         const val STILL_REGION = "still"
         const val STILL_RADIUS = 100.0
+
+        /** A publish-loop gap longer than this (it wakes at least every 30 s) means iOS froze the app. */
+        const val FROZEN_SECONDS = 120L
 
         /** Background updates crash unless Info.plist declares the `location` background mode. */
         val canRunInBackground: Boolean by lazy {

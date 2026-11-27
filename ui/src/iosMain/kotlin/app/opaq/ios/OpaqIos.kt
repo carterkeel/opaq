@@ -31,6 +31,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import platform.CoreLocation.kCLAuthorizationStatusNotDetermined
 import kotlin.experimental.ExperimentalNativeApi
@@ -49,9 +50,15 @@ import platform.Network.nw_path_monitor_start
 import platform.Network.nw_path_status_satisfied
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationDidEnterBackgroundNotification
+import platform.UIKit.UIApplicationWillEnterForegroundNotification
 import platform.UIKit.UIApplicationProtectedDataDidBecomeAvailable
 import platform.UIKit.UIApplicationWillResignActiveNotification
 import platform.UIKit.UIColor
+import platform.UIKit.addChildViewController
+import platform.UIKit.didMoveToParentViewController
+import platform.UIKit.removeFromParentViewController
+import platform.UIKit.willMoveToParentViewController
 import platform.UIKit.UIDevice
 import platform.UIKit.UIView
 import platform.UIKit.UIViewAutoresizingFlexibleHeight
@@ -170,6 +177,7 @@ object OpaqIos {
         started = true
         watchNetwork()
         coverInAppSwitcher()
+        logForegroundChanges()
         notifier // follow notices from now on, even if the screen never opens (background relaunch)
         metrics.start() // Apple's daily energy and exit report, into the diagnostic log (#165)
     }
@@ -189,6 +197,20 @@ object OpaqIos {
         }
         nw_path_monitor_set_queue(monitor, dispatch_get_main_queue())
         nw_path_monitor_start(monitor)
+    }
+
+    /**
+     * Diagnostic log (#165): when Opaq goes to the background and comes back, so a log shows which
+     * quiet stretches were the app sitting in the background and which were iOS freezing it.
+     */
+    private fun logForegroundChanges() {
+        val center = NSNotificationCenter.defaultCenter
+        center.addObserverForName(UIApplicationDidEnterBackgroundNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            engine.diagnostic("App in the background")
+        }
+        center.addObserverForName(UIApplicationWillEnterForegroundNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            engine.diagnostic("App opened")
+        }
     }
 
     /**
@@ -229,9 +251,67 @@ object OpaqIos {
     }
 }
 
-/** The app's only screen: the shared Compose UI. */
+/** The app's only screen: the shared Compose UI, let go while the app is in the background. */
 @Suppress("FunctionName", "unused") // Called from Swift.
-fun MainViewController(): UIViewController = ComposeUIViewController { IosRoot() }
+fun MainViewController(): UIViewController = ComposeHost()
+
+/**
+ * Holds the Compose screens and lets them go [RELEASE_AFTER_MILLIS] after the app leaves the
+ * screen, building them again when it comes back (#165). The map and its tiles are most of the
+ * app's memory, and in the background iOS ends the apps using the most memory first; that stopped
+ * Opaq sharing until the phone had moved far enough for iOS to start it again. Compose can't do
+ * this itself: on iOS it stops recomposing once the app is in the background.
+ *
+ * Coming back after that opens the home map, where it was (`LastCamera` in MapPane).
+ */
+@OptIn(ExperimentalForeignApi::class)
+private class ComposeHost : UIViewController(nibName = null, bundle = null) {
+    private var screens: UIViewController? = null
+    private var release: kotlinx.coroutines.Job? = null
+    private val observers = mutableListOf<NSObjectProtocol>()
+
+    override fun viewDidLoad() {
+        super.viewDidLoad()
+        attach()
+        val center = NSNotificationCenter.defaultCenter
+        observers += center.addObserverForName(UIApplicationDidEnterBackgroundNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            release?.cancel()
+            release = OpaqIos.scope.launch(Dispatchers.Main) {
+                delay(RELEASE_AFTER_MILLIS)
+                detach()
+            }
+        }
+        observers += center.addObserverForName(UIApplicationWillEnterForegroundNotification, `object` = null, queue = NSOperationQueue.mainQueue) { _ ->
+            release?.cancel()
+            release = null
+            attach()
+        }
+    }
+
+    private fun attach() {
+        if (screens != null) return
+        val child = ComposeUIViewController { IosRoot() }
+        addChildViewController(child)
+        child.view.setFrame(view.bounds)
+        child.view.autoresizingMask = UIViewAutoresizingFlexibleWidth or UIViewAutoresizingFlexibleHeight
+        view.addSubview(child.view)
+        child.didMoveToParentViewController(this)
+        screens = child
+    }
+
+    private fun detach() {
+        val child = screens ?: return
+        screens = null
+        child.willMoveToParentViewController(null)
+        child.view.removeFromSuperview()
+        child.removeFromParentViewController()
+        OpaqIos.engine.diagnostic("Screens let go in the background")
+    }
+
+}
+
+/** A quick look at another app doesn't rebuild the screens ([ComposeHost]). */
+private const val RELEASE_AFTER_MILLIS = 30_000L
 
 @Composable
 private fun IosRoot() {
