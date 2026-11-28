@@ -381,7 +381,7 @@ fun HomeScreen(
                         // The menu takes its place while it's out (it starts and ends looking just like it).
                         .graphicsLayer { alpha = if (showCircles || circleGrow.value > 0f || circleGrow.isRunning) 0f else 1f },
                 ) {
-                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.height(CIRCLE_BUTTON_HEIGHT).padding(start = 16.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(circle.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(AppIcons.ChevronDown, contentDescription = "Switch circle")
                     }
@@ -962,7 +962,7 @@ private fun CircleMenu(
             Column(Modifier.widthIn(min = 280.dp, max = 340.dp)) {
                 // The button it grew from, in the same place: name, and the arrow turning up.
                 Box(Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)) {
-                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.height(CIRCLE_BUTTON_HEIGHT).padding(start = 16.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f * grow.value })
                     }
@@ -1022,6 +1022,13 @@ private fun CircleMenu(
         }
     }
 }
+
+/**
+ * The circle button's height, and the menu's top that replaces it. Fixed, because a tappable
+ * surface is made at least 48 dp tall: a shorter row would sit lower in the button than in the
+ * menu, and jump as one replaced the other.
+ */
+private val CIRCLE_BUTTON_HEIGHT = 48.dp
 
 /** The part of the circle menu shown while it grows: [width] by [height] from its top start corner. */
 private class Reveal(private val width: Float, private val height: Float, private val radius: Float, private val rtl: Boolean) : androidx.compose.ui.graphics.Shape {
