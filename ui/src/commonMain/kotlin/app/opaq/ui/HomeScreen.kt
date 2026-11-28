@@ -62,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -73,12 +74,25 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.layout
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.ui.window.PopupProperties
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.Popup
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.animation.scaleOut
@@ -101,6 +115,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.opaq.core.MotionPolicy
@@ -158,6 +173,23 @@ fun HomeScreen(
 
     var showCreate by remember { mutableStateOf(false) }
     var showCircles by remember { mutableStateOf(false) }
+    // How far the circle menu is open, 0 (just the button) to 1 (the whole list). The button hides
+    // while the menu is out, and the buttons the menu covers fade out as it opens and back as it closes.
+    // Eased at both ends, so it neither starts nor stops with a jolt.
+    val circleGrow = remember { Animatable(0f) }
+    LaunchedEffect(showCircles) {
+        circleGrow.animateTo(
+            if (showCircles) 1f else 0f,
+            tween(if (showCircles) 340 else 280, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
+        )
+    }
+    val underMenuAlpha by animateFloatAsState(
+        if (showCircles) 0f else 1f,
+        tween(if (showCircles) 280 else 240, easing = LinearEasing),
+    )
+    // Where the circle button is, and the map's box, both on the whole screen, to grow the menu from.
+    var circleButton by remember { mutableStateOf(Rect.Zero) }
+    var mapOrigin by remember { mutableStateOf(Offset.Zero) }
     var reviewing by remember { mutableStateOf<JoinRequest?>(null) }
     val platform = LocalPlatform.current
 
@@ -168,7 +200,7 @@ fun HomeScreen(
         var focus by remember { mutableStateOf<MapFocus?>(null) }
         var focusSeq by remember { mutableIntStateOf(0) }
         // People in one spot, tapped on the map (#146), and where their faces are on the map.
-        var together by remember { mutableStateOf<Pair<List<String>, DpOffset>?>(null) }
+        var together by remember { mutableStateOf<Pair<List<String>, DpRect>?>(null) }
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
@@ -198,7 +230,7 @@ fun HomeScreen(
             return true
         }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { mapOrigin = it.positionInRoot() }) {
             val density = LocalDensity.current
             val layoutDirection = LocalLayoutDirection.current
             val fullH = constraints.maxHeight.toFloat()
@@ -299,7 +331,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
-                    onGroupClick = { ids, at -> together = ids to at },
+                    onGroupClick = { ids, faces -> together = ids to faces },
                     // Alert areas (#151) watching this circle, only on this phone.
                     places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
@@ -309,7 +341,7 @@ fun HomeScreen(
                 state = state,
                 me = me,
                 ids = together?.first.orEmpty(),
-                at = together?.second,
+                faces = together?.second,
                 now = now,
                 location = { locs[it] },
                 name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
@@ -349,19 +381,12 @@ fun HomeScreen(
                     shape = RoundedCornerShape(50),
                     color = MaterialTheme.colorScheme.surface,
                     shadowElevation = 3.dp,
+                    modifier = Modifier
+                        .onGloballyPositioned { circleButton = it.boundsInRoot() }
+                        // The menu takes its place while it's out (it starts and ends looking just like it).
+                        .graphicsLayer { alpha = if (showCircles || circleGrow.value > 0f || circleGrow.isRunning) 0f else 1f },
                 ) {
-                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        // The list of circles opens out of this button, over it (#185).
-                        CircleMenu(
-                            visible = showCircles,
-                            state = state,
-                            name = circle.name,
-                            selected = circle.id,
-                            onSelect = { showCircles = false; onSelectCircle(it) },
-                            onNew = { showCircles = false; showCreate = true },
-                            onJoin = { showCircles = false; onJoin() },
-                            onDismiss = { showCircles = false },
-                        )
+                    Row(Modifier.height(CIRCLE_BUTTON_HEIGHT).padding(start = 16.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(circle.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(AppIcons.ChevronDown, contentDescription = "Switch circle")
                     }
@@ -371,6 +396,10 @@ fun HomeScreen(
                 // tap resumes those circles rather than pausing everything.
                 val sharingCircles = state.circles.filter { it.confirmed }
                 val allCirclesPaused = sharingCircles.isNotEmpty() && sharingCircles.all { it.paused }
+                // Fading out as the circle menu opens over them, and back as it closes. A steady fade of
+                // its own: tied to the menu's growth, which is quick at first, it looked like a blink.
+                val underMenu = Modifier.graphicsLayer { alpha = underMenuAlpha }
+                Box(underMenu) {
                 SharingToggle(state.sharing && !allCirclesPaused) {
                     if (state.sharing && allCirclesPaused) {
                         haptics.toggle(true)
@@ -385,8 +414,9 @@ fun HomeScreen(
                     platform.showMessage(if (on) "Sharing your location" else "Sharing paused")
                     if (on && !hasLocationPermission) onRequestLocation()
                 }
+                }
                 Spacer(Modifier.width(8.dp))
-                MapButton(AppIcons.Settings, "Settings", onSettings)
+                Box(underMenu) { MapButton(AppIcons.Settings, "Settings", onSettings) }
             }
 
             val people: @Composable (onPerson: (String) -> Unit) -> Unit = { onPerson ->
@@ -573,6 +603,23 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
             )
             }
+
+            // The list of circles, grown out of the circle button (#185). Drawn here over everything
+            // rather than in a pop-up window, so it and the button it replaces change in the same frame.
+            CircleMenu(
+                visible = showCircles,
+                grow = circleGrow,
+                button = circleButton.translate(-mapOrigin),
+                state = state,
+                name = circle.name,
+                selected = circle.id,
+                // Down to the people sheet (or the bottom, sideways), less the button's place.
+                maxHeight = with(density) { ((if (landscape) fullH - bars.getBottom(density) else sheetY) - insetTop).toDp() } - 22.dp,
+                onSelect = { showCircles = false; onSelectCircle(it) },
+                onNew = { showCircles = false; showCreate = true },
+                onJoin = { showCircles = false; onJoin() },
+                onDismiss = { showCircles = false },
+            )
         }
     }
 
@@ -860,102 +907,144 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
 }
 
 /**
- * Your circles, opening out of the circle button at the top of the map (#185): the button grows
- * into a card with the same name and arrow at its top, and the list below. Pick a circle (or
- * Everyone), or join or make one. Tapping the top, Back or anywhere else closes it.
+ * Your circles, opening out of the circle button at the top of the map (#185): the button itself
+ * grows into the list, its name and arrow staying where they are (the arrow turning up) while it
+ * widens and lengthens and its corners soften, and the list fades in below. Pick a circle (or
+ * Everyone), or join or make one. A long list scrolls within [maxHeight] (down to the people
+ * sheet), fading out at the bottom while there's more. Tapping the top, Back or anywhere else
+ * closes it, and it shrinks back into the button.
  */
 @Composable
 private fun CircleMenu(
     visible: Boolean,
+    grow: Animatable<Float, AnimationVector1D>,
+    button: Rect,
     state: AppState,
     name: String,
     selected: String?,
+    maxHeight: Dp,
     onSelect: (String) -> Unit,
     onNew: () -> Unit,
     onJoin: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val shown = remember { MutableTransitionState(false) }
-    LaunchedEffect(visible) { shown.targetState = visible }
-    if (!shown.currentState && !shown.targetState) return
+    // Read as one yes or no, so the menu isn't recomposed on every frame of the animation.
+    val closed by remember { derivedStateOf { grow.value == 0f && !grow.isRunning } }
+    if (!visible && closed) return
     var explain by remember { mutableStateOf(false) }
-    val density = LocalDensity.current
-    // Over the button, its top left corner on the button's, and kept on screen. The anchor is the
-    // button's content, inside its padding (16 dp at the start, 10 dp at the top), so step back out.
-    val position = remember(density) {
-        val start = with(density) { 16.dp.roundToPx() }
-        val top = with(density) { 10.dp.roundToPx() }
-        object : PopupPositionProvider {
-            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - start else anchorBounds.right + start - popupContentSize.width
-                return IntOffset(
-                    x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
-                    (anchorBounds.top - top).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
-                )
-            }
+    PlatformBackHandler(visible) { onDismiss() }
+    val dismiss by rememberUpdatedState(onDismiss)
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    Box(Modifier.fillMaxSize()) {
+        // Touching anywhere else closes it, like a pop-up. Only while it's open, so the map can be
+        // used again as soon as it starts closing.
+        if (visible) {
+            Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false); dismiss() } })
         }
-    }
-    val corner = if (LocalLayoutDirection.current == LayoutDirection.Ltr) TransformOrigin(0f, 0f) else TransformOrigin(1f, 0f)
-    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        AnimatedVisibility(
-            visibleState = shown,
-            enter = scaleIn(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.35f, transformOrigin = corner) +
-                fadeIn(tween(120)),
-            exit = scaleOut(tween(140), targetScale = 0.6f, transformOrigin = corner) + fadeOut(tween(140)),
+        // The list is laid out once at its full size, with its start corner on the button's; only
+        // what's shown of it changes as it grows, read while drawing, so each frame is just a redraw.
+        Box(
+            Modifier
+                .layout { measurable, constraints ->
+                    val p = measurable.measure(Constraints(maxWidth = constraints.maxWidth, maxHeight = constraints.maxHeight))
+                    layout(constraints.maxWidth, constraints.maxHeight) {
+                        val x = (if (rtl) button.right - p.width else button.left).roundToInt()
+                        p.place(x.coerceIn(0, (constraints.maxWidth - p.width).coerceAtLeast(0)), button.top.roundToInt())
+                    }
+                }
+                .graphicsLayer {
+                    val g = grow.value.coerceIn(0f, 1f)
+                    val bw = button.width
+                    val bh = button.height
+                    val w = if (bw <= 0f) size.width else bw + (size.width - bw) * g
+                    val h = if (bh <= 0f) size.height else bh + (size.height - bh) * g
+                    val r = bh / 2 + (24.dp.toPx() - bh / 2) * g
+                    shape = Reveal(w, h, r, rtl)
+                    clip = true
+                    shadowElevation = (3f + 7f * g).dp.toPx()
+                }
+                .background(MaterialTheme.colorScheme.surface),
         ) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.widthIn(min = 280.dp, max = 340.dp),
-            ) {
-                Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
-                    // The button it grew from: same name, arrow turned up. Tapping it closes the list.
-                    Row(
-                        Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)
-                            .padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+            Column(Modifier.widthIn(min = 280.dp, max = 340.dp)) {
+                // The button it grew from, in the same place: name, and the arrow turning up.
+                Box(Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)) {
+                    Row(Modifier.height(CIRCLE_BUTTON_HEIGHT).padding(start = 16.dp, end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f * grow.value })
+                    }
+                }
+                val scroll = rememberScrollState()
+                Box(Modifier.graphicsLayer { alpha = ((grow.value - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
+                    Column(
+                        Modifier.heightIn(max = (maxHeight - 48.dp).coerceAtLeast(120.dp))
+                            .scrollThumb(scroll, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                            .verticalScroll(scroll)
+                            .padding(bottom = 8.dp),
                     ) {
-                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f })
-                    }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(4.dp))
-                    // Everyone from every circle on one map (#147), once there's more than one circle.
-                    if (state.circles.size >= 2) {
-                        val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
-                        SettingsRow(
-                            title = "Everyone",
-                            subtitle = "$people people from all your circles",
-                            icon = AppIcons.Globe,
-                            onClick = { onSelect(EVERYONE) },
-                        ) {
-                            IconButton(onClick = { explain = !explain }) {
-                                Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(4.dp))
+                        // Everyone from every circle on one map (#147), once there's more than one circle.
+                        if (state.circles.size >= 2) {
+                            val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
+                            SettingsRow(
+                                title = "Everyone",
+                                subtitle = "$people people from all your circles",
+                                icon = AppIcons.Globe,
+                                onClick = { onSelect(EVERYONE) },
+                            ) {
+                                IconButton(onClick = { explain = !explain }) {
+                                    Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
                             }
-                            if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                            AnimatedVisibility(explain) {
+                                Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+                            }
                         }
-                        AnimatedVisibility(explain) {
-                            Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+                        state.circles.forEach { c ->
+                            SettingsRow(
+                                title = c.name,
+                                subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
+                                icon = AppIcons.Circles,
+                                onClick = { onSelect(c.id) },
+                            ) {
+                                if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
+                        SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
                     }
-                    state.circles.forEach { c ->
-                        SettingsRow(
-                            title = c.name,
-                            subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
-                            icon = AppIcons.Circles,
-                            onClick = { onSelect(c.id) },
-                        ) {
-                            if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-                        }
+                    // A long list fades out at the bottom while there's more to scroll to.
+                    if (scroll.canScrollForward) {
+                        val ground = MaterialTheme.colorScheme.surface
+                        Box(
+                            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp)
+                                .background(Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground.copy(alpha = 0.85f), ground))),
+                        )
                     }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
-                    SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
                 }
             }
         }
+    }
+}
+
+/**
+ * The circle button's height, and the menu's top that replaces it. Fixed, because a tappable
+ * surface is made at least 48 dp tall: a shorter row would sit lower in the button than in the
+ * menu, and jump as one replaced the other.
+ */
+private val CIRCLE_BUTTON_HEIGHT = 48.dp
+
+/** The part of the circle menu shown while it grows: [width] by [height] from its top start corner. */
+private class Reveal(private val width: Float, private val height: Float, private val radius: Float, private val rtl: Boolean) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
+        val w = width.coerceIn(1f, size.width)
+        val h = height.coerceIn(1f, size.height)
+        val left = if (rtl) size.width - w else 0f
+        return androidx.compose.ui.graphics.Outline.Rounded(
+            androidx.compose.ui.geometry.RoundRect(left, 0f, left + w, h, androidx.compose.ui.geometry.CornerRadius(radius.coerceAtMost(minOf(w, h) / 2))),
+        )
     }
 }
 

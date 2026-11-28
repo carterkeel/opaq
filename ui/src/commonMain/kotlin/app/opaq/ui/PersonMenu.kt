@@ -31,12 +31,19 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.first
+import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
@@ -245,19 +252,25 @@ private class Bubble(private val below: Boolean, private val arrowX: Float) : an
 internal const val GROUP_LIST_BASE_DP = 64f
 internal const val GROUP_LIST_ROW_DP = 60f
 
+/** Rows shown at once; more scroll, with the last one fading out to show there are more. */
+internal const val GROUP_LIST_MAX_ROWS = 4
+
+/** Space between the arrow's tip and the top face, so the arrow never covers a face. */
+internal val GROUP_ARROW_GAP = 6.dp
+
 /**
  * The people in a stack of faces on the map (#146), popping up from the stack like the long-press
- * menu: above the faces with an arrow pointing down at them (below them when there's no room).
- * Tap someone to zoom to them, their info button to open their profile, or hold them for the
- * quick menu. [at] is where the faces' middle is, in this popup's parent (the map). Tapping
- * anywhere else closes it.
+ * menu: above the faces with its arrow just over the top one (below the faces, past their pointer,
+ * when there's no room above). It grows out of the arrow's tip. Tap someone to zoom to them, their
+ * info button to open their profile, or hold them for the quick menu. [faces] is the area the
+ * stack's faces cover in this popup's parent (the map). Tapping anywhere else closes it.
  */
 @Composable
 internal fun GroupBubble(
     state: AppState,
     me: String,
     ids: List<String>,
-    at: androidx.compose.ui.unit.DpOffset?,
+    faces: androidx.compose.ui.unit.DpRect?,
     now: Long,
     location: (String) -> app.opaq.core.model.MemberLocation?,
     name: (String) -> String,
@@ -267,50 +280,74 @@ internal fun GroupBubble(
     personMenu: @Composable (String, Offset?, () -> Unit) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val shown = remember { MutableTransitionState(false) }
-    LaunchedEffect(at != null) { shown.targetState = at != null }
+    val open = faces != null
     // Kept while it shrinks away after closing.
-    var last by remember { mutableStateOf(at) }
+    var last by remember { mutableStateOf(faces) }
     var lastIds by remember { mutableStateOf(ids) }
-    if (at != null) { last = at; lastIds = ids }
-    val point = last ?: return
+    if (faces != null) { last = faces; lastIds = ids }
+    val area = last ?: return
     val people = lastIds
-    if (!shown.currentState && !shown.targetState) return
+    // Grows from the arrow's tip once the popup knows its size (so the tip is known), and shrinks
+    // back. Keyed on opening and closing only: [placed] is set while laying out the popup, so an
+    // effect keyed on it too would restart as it closed and bring the popup back, over and over.
+    val grow = remember { androidx.compose.animation.core.Animatable(0f) }
+    var placed by remember { mutableStateOf(false) }
+    LaunchedEffect(open) {
+        if (open) {
+            androidx.compose.runtime.snapshotFlow { placed }.first { it }
+            grow.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
+        } else {
+            grow.animateTo(0f, tween(140))
+            placed = false
+        }
+    }
+    // Read as one yes or no, so the list isn't recomposed on every frame of the animation.
+    val closed by remember { derivedStateOf { grow.value == 0f && !grow.isRunning } }
+    if (!open && closed) return
     var below by remember { mutableStateOf(false) }
     var arrowX by remember { mutableStateOf(0f) }
     var width by remember { mutableStateOf(1f) }
-    val origin = TransformOrigin(arrowX / width, if (below) 0f else 1f)
     val density = androidx.compose.ui.platform.LocalDensity.current
-    val position = remember(density, point) {
-        AtFaces(
-            with(density) { IntOffset(point.x.roundToPx(), point.y.roundToPx()) },
-            above = with(density) { (FACE_DP / 2 + 4f).dp.roundToPx() },
-            belowGap = with(density) { (FACE_DP / 2 + 14f).dp.roundToPx() },
-        ) { b, x, w -> below = b; arrowX = x; width = w }
+    val position = remember(density, area) {
+        with(density) {
+            AtFaces(
+                IntOffset(((area.left + area.right) / 2).roundToPx(), (area.top - GROUP_ARROW_GAP).roundToPx()),
+                // Below: past the pointer under the faces.
+                IntOffset(((area.left + area.right) / 2).roundToPx(), (area.bottom + 14.dp).roundToPx()),
+            ) { b, x, w -> below = b; arrowX = x; width = w; if (w > 1f) placed = true }
+        }
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        AnimatedVisibility(
-            visibleState = shown,
-            enter = scaleIn(spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.6f, transformOrigin = origin) +
-                fadeIn(tween(110)),
-            exit = scaleOut(tween(130), targetScale = 0.85f, transformOrigin = origin) + fadeOut(tween(130)),
+        Surface(
+            shape = remember(below, arrowX) { Bubble(below, arrowX) },
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 3.dp,
+            shadowElevation = 10.dp,
+            modifier = Modifier
+                .graphicsLayer {
+                    val g = grow.value
+                    transformOrigin = TransformOrigin((arrowX / width).coerceIn(0f, 1f), if (below) 0f else 1f)
+                    scaleX = 0.55f + 0.45f * g
+                    scaleY = 0.55f + 0.45f * g
+                    alpha = (g * 2.5f).coerceIn(0f, 1f)
+                }
+                .widthIn(min = 264.dp, max = 320.dp),
         ) {
-            Surface(
-                shape = remember(below, arrowX) { Bubble(below, arrowX) },
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.widthIn(min = 264.dp, max = 320.dp),
-            ) {
-                Column(Modifier.padding(top = if (below) ARROW_HEIGHT + 8.dp else 8.dp, bottom = if (below) 8.dp else ARROW_HEIGHT + 8.dp)) {
-                    Text(
-                        "${people.size} people here",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 6.dp),
-                    )
-                    // Four rows and a half show at once, so a longer list shows it scrolls.
-                    Column(Modifier.heightIn(max = (GROUP_LIST_ROW_DP * 4.5f).dp).verticalScroll(rememberScrollState())) {
+            Column(Modifier.padding(top = if (below) ARROW_HEIGHT + 8.dp else 8.dp, bottom = if (below) 8.dp else ARROW_HEIGHT + 8.dp)) {
+                Text(
+                    "${people.size} people here",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 6.dp),
+                )
+                // Four rows at once; more scroll, and the fourth fades out while there's more below.
+                val scroll = rememberScrollState()
+                androidx.compose.foundation.layout.Box {
+                    Column(
+                        Modifier.heightIn(max = (GROUP_LIST_ROW_DP * GROUP_LIST_MAX_ROWS).dp)
+                            .scrollThumb(scroll, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                            .verticalScroll(scroll),
+                    ) {
                         people.forEach { id ->
                             val info = avatarFor(state, id, me, name(id))
                             val loc = location(id)
@@ -341,6 +378,13 @@ internal fun GroupBubble(
                             }
                         }
                     }
+                    if (scroll.canScrollForward) {
+                        val ground = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp)
+                        androidx.compose.foundation.layout.Box(
+                            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(44.dp)
+                                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground.copy(alpha = 0.85f), ground))),
+                        )
+                    }
                 }
             }
         }
@@ -348,24 +392,23 @@ internal fun GroupBubble(
 }
 
 /**
- * Puts a stack's list just above its faces at [point] (in the parent's pixels), or below them
- * (past their pointer) when there's no room above, with the arrow over the faces, kept on screen.
+ * Puts a stack's list with its arrow's tip at [above] (just over the top face), or at [below]
+ * (past the pointer under the faces) when there's no room above, kept on screen. Points are in
+ * the parent's pixels.
  */
 private class AtFaces(
-    private val point: IntOffset,
-    private val above: Int,
-    private val belowGap: Int,
+    private val above: IntOffset,
+    private val below: IntOffset,
     private val onPlaced: (below: Boolean, arrowX: Float, width: Float) -> Unit,
 ) : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
         val margin = (windowSize.width * 0.03f).toInt().coerceAtLeast(16)
-        val px = anchorBounds.left + point.x
-        val faceTop = anchorBounds.top + point.y - above
-        val faceBottom = anchorBounds.top + point.y + belowGap
-        val below = faceTop - popupContentSize.height < margin * 3
-        val x = (px - popupContentSize.width / 2).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
-        val y = if (below) faceBottom else faceTop - popupContentSize.height
-        onPlaced(below, (px - x).toFloat().coerceIn(0f, popupContentSize.width.toFloat()), popupContentSize.width.toFloat().coerceAtLeast(1f))
+        val tipAbove = anchorBounds.top + above.y
+        val goBelow = tipAbove - popupContentSize.height < margin * 3
+        val tip = if (goBelow) IntOffset(anchorBounds.left + below.x, anchorBounds.top + below.y) else IntOffset(anchorBounds.left + above.x, tipAbove)
+        val x = (tip.x - popupContentSize.width / 2).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
+        val y = if (goBelow) tip.y else tip.y - popupContentSize.height
+        onPlaced(goBelow, (tip.x - x).toFloat().coerceIn(0f, popupContentSize.width.toFloat()), popupContentSize.width.toFloat().coerceAtLeast(1f))
         return IntOffset(x, y.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)))
     }
 }

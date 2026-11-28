@@ -87,6 +87,12 @@ class StoreScreenshots {
         // Let the engine load or make its state, then make the circle the normal way.
         Thread.sleep(3_000)
         val circle = engine.createCircle("Family")
+        val args = InstrumentationRegistry.getArguments()
+        // A long list of circles, to check the circle menu scrolls (-e manyCircles 1).
+        if (args.getString("manyCircles") == "1") {
+            listOf("Work", "Soccer team", "Book club", "Neighbours", "Cousins", "Roommates", "College friends", "Climbing")
+                .forEach { engine.createCircle(it) }
+        }
         Thread.sleep(2_000)
 
         val now = System.currentTimeMillis() / 1000
@@ -117,8 +123,13 @@ class StoreScreenshots {
                 Precision.NEIGHBORHOOD,
             ).copy(precision = Precision.NEIGHBORHOOD),
         )
-        val people = listOf(sam to "Sam", maya to "Maya", leo to "Leo", nora to "Nora")
-        val colours = mapOf(sam to 3, maya to 6, leo to 1, nora to 8)
+        // Three more people with Maya and Leo, to check a long stack list (-e bigStack 1).
+        val extra = if (args.getString("bigStack") == "1") listOf("Ava", "Ben", "Zoe").map { KeyPair.generate().publicHex to it } else emptyList()
+        val extraLocations = extra.mapIndexed { i, (pk, _) ->
+            pk to MemberLocation(37.75220 + i * 0.00008, -122.41840 - i * 0.00006, 9f, activity = Activity.STILL, battery = 50 + i * 15, time = now - 120)
+        }.toMap()
+        val people = listOf(sam to "Sam", maya to "Maya", leo to "Leo", nora to "Nora") + extra
+        val colours = mapOf(sam to 3, maya to 6, leo to 1, nora to 8) + extra.mapIndexed { i, (pk, _) -> pk to (2 + i * 2) }
 
         val s = engine.state.value
         val historyKey = s.historyKeyHex ?: KeyPair.generate().secret.toHex()
@@ -134,7 +145,7 @@ class StoreScreenshots {
             },
             profiles = s.profiles + people.associate { (pk, name) -> pk to MemberProfile(name, colours[pk], updated = now - 3_600) },
             contacts = s.contacts + mapOf(sam to Contact(verified = true), maya to Contact(verified = true), nora to Contact(verified = true)),
-            locations = s.locations + (circle.id to locations),
+            locations = s.locations + (circle.id to locations + extraLocations),
             lastCircleId = circle.id,
             places = listOf(
                 Place("home", "Home", DRIVE.first().first, DRIVE.first().second, radius = 120.0, circleId = circle.id, onArrive = true, onLeave = true),
@@ -216,7 +227,8 @@ class StoreScreenshots {
         if (want("circles")) {
             // The circle menu, opening out of the circle button (#185).
             (device.wait(Until.findObject(By.desc("Switch circle")), 10_000) ?: error("no circle button")).click()
-            waitFor("New circle")
+            // Its top (the button it grew from) says "Close"; a long list may hide "New circle" below.
+            device.wait(Until.hasObject(By.desc("Close")), 10_000) || error("the circle menu didn't open")
             Thread.sleep(1_500)
             shot("circles")
             device.click(device.displayWidth / 2, device.displayHeight * 2 / 3) // tap elsewhere: closes
@@ -226,11 +238,12 @@ class StoreScreenshots {
 
         if (want("group")) {
             // Tap the stack of Maya and Leo: their list pops up over the map (#146).
-            val stack = device.wait(Until.findObject(By.desc("2 people here")), 10_000) ?: error("no stack of two on the map")
+            val stack = device.wait(Until.findObject(By.descContains("people here")), 10_000) ?: error("no stack on the map")
+            val count = stack.contentDescription
             val box = stack.visibleBounds
             val faceY = box.top + (22 * context.resources.displayMetrics.density).toInt()
             device.click(box.centerX(), faceY)
-            device.wait(Until.hasObject(By.text("2 people here")), 10_000) || error("the stack's list didn't open")
+            device.wait(Until.hasObject(By.text(count)), 10_000) || error("the stack's list didn't open")
             Thread.sleep(2_500) // the map moves, the list pops in
             shot("group")
             device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes
@@ -397,6 +410,68 @@ class StoreScreenshots {
         waitFor("Open the map", 10_000)
         shot("setup-allowed-dark")
         device.executeShellCommand("cmd uimode night no")
+    }
+
+    /**
+     * Checks the map stays smooth and its buttons keep working after a stack's list has been opened
+     * and closed: frame times while dragging the map before and after (from `dumpsys gfxinfo`), the
+     * app's windows left over, and whether Settings still opens. Written to check-group.txt.
+     */
+    @Test
+    fun groupCheck() {
+        assumeTrue(enabled)
+        val context = instrumentation.targetContext
+        val pkg = context.packageName
+        val report = StringBuilder()
+        context.startActivity(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+        waitFor("Sam", 40_000)
+        Thread.sleep(10_000)
+        fun drag(label: String) {
+            device.executeShellCommand("dumpsys gfxinfo $pkg reset")
+            val w = device.displayWidth
+            val y = device.displayHeight / 3
+            repeat(6) { i ->
+                if (i % 2 == 0) device.swipe(w / 4, y, w * 3 / 4, y + 60, 30) else device.swipe(w * 3 / 4, y + 60, w / 4, y, 30)
+                Thread.sleep(400)
+            }
+            val info = device.executeShellCommand("dumpsys gfxinfo $pkg")
+            val lines = info.lines().filter { l -> listOf("Total frames rendered", "Janky frames", "50th percentile", "90th percentile", "99th percentile").any { l.trim().startsWith(it) } }
+            report.append("$label:\n").append(lines.joinToString("\n") { "  " + it.trim() }).append("\n")
+        }
+        fun windows(label: String) {
+            val all = device.executeShellCommand("dumpsys window windows")
+            val ours = all.lines().filter { it.contains("Window{") && it.contains(pkg) }.map { it.trim() }
+            report.append("$label windows: ${ours.size}\n").append(ours.joinToString("\n") { "  $it" }).append("\n")
+        }
+        drag("before")
+        windows("before")
+        val stack = device.wait(Until.findObject(By.descContains("people here")), 10_000) ?: error("no stack on the map")
+        val count = stack.contentDescription
+        val box = stack.visibleBounds
+        device.click(box.centerX(), box.top + (22 * context.resources.displayMetrics.density).toInt())
+        device.wait(Until.hasObject(By.text(count)), 10_000) || error("the stack's list didn't open")
+        Thread.sleep(1_500)
+        windows("open")
+        // Tap the map well below the list (which sits above the faces): closes it.
+        val title = device.findObject(By.text(count))?.visibleBounds
+        report.append("list title at: $title, stack at: $box\n")
+        device.click(device.displayWidth / 2, box.bottom + (48 * context.resources.displayMetrics.density).toInt())
+        val gone = device.wait(Until.gone(By.text(count)), 5_000)
+        report.append("list closed after tapping outside: $gone\n")
+        Thread.sleep(1_500)
+        windows("closed")
+        drag("after")
+        val settings = device.wait(Until.findObject(By.desc("Settings")), 5_000)
+        settings?.click()
+        val opened = device.wait(Until.hasObject(By.text("Appearance")), 5_000)
+        report.append("Settings opens after closing: $opened\n")
+        if (opened) device.pressBack()
+        Log.i(TAG, report.toString())
+        device.executeShellCommand("mkdir -p $DIR")
+        java.io.File(context.getExternalFilesDir(null), "check-group.txt").writeText(report.toString())
+        device.executeShellCommand("cp ${context.getExternalFilesDir(null)}/check-group.txt $DIR/check-group.txt")
     }
 
     private fun mark(name: String) = Log.i(TAG, "mark $name")

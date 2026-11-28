@@ -57,6 +57,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
@@ -220,6 +221,24 @@ fun BatteryBadge(percent: Int, modifier: Modifier = Modifier) {
         Spacer(Modifier.width(1.dp))
         Box(Modifier.width(2.dp).height(5.dp).clip(RoundedCornerShape(topEnd = 1.dp, bottomEnd = 1.dp)).background(if (level >= 97) fill else drained))
     }
+}
+
+/**
+ * A thin scroll bar at the end edge of a list that's taller than its space, showing that it
+ * scrolls and how far down it is. Put it before `verticalScroll(state)`, so it's drawn over the
+ * visible part. Nothing is drawn when everything fits.
+ */
+fun Modifier.scrollThumb(state: androidx.compose.foundation.ScrollState, color: Color): Modifier = drawWithContent {
+    drawContent()
+    val max = state.maxValue
+    if (max <= 0 || max == Int.MAX_VALUE) return@drawWithContent
+    val viewport = size.height
+    val thumb = (viewport * viewport / (viewport + max)).coerceAtLeast(24.dp.toPx())
+    val top = (viewport - thumb) * state.value / max
+    val w = 3.dp.toPx()
+    val inset = 4.dp.toPx()
+    val x = if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Ltr) size.width - inset - w else inset
+    drawRoundRect(color, androidx.compose.ui.geometry.Offset(x, top + 2.dp.toPx()), androidx.compose.ui.geometry.Size(w, thumb - 4.dp.toPx()), androidx.compose.ui.geometry.CornerRadius(w / 2))
 }
 
 /** How choices in a list move between rows: a spring that settles without bouncing. */

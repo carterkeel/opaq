@@ -155,8 +155,8 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  *   into and out of a stack as you zoom (#146). They're drawn over the map in Compose
  *   ([PeopleOverlay]), not as map symbols, so they never fade or swap order while zooming.
  * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a stack calls
- *   [onGroupClick] with everyone in it and where its faces are on screen, after moving the map if
- *   needed so a list can pop up above them, clear of the controls at the top.
+ *   [onGroupClick] with everyone in it and the area its faces cover on screen, after moving the map
+ *   if needed so a list can pop up above them, clear of the controls at the top.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - [places] (alert areas, #151) are drawn as faint circles, true to scale, under the people.
@@ -172,7 +172,7 @@ fun MapPane(
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
-    onGroupClick: (ids: List<String>, at: DpOffset) -> Unit = { _, _ -> },
+    onGroupClick: (ids: List<String>, faces: DpRect) -> Unit = { _, _ -> },
     places: List<Place> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
@@ -207,7 +207,7 @@ fun MapPane(
     // a face still moves the map. A tap is matched to a face here instead.
     val hits = remember { FaceHits() }
     // Set while composing (it needs the map's size); called when a stack is tapped.
-    val stackTap = remember { arrayOfNulls<(List<String>, DpOffset) -> Unit>(1) }
+    val stackTap = remember { arrayOfNulls<(List<String>, DpRect) -> Unit>(1) }
     val mapRef = remember { arrayOfNulls<org.maplibre.compose.map.MapState>(1) }
     val peopleInteractions = remember {
         MapInteractions(MapInteractions.Standard) {
@@ -219,9 +219,19 @@ fun MapPane(
                         when {
                             hit == null -> ClickResult.Pass
                             hit.group != null -> {
+                                // The area all the stack's faces cover, so a list can point above the top one.
                                 val spot = mapRef[0]?.screenLocationFromPosition(Position(hit.lon, hit.lat))
-                                val at = if (spot == null) e.screenOffset else DpOffset(spot.x + hit.centre.x.dp, spot.y + hit.centre.y.dp)
-                                stackTap[0]?.invoke(hit.group, at) ?: onGroup(hit.group, at)
+                                val centres = hits.targets.filter { it.group == hit.group && it.lat == hit.lat && it.lon == hit.lon }.map { it.centre }.ifEmpty { listOf(hit.centre) }
+                                val r = FACE_DP / 2
+                                val faces = if (spot == null) {
+                                    DpRect(e.screenOffset.x - r.dp, e.screenOffset.y - r.dp, e.screenOffset.x + r.dp, e.screenOffset.y + r.dp)
+                                } else {
+                                    DpRect(
+                                        spot.x + (centres.minOf { it.x } - r).dp, spot.y + (centres.minOf { it.y } - r).dp,
+                                        spot.x + (centres.maxOf { it.x } + r).dp, spot.y + (centres.maxOf { it.y } + r).dp,
+                                    )
+                                }
+                                stackTap[0]?.invoke(hit.group, faces) ?: onGroup(hit.group, faces)
                                 ClickResult.Consume
                             }
                             else -> { onPerson(hit.id); ClickResult.Consume }
@@ -327,25 +337,26 @@ fun MapPane(
         // the controls at the top, the map moves down first so there is, if it still fits above the
         // people sheet; otherwise the list opens below the faces instead.
         val topLimit = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 72.dp
-        stackTap[0] = { ids, at ->
-            val need = (GROUP_LIST_BASE_DP + minOf(ids.size, 4) * GROUP_LIST_ROW_DP).dp
-            val faceTop = at.y - (FACE_DP / 2).dp
-            val lowest = boxHeight - bottomInset - (FACE_DP / 2 + 16f).dp
-            val wantY = when {
-                faceTop - need >= topLimit -> at.y
-                topLimit + need + (FACE_DP / 2).dp <= lowest -> topLimit + need + (FACE_DP / 2).dp
-                else -> at.y
+        stackTap[0] = { ids, faces ->
+            val need = (GROUP_LIST_BASE_DP + minOf(ids.size, GROUP_LIST_MAX_ROWS) * GROUP_LIST_ROW_DP).dp + GROUP_ARROW_GAP
+            val lowest = boxHeight - bottomInset - 16.dp
+            val height = faces.bottom - faces.top
+            val wantTop = when {
+                faces.top - need >= topLimit -> faces.top
+                topLimit + need + height <= lowest -> topLimit + need
+                else -> faces.top
             }
-            if (wantY != at.y) {
+            if (wantTop != faces.top) {
                 val camera = mapState.cameraPosition
                 val world = 512.0 * kotlin.math.exp(camera.zoom * ln(2.0))
                 val (cx, cy) = mercatorOf(camera.center.latitude, camera.center.longitude)
-                val ny = (cy + (at.y - wantY).value / world).coerceIn(0.0, 1.0)
+                val ny = (cy + (faces.top - wantTop).value / world).coerceIn(0.0, 1.0)
                 val clat = kotlin.math.atan(kotlin.math.sinh(PI * (1 - 2 * ny))) * 180.0 / PI
                 val clon = cx * 360.0 - 180.0
                 scope.launch { mapState.animateCamera(CameraUpdate(center = Position(clon, clat), zoom = camera.zoom)) }
             }
-            onGroup(ids, DpOffset(at.x, wantY))
+            val shift = wantTop - faces.top
+            onGroup(ids, DpRect(faces.left, faces.top + shift, faces.right, faces.bottom + shift))
         }
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
