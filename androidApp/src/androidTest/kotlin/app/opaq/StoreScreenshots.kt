@@ -227,7 +227,8 @@ class StoreScreenshots {
         if (want("circles")) {
             // The circle menu, opening out of the circle button (#185).
             (device.wait(Until.findObject(By.desc("Switch circle")), 10_000) ?: error("no circle button")).click()
-            waitFor("New circle")
+            // Its top (the button it grew from) says "Close"; a long list may hide "New circle" below.
+            device.wait(Until.hasObject(By.desc("Close")), 10_000) || error("the circle menu didn't open")
             Thread.sleep(1_500)
             shot("circles")
             device.click(device.displayWidth / 2, device.displayHeight * 2 / 3) // tap elsewhere: closes
