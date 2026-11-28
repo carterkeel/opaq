@@ -185,7 +185,7 @@ fun HomeScreen(
     }
     val underMenuAlpha by animateFloatAsState(
         if (showCircles) 0f else 1f,
-        tween(if (showCircles) 450 else 350, easing = LinearEasing),
+        tween(if (showCircles) 280 else 240, easing = LinearEasing),
     )
     // Where the circle button is, and the map's box, both on the whole screen, to grow the menu from.
     var circleButton by remember { mutableStateOf(Rect.Zero) }
