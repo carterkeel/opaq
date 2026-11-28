@@ -237,20 +237,21 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 6.dp),
                 )
-                // No button background: just the icon, dark on the light map and light on the dark one,
-                // with a soft glow of the map's own colour behind it so road labels don't run into it.
-                val glow = if (state.darkMap) Color.Black else Color.White
-                IconButton(
+                // A round button in the app's surface colour, like the other buttons over maps.
+                Surface(
                     onClick = { fullMap = !fullMap },
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(4.dp)
-                        .background(Brush.radialGradient(listOf(glow.copy(alpha = 0.85f), glow.copy(alpha = 0.6f), glow.copy(alpha = 0f))), CircleShape),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp).size(40.dp),
                 ) {
-                    Icon(
-                        if (fullMap) AppIcons.FullscreenExit else AppIcons.Fullscreen,
-                        contentDescription = if (fullMap) "Exit full screen" else "Full screen",
-                        tint = if (state.darkMap) Color.White else Palette.Ink,
-                        modifier = Modifier.size(22.dp),
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (fullMap) AppIcons.FullscreenExit else AppIcons.Fullscreen,
+                            contentDescription = if (fullMap) "Exit full screen" else "Full screen",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
         }
