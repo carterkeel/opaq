@@ -62,6 +62,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -889,9 +890,11 @@ private fun CircleMenu(
 ) {
     val grow = remember { Animatable(0f) }
     LaunchedEffect(visible) {
-        grow.animateTo(if (visible) 1f else 0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+        grow.animateTo(if (visible) 1f else 0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = 300f))
     }
-    if (!visible && grow.value == 0f && !grow.isRunning) return
+    // Read as one yes or no, so the menu isn't recomposed on every frame of the animation.
+    val closed by remember { derivedStateOf { grow.value == 0f && !grow.isRunning } }
+    if (!visible && closed) return
     var explain by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     // The button's padding round its name and arrow; the popup's anchor is inside it.
@@ -913,31 +916,34 @@ private fun CircleMenu(
         }
     }
     Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        val g = grow.value.coerceIn(0f, 1f)
-        val buttonH = with(density) { button.height.toDp() }
-        val shape = RoundedCornerShape(buttonH / 2 + (24.dp - buttonH / 2) * g)
+        // The list is laid out once at its full size; only what's shown of it changes as it grows,
+        // read while drawing, so each frame is just a redraw (no new layout, no window resize).
+        val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
         Box(
             Modifier
-                .shadow((3f + 7f * g).dp, shape)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surface)
-                .layout { measurable, constraints ->
-                    val full = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
-                    val w = if (button.width == 0) full.width else (button.width + (full.width - button.width) * g).roundToInt()
-                    val h = if (button.height == 0) full.height else (button.height + (full.height - button.height) * g).roundToInt()
-                    layout(w.coerceAtLeast(1), h.coerceAtLeast(1)) { full.place(0, 0) }
-                },
+                .graphicsLayer {
+                    val g = grow.value.coerceIn(0f, 1f)
+                    val bw = button.width.toFloat()
+                    val bh = button.height.toFloat()
+                    val w = if (bw <= 0f) size.width else bw + (size.width - bw) * g
+                    val h = if (bh <= 0f) size.height else bh + (size.height - bh) * g
+                    val r = bh / 2 + (24.dp.toPx() - bh / 2) * g
+                    shape = Reveal(w, h, r, rtl)
+                    clip = true
+                    shadowElevation = (3f + 7f * g).dp.toPx()
+                }
+                .background(MaterialTheme.colorScheme.surface),
         ) {
             Column(Modifier.widthIn(min = 280.dp, max = 340.dp)) {
                 // The button it grew from, in the same place: name, and the arrow turning up.
                 Box(Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)) {
                     Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f * g })
+                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f * grow.value })
                     }
                 }
                 val scroll = rememberScrollState()
-                Box(Modifier.graphicsLayer { alpha = ((g - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
+                Box(Modifier.graphicsLayer { alpha = ((grow.value - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
                     Column(Modifier.heightIn(max = (maxHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(scroll).padding(bottom = 8.dp)) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Spacer(Modifier.height(4.dp))
@@ -984,6 +990,18 @@ private fun CircleMenu(
                 }
             }
         }
+    }
+}
+
+/** The part of the circle menu shown while it grows: [width] by [height] from its top start corner. */
+private class Reveal(private val width: Float, private val height: Float, private val radius: Float, private val rtl: Boolean) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(size: androidx.compose.ui.geometry.Size, layoutDirection: LayoutDirection, density: androidx.compose.ui.unit.Density): androidx.compose.ui.graphics.Outline {
+        val w = width.coerceIn(1f, size.width)
+        val h = height.coerceIn(1f, size.height)
+        val left = if (rtl) size.width - w else 0f
+        return androidx.compose.ui.graphics.Outline.Rounded(
+            androidx.compose.ui.geometry.RoundRect(left, 0f, left + w, h, androidx.compose.ui.geometry.CornerRadius(radius.coerceAtMost(minOf(w, h) / 2))),
+        )
     }
 }
 

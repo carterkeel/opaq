@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -292,7 +293,9 @@ internal fun GroupBubble(
         if (open && placed) grow.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
         else if (!open) grow.animateTo(0f, tween(140))
     }
-    if (!open && grow.value == 0f && !grow.isRunning) {
+    // Read as one yes or no, so the list isn't recomposed on every frame of the animation.
+    val closed by remember { derivedStateOf { grow.value == 0f && !grow.isRunning } }
+    if (!open && closed) {
         if (placed) placed = false
         return
     }
