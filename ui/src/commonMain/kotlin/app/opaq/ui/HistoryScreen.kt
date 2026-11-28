@@ -36,10 +36,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material3.Surface
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.coerceIn
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.opaq.core.HistoryPoint
@@ -107,8 +112,11 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
     }
     val shown = points.orEmpty()
     val focus = selected?.let { segments.getOrNull(it)?.points }
-    val mapBox: @Composable (Modifier) -> Unit = { modifier ->
-        Box(modifier.clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+    // Full screen (#184): the map fills the whole screen, with the day and a button back.
+    var fullMap by rememberSaveable { mutableStateOf(false) }
+    PlatformBackHandler(fullMap) { fullMap = false }
+    val mapBox: @Composable (Modifier, Boolean) -> Unit = { modifier, full ->
+        Box(modifier.clip(RoundedCornerShape(if (full) 0.dp else 20.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
             if (shown.isNotEmpty()) {
                 key(state.darkMap) { HistoryMap(shown, segments, focus, Modifier.fillMaxSize(), darkMap = state.darkMap) }
                 Text(
@@ -117,6 +125,11 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.align(Alignment.BottomStart).padding(horizontal = 12.dp, vertical = 6.dp),
                 )
+                MapCornerButton(
+                    if (full) AppIcons.FullscreenExit else AppIcons.Fullscreen,
+                    if (full) "Exit full screen" else "Full screen",
+                    Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                ) { fullMap = !full }
             }
             else Text(
                 if (points == null) "" else "No history for this day",
@@ -145,6 +158,24 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
         }
     }
 
+    if (fullMap && !off && shown.isNotEmpty()) {
+        // Full screen: the map edge to edge, with the day on a pill at the top so you can still
+        // step between days, and the corner button (or Back) to come out again.
+        Box(Modifier.fillMaxSize()) {
+            mapBox(Modifier.fillMaxSize(), true)
+            Row(Modifier.align(Alignment.TopCenter).fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shadowElevation = 2.dp) {
+                    IconButton(onClick = { fullMap = false }) { Icon(AppIcons.ArrowBack, contentDescription = "Exit full screen") }
+                }
+                Spacer(Modifier.width(12.dp))
+                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f), shadowElevation = 2.dp, modifier = Modifier.weight(1f)) {
+                    dayRow()
+                }
+            }
+        }
+        return
+    }
+
     Column(Modifier.fillMaxSize()) {
         TopBar(if (pubkey == me) "Your history" else "$name's history", onBack)
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -153,22 +184,51 @@ fun HistoryScreen(state: AppState, me: String, circleId: String, pubkey: String,
                 // Sideways: the map fills the left, the day and its stretches scroll on the right,
                 // like the people panel on the home screen.
                 Row(Modifier.fillMaxSize()) {
-                    mapBox(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 8.dp, bottom = 16.dp))
+                    mapBox(Modifier.weight(1f).fillMaxHeight().padding(start = 24.dp, end = 8.dp, bottom = 16.dp), false)
                     Column(Modifier.width(listWidth).fillMaxHeight().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
                         dayRow()
                         list()
                     }
                 }
-            } else {
+            } else if (off) {
                 Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
                     dayRow()
-                    if (off) offCard() else {
-                        mapBox(Modifier.padding(horizontal = 24.dp, vertical = 8.dp).fillMaxWidth().height(300.dp))
-                        list()
+                    offCard()
+                }
+            } else {
+                // The day and the map stay put; the stretches scroll under the map and fade out
+                // as they go beneath it.
+                val mapHeight = (maxHeight * 0.42f).coerceIn(200.dp, 320.dp)
+                Column(Modifier.fillMaxSize()) {
+                    dayRow()
+                    mapBox(Modifier.padding(horizontal = 24.dp).padding(top = 8.dp).fillMaxWidth().height(mapHeight), false)
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = 12.dp, bottom = 24.dp)) {
+                            list()
+                        }
+                        val ground = MaterialTheme.colorScheme.background
+                        Box(
+                            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(28.dp)
+                                .background(Brush.verticalGradient(listOf(ground, ground.copy(alpha = 0.7f), ground.copy(alpha = 0f)))),
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+/** A small round button over a map's corner, like full screen on the history map. */
+@Composable
+private fun MapCornerButton(icon: androidx.compose.ui.graphics.vector.ImageVector, description: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        shadowElevation = 2.dp,
+        modifier = modifier.size(40.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) { Icon(icon, contentDescription = description, modifier = Modifier.size(20.dp)) }
     }
 }
 

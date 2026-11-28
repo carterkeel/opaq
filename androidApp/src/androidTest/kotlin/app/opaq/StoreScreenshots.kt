@@ -176,17 +176,34 @@ class StoreScreenshots {
 
         // Only the steps that lead to a wanted shot run, so one that doesn't fit a screen size
         // (a row that's off screen, say) can't stop the others.
-        if (want("profile", "history")) {
+        if (want("profile", "history", "history-scrolled", "history-full")) {
             // Sam's profile, from the info button on his row.
             profileButtonFor("Sam").click()
             waitFor("Location history")
             Thread.sleep(2_000)
             shot("profile")
-            if (want("history")) {
-                waitFor("Location history").click()
+            if (want("history", "history-scrolled", "history-full")) {
+                // Tapping the map at the top of the profile opens history (#184).
+                device.click(device.displayWidth / 2, device.displayHeight / 12)
                 waitFor("Sam's history")
                 Thread.sleep(8_000) // history map
                 shot("history")
+                if (want("history-scrolled")) {
+                    // The map stays put and the stretches scroll under it, fading out.
+                    val still = device.findObjects(By.text("Still")).maxByOrNull { it.visibleBounds.top }
+                    if (still != null) {
+                        device.swipe(device.displayWidth / 2, device.displayHeight - 80, device.displayWidth / 2, still.visibleBounds.top, 40)
+                        Thread.sleep(1_500)
+                    }
+                    shot("history-scrolled")
+                }
+                if (want("history-full")) {
+                    (device.wait(Until.findObject(By.desc("Full screen")), 5_000) ?: error("no Full screen button")).click()
+                    Thread.sleep(8_000)
+                    shot("history-full")
+                    device.pressBack() // leaves full screen
+                    waitFor("Sam's history")
+                }
                 device.pressBack()
                 waitFor("Location history")
             }

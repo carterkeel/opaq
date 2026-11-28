@@ -65,6 +65,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -137,11 +140,11 @@ private fun ProfileHeader(info: AvatarInfo, title: String, subtitle: String?, on
 
 /**
  * Their map behind the top of their profile: today's path where this phone keeps history, or else
- * where they are now. It shows through faintly round the photo and is fully faded by the name, so the text below stays on a plain background. It's only a picture: touches go to the
- * page, so it scrolls as usual.
+ * where they are now. It shows through faintly round the photo and is fully faded by the name, so the text below stays on a plain background. The map itself doesn't move: a
+ * drag scrolls the page, and a tap on the visible part opens their history ([onClick], #184).
  */
 @Composable
-private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation?, actions: Actions, content: @Composable () -> Unit) {
+private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation?, actions: Actions, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
     val today = remember { localDayStart(epochSeconds()) }
     var points by remember(pubkey) { mutableStateOf<List<HistoryPoint>>(emptyList()) }
     LaunchedEffect(pubkey, state.historyDays, loc?.time) {
@@ -159,6 +162,17 @@ private fun ProfileBackdrop(state: AppState, pubkey: String, loc: MemberLocation
                     // Takes touches before the map can, without using them, so the page still scrolls.
                     .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } },
             )
+            // The visible top of the map opens their history. Not the faded part, under the name.
+            if (onClick != null) {
+                val open: () -> Unit = onClick
+                Box(
+                    Modifier.matchParentSize()
+                        .semantics { this.onClick(label = "Open location history") { open(); true } }
+                        .pointerInput(open) {
+                            detectTapGestures { at -> if (at.y < size.height * 0.55f) open() }
+                        },
+                )
+            }
         }
         Column(Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top)).padding(top = 56.dp)) { content() }
     }
@@ -244,7 +258,9 @@ fun ProfileScreen(state: AppState, me: String, circleId: String, pubkey: String,
             circle.precision != Precision.EXACT -> Format.Ring.APPROXIMATE
             else -> Format.Ring.EXACT
         }
-        ProfileBackdrop(state, pubkey, loc, actions) { ProfileHeader(info, info.name, subtitle, ring = ring) }
+        ProfileBackdrop(state, pubkey, loc, actions, onClick = if (state.historyDays > 0) onHistory else null) {
+            ProfileHeader(info, info.name, subtitle, ring = ring)
+        }
 
         SettingsRow(
             title = if (myPaused) "Sharing paused" else Format.status(loc, now),
