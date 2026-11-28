@@ -73,6 +73,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -339,6 +351,17 @@ fun HomeScreen(
                     shadowElevation = 3.dp,
                 ) {
                     Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        // The list of circles opens out of this button, over it (#185).
+                        CircleMenu(
+                            visible = showCircles,
+                            state = state,
+                            name = circle.name,
+                            selected = circle.id,
+                            onSelect = { showCircles = false; onSelectCircle(it) },
+                            onNew = { showCircles = false; showCreate = true },
+                            onJoin = { showCircles = false; onJoin() },
+                            onDismiss = { showCircles = false },
+                        )
                         Text(circle.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Icon(AppIcons.ChevronDown, contentDescription = "Switch circle")
                     }
@@ -551,17 +574,6 @@ fun HomeScreen(
             )
             }
         }
-    }
-
-    if (showCircles) {
-        CirclePicker(
-            state = state,
-            selected = circle?.id,
-            onSelect = { showCircles = false; onSelectCircle(it) },
-            onNew = { showCircles = false; showCreate = true },
-            onJoin = { showCircles = false; onJoin() },
-            onDismiss = { showCircles = false },
-        )
     }
 
     if (showCreate) {
@@ -847,47 +859,103 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Your circles, opening out of the circle button at the top of the map (#185): the button grows
+ * into a card with the same name and arrow at its top, and the list below. Pick a circle (or
+ * Everyone), or join or make one. Tapping the top, Back or anywhere else closes it.
+ */
 @Composable
-private fun CirclePicker(state: AppState, selected: String?, onSelect: (String) -> Unit, onNew: () -> Unit, onJoin: () -> Unit, onDismiss: () -> Unit) {
+private fun CircleMenu(
+    visible: Boolean,
+    state: AppState,
+    name: String,
+    selected: String?,
+    onSelect: (String) -> Unit,
+    onNew: () -> Unit,
+    onJoin: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shown = remember { MutableTransitionState(false) }
+    LaunchedEffect(visible) { shown.targetState = visible }
+    if (!shown.currentState && !shown.targetState) return
     var explain by remember { mutableStateOf(false) }
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-      // Scrolls when there are many circles or the phone is sideways.
-      Column(Modifier.verticalScroll(rememberScrollState())) {
-        Text("Your circles", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
-        // Everyone from every circle on one map (#147), once there's more than one circle.
-        if (state.circles.size >= 2) {
-            val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
-            SettingsRow(
-                title = "Everyone",
-                subtitle = "$people people from all your circles",
-                icon = AppIcons.Globe,
-                onClick = { onSelect(EVERYONE) },
+    val density = LocalDensity.current
+    // Over the button, its top left corner on the button's, and kept on screen. The anchor is the
+    // button's content, inside its padding (16 dp at the start, 10 dp at the top), so step back out.
+    val position = remember(density) {
+        val start = with(density) { 16.dp.roundToPx() }
+        val top = with(density) { 10.dp.roundToPx() }
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - start else anchorBounds.right + start - popupContentSize.width
+                return IntOffset(
+                    x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+                    (anchorBounds.top - top).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
+                )
+            }
+        }
+    }
+    val corner = if (LocalLayoutDirection.current == LayoutDirection.Ltr) TransformOrigin(0f, 0f) else TransformOrigin(1f, 0f)
+    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        AnimatedVisibility(
+            visibleState = shown,
+            enter = scaleIn(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.35f, transformOrigin = corner) +
+                fadeIn(tween(120)),
+            exit = scaleOut(tween(140), targetScale = 0.6f, transformOrigin = corner) + fadeOut(tween(140)),
+        ) {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier.widthIn(min = 280.dp, max = 340.dp),
             ) {
-                IconButton(onClick = { explain = !explain }) {
-                    Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
+                    // The button it grew from: same name, arrow turned up. Tapping it closes the list.
+                    Row(
+                        Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)
+                            .padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f })
+                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    Spacer(Modifier.height(4.dp))
+                    // Everyone from every circle on one map (#147), once there's more than one circle.
+                    if (state.circles.size >= 2) {
+                        val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
+                        SettingsRow(
+                            title = "Everyone",
+                            subtitle = "$people people from all your circles",
+                            icon = AppIcons.Globe,
+                            onClick = { onSelect(EVERYONE) },
+                        ) {
+                            IconButton(onClick = { explain = !explain }) {
+                                Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                        }
+                        AnimatedVisibility(explain) {
+                            Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+                        }
+                    }
+                    state.circles.forEach { c ->
+                        SettingsRow(
+                            title = c.name,
+                            subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
+                            icon = AppIcons.Circles,
+                            onClick = { onSelect(c.id) },
+                        ) {
+                            if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
+                    SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
                 }
-                if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-            }
-            AnimatedVisibility(explain) {
-                Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
             }
         }
-        state.circles.forEach { c ->
-            SettingsRow(
-                title = c.name,
-                subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
-                icon = AppIcons.Circles,
-                onClick = { onSelect(c.id) },
-            ) {
-                if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-            }
-        }
-        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-        SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
-        SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
-        Spacer(Modifier.height(24.dp))
-      }
     }
 }
 
