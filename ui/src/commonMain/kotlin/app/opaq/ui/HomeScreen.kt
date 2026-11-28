@@ -79,6 +79,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.layout.layout
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.runtime.rememberUpdatedState
@@ -182,6 +183,10 @@ fun HomeScreen(
             tween(if (showCircles) 340 else 280, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)),
         )
     }
+    val underMenuAlpha by animateFloatAsState(
+        if (showCircles) 0f else 1f,
+        tween(if (showCircles) 450 else 350, easing = LinearEasing),
+    )
     // Where the circle button is, and the map's box, both on the whole screen, to grow the menu from.
     var circleButton by remember { mutableStateOf(Rect.Zero) }
     var mapOrigin by remember { mutableStateOf(Offset.Zero) }
@@ -391,8 +396,9 @@ fun HomeScreen(
                 // tap resumes those circles rather than pausing everything.
                 val sharingCircles = state.circles.filter { it.confirmed }
                 val allCirclesPaused = sharingCircles.isNotEmpty() && sharingCircles.all { it.paused }
-                // Fading out as the circle menu covers them, and back as it closes.
-                val underMenu = Modifier.graphicsLayer { alpha = (1f - circleGrow.value * 1.6f).coerceIn(0f, 1f) }
+                // Fading out as the circle menu opens over them, and back as it closes. A steady fade of
+                // its own: tied to the menu's growth, which is quick at first, it looked like a blink.
+                val underMenu = Modifier.graphicsLayer { alpha = underMenuAlpha }
                 Box(underMenu) {
                 SharingToggle(state.sharing && !allCirclesPaused) {
                     if (state.sharing && allCirclesPaused) {
