@@ -412,6 +412,63 @@ class StoreScreenshots {
         device.executeShellCommand("cmd uimode night no")
     }
 
+    /**
+     * Checks the map stays smooth and its buttons keep working after a stack's list has been opened
+     * and closed: frame times while dragging the map before and after (from `dumpsys gfxinfo`), the
+     * app's windows left over, and whether Settings still opens. Written to check-group.txt.
+     */
+    @Test
+    fun groupCheck() {
+        assumeTrue(enabled)
+        val context = instrumentation.targetContext
+        val pkg = context.packageName
+        val report = StringBuilder()
+        context.startActivity(
+            Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK),
+        )
+        waitFor("Sam", 40_000)
+        Thread.sleep(10_000)
+        fun drag(label: String) {
+            device.executeShellCommand("dumpsys gfxinfo $pkg reset")
+            val w = device.displayWidth
+            val y = device.displayHeight / 3
+            repeat(6) { i ->
+                if (i % 2 == 0) device.swipe(w / 4, y, w * 3 / 4, y + 60, 30) else device.swipe(w * 3 / 4, y + 60, w / 4, y, 30)
+                Thread.sleep(400)
+            }
+            val info = device.executeShellCommand("dumpsys gfxinfo $pkg")
+            val lines = info.lines().filter { l -> listOf("Total frames rendered", "Janky frames", "50th percentile", "90th percentile", "99th percentile").any { l.trim().startsWith(it) } }
+            report.append("$label:\n").append(lines.joinToString("\n") { "  " + it.trim() }).append("\n")
+        }
+        fun windows(label: String) {
+            val all = device.executeShellCommand("dumpsys window windows")
+            val ours = all.lines().filter { it.contains("Window{") && it.contains(pkg) }.map { it.trim() }
+            report.append("$label windows: ${ours.size}\n").append(ours.joinToString("\n") { "  $it" }).append("\n")
+        }
+        drag("before")
+        windows("before")
+        val stack = device.wait(Until.findObject(By.descContains("people here")), 10_000) ?: error("no stack on the map")
+        val count = stack.contentDescription
+        val box = stack.visibleBounds
+        device.click(box.centerX(), box.top + (22 * context.resources.displayMetrics.density).toInt())
+        device.wait(Until.hasObject(By.text(count)), 10_000) || error("the stack's list didn't open")
+        Thread.sleep(1_500)
+        windows("open")
+        device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes
+        Thread.sleep(1_500)
+        windows("closed")
+        drag("after")
+        val settings = device.wait(Until.findObject(By.desc("Settings")), 5_000)
+        settings?.click()
+        val opened = device.wait(Until.hasObject(By.text("Appearance")), 5_000)
+        report.append("Settings opens after closing: $opened\n")
+        if (opened) device.pressBack()
+        Log.i(TAG, report.toString())
+        device.executeShellCommand("mkdir -p $DIR")
+        java.io.File(context.getExternalFilesDir(null), "check-group.txt").writeText(report.toString())
+        device.executeShellCommand("cp ${context.getExternalFilesDir(null)}/check-group.txt $DIR/check-group.txt")
+    }
+
     private fun mark(name: String) = Log.i(TAG, "mark $name")
 
     /** Settings → Appearance → Dark map, then back to the map. */

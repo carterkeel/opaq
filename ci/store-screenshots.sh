@@ -26,6 +26,8 @@ case "${SCREENSHOT_SET:-phone}" in
   circles) configs=("1080x2400:420:circles:circles,dark-map") ;;
   # Pop-ups with long lists: many circles in the circle menu, five people in one stack.
   popups) configs=("1080x2400:420:popups:circles,group") ;;
+  # The map's smoothness and buttons after a stack's list opens and closes (check-group.txt).
+  groupcheck) configs=("1080x2400:420:groupcheck:groupcheck") ;;
   # A tapped stack's list popping up over the map.
   group) configs=("1080x2400:420:group:map,group") ;;
   # The profile and history screens: the profile's map opening history, the stretches scrolling
@@ -88,7 +90,9 @@ for config in "${configs[@]}"; do
   demo network -e wifi show -e level 4 -e fully true
   demo network -e mobile show -e datatype none -e level 4 -e fully true
   for _ in 1 2 3; do adb emu geo fix -122.42690 37.75960 >/dev/null; sleep 1; done
-  if [ "$shots" = setup ]; then
+  if [ "$shots" = groupcheck ]; then
+    run groupCheck || status=1
+  elif [ "$shots" = setup ]; then
     demo notifications -e visible false
     run setup -e prefix "$prefix" || status=1
   elif [ "$shots" = video ]; then
