@@ -141,7 +141,11 @@ class StoreScreenshots {
             profileChangedAt = now,
             historyKeyHex = historyKey,
             circles = s.circles.map { c ->
-                if (c.id != circle.id) c else c.copy(members = listOf(Member(me, "Alex")) + people.map { (pk, name) -> Member(pk, name) })
+                if (c.id != circle.id) c else c.copy(
+                    members = listOf(Member(me, "Alex")) + people.map { (pk, name) -> Member(pk, name) },
+                    // Bug hunt: the only circle paused on its own (-e pausedCircle 1).
+                    paused = args.getString("pausedCircle") == "1",
+                )
             },
             profiles = s.profiles + people.associate { (pk, name) -> pk to MemberProfile(name, colours[pk], updated = now - 3_600) },
             contacts = s.contacts + mapOf(sam to Contact(verified = true), maya to Contact(verified = true), nora to Contact(verified = true)),

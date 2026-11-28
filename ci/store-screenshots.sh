@@ -37,6 +37,8 @@ case "${SCREENSHOT_SET:-phone}" in
   setup) configs=("1080x1920:420:setup-16x9:setup" "1080x2400:420:setup-20x9:setup") ;;
   # The demo video for Play's background location declaration (StoreScreenshots.demo).
   video) configs=("1080x1920:420:video:video") ;;
+  # Bug hunt probes of the Android host layer (service, notification, permissions, links).
+  bughunt-android) exec bash ./ci/bughunt-android.sh ;;
   *) echo "Unknown SCREENSHOT_SET ${SCREENSHOT_SET}"; exit 1 ;;
 esac
 
