@@ -22,6 +22,8 @@ case "${SCREENSHOT_SET:-phone}" in
     "1080x1728:420:fold-10x16:map,profile"
     "1656x2208:480:fold-3x4:history,dark-place"
   ) ;;
+  # A tapped stack's list popping up over the map.
+  group) configs=("1080x2400:420:group:map,group") ;;
   # The profile and history screens: the profile's map opening history, the stretches scrolling
   # under the map, and the map full screen.
   history) configs=("1080x2400:420:history:profile,history,history-scrolled,history-full") ;;

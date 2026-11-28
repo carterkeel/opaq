@@ -52,6 +52,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.ui.unit.DpOffset
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -151,7 +155,8 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
  *   into and out of a stack as you zoom (#146). They're drawn over the map in Compose
  *   ([PeopleOverlay]), not as map symbols, so they never fade or swap order while zooming.
  * - Tapping a person's dot calls [onPersonClick] with their id. Tapping a stack calls
- *   [onGroupClick] with everyone in it.
+ *   [onGroupClick] with everyone in it and where its faces are on screen, after moving the map if
+ *   needed so a list can pop up above them, clear of the controls at the top.
  * - Moving people travel smoothly between updates, along the roads on screen ([rememberMovingMarkers]).
  * - [bottomInset] keeps centred points above the people sheet, [endInset] clear of the side panel in landscape.
  * - [places] (alert areas, #151) are drawn as faint circles, true to scale, under the people.
@@ -167,7 +172,7 @@ fun MapPane(
     darkMap: Boolean = false,
     onPersonClick: (id: String) -> Unit = {},
     endInset: Dp = 0.dp,
-    onGroupClick: (ids: List<String>) -> Unit = {},
+    onGroupClick: (ids: List<String>, at: DpOffset) -> Unit = { _, _ -> },
     places: List<Place> = emptyList(),
 ) {
     val scope = rememberCoroutineScope()
@@ -201,6 +206,8 @@ fun MapPane(
     // Faces are drawn over the map but take no touches themselves, so a pinch or drag that starts on
     // a face still moves the map. A tap is matched to a face here instead.
     val hits = remember { FaceHits() }
+    // Set while composing (it needs the map's size); called when a stack is tapped.
+    val stackTap = remember { arrayOfNulls<(List<String>, DpOffset) -> Unit>(1) }
     val mapRef = remember { arrayOfNulls<org.maplibre.compose.map.MapState>(1) }
     val peopleInteractions = remember {
         MapInteractions(MapInteractions.Standard) {
@@ -211,7 +218,12 @@ fun MapPane(
                         val hit = mapRef[0]?.let { state -> hits.at(e.screenOffset) { lat, lon -> state.screenLocationFromPosition(Position(lon, lat)) } }
                         when {
                             hit == null -> ClickResult.Pass
-                            hit.group != null -> { onGroup(hit.group); ClickResult.Consume }
+                            hit.group != null -> {
+                                val spot = mapRef[0]?.screenLocationFromPosition(Position(hit.lon, hit.lat))
+                                val at = if (spot == null) e.screenOffset else DpOffset(spot.x + hit.centre.x.dp, spot.y + hit.centre.y.dp)
+                                stackTap[0]?.invoke(hit.group, at) ?: onGroup(hit.group, at)
+                                ClickResult.Consume
+                            }
                             else -> { onPerson(hit.id); ClickResult.Consume }
                         }
                     }
@@ -311,6 +323,30 @@ fun MapPane(
         }
         val boxWidth = maxWidth
         val boxHeight = maxHeight
+        // A tapped stack's list pops up above its faces (#146). When there isn't room for it under
+        // the controls at the top, the map moves down first so there is, if it still fits above the
+        // people sheet; otherwise the list opens below the faces instead.
+        val topLimit = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding() + 72.dp
+        stackTap[0] = { ids, at ->
+            val need = (GROUP_LIST_BASE_DP + minOf(ids.size, 4) * GROUP_LIST_ROW_DP).dp
+            val faceTop = at.y - (FACE_DP / 2).dp
+            val lowest = boxHeight - bottomInset - (FACE_DP / 2 + 16f).dp
+            val wantY = when {
+                faceTop - need >= topLimit -> at.y
+                topLimit + need + (FACE_DP / 2).dp <= lowest -> topLimit + need + (FACE_DP / 2).dp
+                else -> at.y
+            }
+            if (wantY != at.y) {
+                val camera = mapState.cameraPosition
+                val world = 512.0 * kotlin.math.exp(camera.zoom * ln(2.0))
+                val (cx, cy) = mercatorOf(camera.center.latitude, camera.center.longitude)
+                val ny = (cy + (at.y - wantY).value / world).coerceIn(0.0, 1.0)
+                val clat = kotlin.math.atan(kotlin.math.sinh(PI * (1 - 2 * ny))) * 180.0 / PI
+                val clon = cx * 360.0 - 180.0
+                scope.launch { mapState.animateCamera(CameraUpdate(center = Position(clon, clat), zoom = camera.zoom)) }
+            }
+            onGroup(ids, DpOffset(at.x, wantY))
+        }
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             state = mapState,
