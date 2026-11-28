@@ -176,17 +176,36 @@ class StoreScreenshots {
 
         // Only the steps that lead to a wanted shot run, so one that doesn't fit a screen size
         // (a row that's off screen, say) can't stop the others.
-        if (want("profile", "history")) {
+        if (want("profile", "history", "history-scrolled", "history-full")) {
             // Sam's profile, from the info button on his row.
             profileButtonFor("Sam").click()
             waitFor("Location history")
             Thread.sleep(2_000)
             shot("profile")
-            if (want("history")) {
-                waitFor("Location history").click()
+            if (want("history", "history-scrolled", "history-full")) {
+                // Tapping the map at the top of the profile opens history (#184).
+                device.click(device.displayWidth / 2, device.displayHeight / 12)
                 waitFor("Sam's history")
                 Thread.sleep(8_000) // history map
                 shot("history")
+                if (want("history-scrolled")) {
+                    // The map stays put and the stretches scroll under it, fading out.
+                    // Dragged from inside the list (a drag from the bottom edge would go home).
+                    val still = device.findObjects(By.text("Still")).maxByOrNull { it.visibleBounds.top }
+                    if (still != null) {
+                        val y = still.visibleBounds.centerY()
+                        device.swipe(device.displayWidth / 2, y, device.displayWidth / 2, y - 220, 40)
+                        Thread.sleep(1_500)
+                    }
+                    shot("history-scrolled")
+                }
+                if (want("history-full")) {
+                    (device.wait(Until.findObject(By.desc("Full screen")), 5_000) ?: error("no Full screen button")).click()
+                    Thread.sleep(8_000)
+                    shot("history-full")
+                    device.pressBack() // leaves full screen
+                    waitFor("Sam's history")
+                }
                 device.pressBack()
                 waitFor("Location history")
             }
@@ -203,6 +222,19 @@ class StoreScreenshots {
             device.click(device.displayWidth / 2, device.displayHeight * 2 / 3) // tap elsewhere: closes
             Thread.sleep(1_000)
             waitFor("Invite")
+        }
+
+        if (want("group")) {
+            // Tap the stack of Maya and Leo: their list pops up over the map (#146).
+            val stack = device.wait(Until.findObject(By.desc("2 people here")), 10_000) ?: error("no stack of two on the map")
+            val box = stack.visibleBounds
+            val faceY = box.top + (22 * context.resources.displayMetrics.density).toInt()
+            device.click(box.centerX(), faceY)
+            device.wait(Until.hasObject(By.text("2 people here")), 10_000) || error("the stack's list didn't open")
+            Thread.sleep(2_500) // the map moves, the list pops in
+            shot("group")
+            device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes
+            Thread.sleep(1_000)
         }
 
         if (want("invite")) {
