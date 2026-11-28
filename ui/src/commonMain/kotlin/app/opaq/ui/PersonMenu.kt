@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.flow.first
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -286,19 +287,23 @@ internal fun GroupBubble(
     if (faces != null) { last = faces; lastIds = ids }
     val area = last ?: return
     val people = lastIds
-    // Grows from the arrow's tip once the popup knows its size (so the tip is known), and shrinks back.
+    // Grows from the arrow's tip once the popup knows its size (so the tip is known), and shrinks
+    // back. Keyed on opening and closing only: [placed] is set while laying out the popup, so an
+    // effect keyed on it too would restart as it closed and bring the popup back, over and over.
     val grow = remember { androidx.compose.animation.core.Animatable(0f) }
     var placed by remember { mutableStateOf(false) }
-    LaunchedEffect(open, placed) {
-        if (open && placed) grow.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
-        else if (!open) grow.animateTo(0f, tween(140))
+    LaunchedEffect(open) {
+        if (open) {
+            androidx.compose.runtime.snapshotFlow { placed }.first { it }
+            grow.animateTo(1f, spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMediumLow))
+        } else {
+            grow.animateTo(0f, tween(140))
+            placed = false
+        }
     }
     // Read as one yes or no, so the list isn't recomposed on every frame of the animation.
     val closed by remember { derivedStateOf { grow.value == 0f && !grow.isRunning } }
-    if (!open && closed) {
-        if (placed) placed = false
-        return
-    }
+    if (!open && closed) return
     var below by remember { mutableStateOf(false) }
     var arrowX by remember { mutableStateOf(0f) }
     var width by remember { mutableStateOf(1f) }
