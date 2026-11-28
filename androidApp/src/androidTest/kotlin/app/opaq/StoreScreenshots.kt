@@ -87,6 +87,12 @@ class StoreScreenshots {
         // Let the engine load or make its state, then make the circle the normal way.
         Thread.sleep(3_000)
         val circle = engine.createCircle("Family")
+        val args = InstrumentationRegistry.getArguments()
+        // A long list of circles, to check the circle menu scrolls (-e manyCircles 1).
+        if (args.getString("manyCircles") == "1") {
+            listOf("Work", "Soccer team", "Book club", "Neighbours", "Cousins", "Roommates", "College friends", "Climbing")
+                .forEach { engine.createCircle(it) }
+        }
         Thread.sleep(2_000)
 
         val now = System.currentTimeMillis() / 1000
@@ -117,8 +123,13 @@ class StoreScreenshots {
                 Precision.NEIGHBORHOOD,
             ).copy(precision = Precision.NEIGHBORHOOD),
         )
-        val people = listOf(sam to "Sam", maya to "Maya", leo to "Leo", nora to "Nora")
-        val colours = mapOf(sam to 3, maya to 6, leo to 1, nora to 8)
+        // Three more people with Maya and Leo, to check a long stack list (-e bigStack 1).
+        val extra = if (args.getString("bigStack") == "1") listOf("Ava", "Ben", "Zoe").map { KeyPair.generate().publicHex to it } else emptyList()
+        val extraLocations = extra.mapIndexed { i, (pk, _) ->
+            pk to MemberLocation(37.75220 + i * 0.00008, -122.41840 - i * 0.00006, 9f, activity = Activity.STILL, battery = 50 + i * 15, time = now - 120)
+        }.toMap()
+        val people = listOf(sam to "Sam", maya to "Maya", leo to "Leo", nora to "Nora") + extra
+        val colours = mapOf(sam to 3, maya to 6, leo to 1, nora to 8) + extra.mapIndexed { i, (pk, _) -> pk to (2 + i * 2) }
 
         val s = engine.state.value
         val historyKey = s.historyKeyHex ?: KeyPair.generate().secret.toHex()
@@ -134,7 +145,7 @@ class StoreScreenshots {
             },
             profiles = s.profiles + people.associate { (pk, name) -> pk to MemberProfile(name, colours[pk], updated = now - 3_600) },
             contacts = s.contacts + mapOf(sam to Contact(verified = true), maya to Contact(verified = true), nora to Contact(verified = true)),
-            locations = s.locations + (circle.id to locations),
+            locations = s.locations + (circle.id to locations + extraLocations),
             lastCircleId = circle.id,
             places = listOf(
                 Place("home", "Home", DRIVE.first().first, DRIVE.first().second, radius = 120.0, circleId = circle.id, onArrive = true, onLeave = true),
@@ -226,11 +237,12 @@ class StoreScreenshots {
 
         if (want("group")) {
             // Tap the stack of Maya and Leo: their list pops up over the map (#146).
-            val stack = device.wait(Until.findObject(By.desc("2 people here")), 10_000) ?: error("no stack of two on the map")
+            val stack = device.wait(Until.findObject(By.descContains("people here")), 10_000) ?: error("no stack on the map")
+            val count = stack.contentDescription
             val box = stack.visibleBounds
             val faceY = box.top + (22 * context.resources.displayMetrics.density).toInt()
             device.click(box.centerX(), faceY)
-            device.wait(Until.hasObject(By.text("2 people here")), 10_000) || error("the stack's list didn't open")
+            device.wait(Until.hasObject(By.text(count)), 10_000) || error("the stack's list didn't open")
             Thread.sleep(2_500) // the map moves, the list pops in
             shot("group")
             device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes

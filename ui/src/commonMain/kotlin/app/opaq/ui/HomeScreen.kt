@@ -73,6 +73,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.shadow
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.PopupPositionProvider
@@ -101,6 +106,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.opaq.core.MotionPolicy
@@ -168,7 +174,7 @@ fun HomeScreen(
         var focus by remember { mutableStateOf<MapFocus?>(null) }
         var focusSeq by remember { mutableIntStateOf(0) }
         // People in one spot, tapped on the map (#146), and where their faces are on the map.
-        var together by remember { mutableStateOf<Pair<List<String>, DpOffset>?>(null) }
+        var together by remember { mutableStateOf<Pair<List<String>, DpRect>?>(null) }
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
@@ -299,7 +305,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
-                    onGroupClick = { ids, at -> together = ids to at },
+                    onGroupClick = { ids, faces -> together = ids to faces },
                     // Alert areas (#151) watching this circle, only on this phone.
                     places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
@@ -309,7 +315,7 @@ fun HomeScreen(
                 state = state,
                 me = me,
                 ids = together?.first.orEmpty(),
-                at = together?.second,
+                faces = together?.second,
                 now = now,
                 location = { locs[it] },
                 name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
@@ -357,6 +363,8 @@ fun HomeScreen(
                             state = state,
                             name = circle.name,
                             selected = circle.id,
+                            // Down to the people sheet (or the bottom, sideways), less the button's place.
+                            maxHeight = with(density) { ((if (landscape) fullH - bars.getBottom(density) else sheetY) - insetTop).toDp() } - 22.dp,
                             onSelect = { showCircles = false; onSelectCircle(it) },
                             onNew = { showCircles = false; showCreate = true },
                             onJoin = { showCircles = false; onJoin() },
@@ -860,9 +868,12 @@ private fun Banner(visible: Boolean, text: String, action: String?, onAction: ((
 }
 
 /**
- * Your circles, opening out of the circle button at the top of the map (#185): the button grows
- * into a card with the same name and arrow at its top, and the list below. Pick a circle (or
- * Everyone), or join or make one. Tapping the top, Back or anywhere else closes it.
+ * Your circles, opening out of the circle button at the top of the map (#185): the button itself
+ * grows into the list, its name and arrow staying where they are (the arrow turning up) while it
+ * widens and lengthens and its corners soften, and the list fades in below. Pick a circle (or
+ * Everyone), or join or make one. A long list scrolls within [maxHeight] (down to the people
+ * sheet), fading out at the bottom while there's more. Tapping the top, Back or anywhere else
+ * closes it, and it shrinks back into the button.
  */
 @Composable
 private fun CircleMenu(
@@ -870,89 +881,106 @@ private fun CircleMenu(
     state: AppState,
     name: String,
     selected: String?,
+    maxHeight: Dp,
     onSelect: (String) -> Unit,
     onNew: () -> Unit,
     onJoin: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val shown = remember { MutableTransitionState(false) }
-    LaunchedEffect(visible) { shown.targetState = visible }
-    if (!shown.currentState && !shown.targetState) return
+    val grow = remember { Animatable(0f) }
+    LaunchedEffect(visible) {
+        grow.animateTo(if (visible) 1f else 0f, spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMediumLow))
+    }
+    if (!visible && grow.value == 0f && !grow.isRunning) return
     var explain by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    // Over the button, its top left corner on the button's, and kept on screen. The anchor is the
-    // button's content, inside its padding (16 dp at the start, 10 dp at the top), so step back out.
+    // The button's padding round its name and arrow; the popup's anchor is inside it.
+    val padStart = with(density) { 16.dp.roundToPx() }
+    val padEnd = with(density) { 10.dp.roundToPx() }
+    val padV = with(density) { 10.dp.roundToPx() }
+    var button by remember { mutableStateOf(IntSize.Zero) }
+    // Exactly over the button, kept on screen; notes the button's size to grow from.
     val position = remember(density) {
-        val start = with(density) { 16.dp.roundToPx() }
-        val top = with(density) { 10.dp.roundToPx() }
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - start else anchorBounds.right + start - popupContentSize.width
+                button = IntSize(anchorBounds.width + padStart + padEnd, anchorBounds.height + padV * 2)
+                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - padStart else anchorBounds.right + padStart - popupContentSize.width
                 return IntOffset(
                     x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
-                    (anchorBounds.top - top).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
+                    (anchorBounds.top - padV).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
                 )
             }
         }
     }
-    val corner = if (LocalLayoutDirection.current == LayoutDirection.Ltr) TransformOrigin(0f, 0f) else TransformOrigin(1f, 0f)
     Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
-        AnimatedVisibility(
-            visibleState = shown,
-            enter = scaleIn(spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.35f, transformOrigin = corner) +
-                fadeIn(tween(120)),
-            exit = scaleOut(tween(140), targetScale = 0.6f, transformOrigin = corner) + fadeOut(tween(140)),
+        val g = grow.value.coerceIn(0f, 1f)
+        val buttonH = with(density) { button.height.toDp() }
+        val shape = RoundedCornerShape(buttonH / 2 + (24.dp - buttonH / 2) * g)
+        Box(
+            Modifier
+                .shadow((3f + 7f * g).dp, shape)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.surface)
+                .layout { measurable, constraints ->
+                    val full = measurable.measure(constraints.copy(minWidth = 0, minHeight = 0))
+                    val w = if (button.width == 0) full.width else (button.width + (full.width - button.width) * g).roundToInt()
+                    val h = if (button.height == 0) full.height else (button.height + (full.height - button.height) * g).roundToInt()
+                    layout(w.coerceAtLeast(1), h.coerceAtLeast(1)) { full.place(0, 0) }
+                },
         ) {
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-                shadowElevation = 10.dp,
-                modifier = Modifier.widthIn(min = 280.dp, max = 340.dp),
-            ) {
-                Column(Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()).padding(bottom = 8.dp)) {
-                    // The button it grew from: same name, arrow turned up. Tapping it closes the list.
-                    Row(
-                        Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)
-                            .padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f })
+            Column(Modifier.widthIn(min = 280.dp, max = 340.dp)) {
+                // The button it grew from, in the same place: name, and the arrow turning up.
+                Box(Modifier.fillMaxWidth().clickable(onClickLabel = "Close", onClick = onDismiss)) {
+                    Row(Modifier.padding(start = 16.dp, end = 10.dp, top = 10.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Icon(AppIcons.ChevronDown, contentDescription = "Close", modifier = Modifier.graphicsLayer { rotationZ = 180f * g })
                     }
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    Spacer(Modifier.height(4.dp))
-                    // Everyone from every circle on one map (#147), once there's more than one circle.
-                    if (state.circles.size >= 2) {
-                        val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
-                        SettingsRow(
-                            title = "Everyone",
-                            subtitle = "$people people from all your circles",
-                            icon = AppIcons.Globe,
-                            onClick = { onSelect(EVERYONE) },
-                        ) {
-                            IconButton(onClick = { explain = !explain }) {
-                                Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                val scroll = rememberScrollState()
+                Box(Modifier.graphicsLayer { alpha = ((g - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
+                    Column(Modifier.heightIn(max = (maxHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(scroll).padding(bottom = 8.dp)) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Spacer(Modifier.height(4.dp))
+                        // Everyone from every circle on one map (#147), once there's more than one circle.
+                        if (state.circles.size >= 2) {
+                            val people = state.circles.flatMap { c -> c.members.map { it.pubkey } }.distinct().size
+                            SettingsRow(
+                                title = "Everyone",
+                                subtitle = "$people people from all your circles",
+                                icon = AppIcons.Globe,
+                                onClick = { onSelect(EVERYONE) },
+                            ) {
+                                IconButton(onClick = { explain = !explain }) {
+                                    Icon(AppIcons.Info, contentDescription = "About Everyone", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
                             }
-                            if (selected == EVERYONE) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                            AnimatedVisibility(explain) {
+                                Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+                            }
                         }
-                        AnimatedVisibility(explain) {
-                            Caption(EVERYONE_INFO, Modifier.padding(start = 24.dp + 40.dp, end = 24.dp, bottom = 8.dp))
+                        state.circles.forEach { c ->
+                            SettingsRow(
+                                title = c.name,
+                                subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
+                                icon = AppIcons.Circles,
+                                onClick = { onSelect(c.id) },
+                            ) {
+                                if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
+                            }
                         }
+                        HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
+                        SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
                     }
-                    state.circles.forEach { c ->
-                        SettingsRow(
-                            title = c.name,
-                            subtitle = "${c.members.size} ${if (c.members.size == 1) "person" else "people"}",
-                            icon = AppIcons.Circles,
-                            onClick = { onSelect(c.id) },
-                        ) {
-                            if (c.id == selected) Icon(AppIcons.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary)
-                        }
+                    // A long list fades out at the bottom while there's more to scroll to.
+                    if (scroll.canScrollForward) {
+                        val ground = MaterialTheme.colorScheme.surface
+                        Box(
+                            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(48.dp)
+                                .background(Brush.verticalGradient(listOf(ground.copy(alpha = 0f), ground.copy(alpha = 0.85f), ground))),
+                        )
                     }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
-                    SettingsRow(title = "Join a circle", subtitle = "Scan a QR code or open an invite link", icon = AppIcons.ScanQr, titleColor = MaterialTheme.colorScheme.primary, onClick = onJoin)
-                    SettingsRow(title = "New circle", icon = AppIcons.Add, titleColor = MaterialTheme.colorScheme.primary, onClick = onNew)
                 }
             }
         }
