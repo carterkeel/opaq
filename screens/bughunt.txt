@@ -1,0 +1,583 @@
+Android 14, API 34
+
+===== A. launch with sharing on (no battery optimisation exemption, like a real install) =====
+pid: 5475
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+-- our notifications:
+    NotificationRecord(0x0dff734e: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- location requests:
+        10192/me.opaq.app.debug/936A5C2F Request[PASSIVE, minUpdateInterval=0, WorkSource{10192 me.opaq.app.debug}]
+        10131/com.google.android.gms[fused_location_provider]/262B7A77 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+--
+        1000/android[SensorNotificationService]/A314EB60 Request[PASSIVE, minUpdateInterval=+30m0s0ms, minUpdateDistance=100000.0, WorkSource{1000 android}]
+      service: ProviderRequest[@+30s0ms, WorkSource{10192 me.opaq.app.debug}]
+        1000/android[GnssService]/3A461516 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+        10192/me.opaq.app.debug/936A5C2F Request[@+30s0ms BALANCED, WorkSource{10192 me.opaq.app.debug}]
+      mFixInterval=5000
+--
+      10131/com.google.android.gms[network_location_provider]: min/max interval = passive/passive, total/active/foreground duration = +2m3s214ms/+2m3s99ms/+2m3s126ms, locations = 3
+      10192/me.opaq.app.debug: min/max interval = passive/passive, total/active/foreground duration = +30s791ms/+30s790ms/+30s405ms, locations = 3
+      10192/me.opaq.app.debug: min/max interval = 5s/5s, total/active/foreground duration = +6s638ms/+6s636ms/+6s253ms, locations = 1
+      10125/com.google.android.as: min/max interval = 21600s/21600s, total/active/foreground duration = +2m12s794ms/+2m10s485ms/+2m12s561ms, locations = 0
+      1000/android[GnssService]: min/max interval = passive/passive, total/active/foreground duration = +2m23s75ms/+2m10s489ms/+2m23s75ms, locations = 0
+      10192/me.opaq.app.debug: min/max interval = 15s/30s, total/active/foreground duration = +30s795ms/+30s265ms/+30s408ms, locations = 0
+    11-28 05:55:56.336: network provider +registration 1000/android[GnssService]/3A461516 -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+--
+    11-28 05:56:14.688: passive provider +registration 10131/com.google.android.gms[network_location_provider]/F079FFCC -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+    11-28 05:57:41.751: gps provider +registration 10192/me.opaq.app.debug/D57F2724 -> Request[@+5s0ms HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+    11-28 05:57:41.753: gps provider request = ProviderRequest[@+5s0ms, HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+-- logcat (A):
+11-28 05:57:44.496 D/PrefCtrlListHelper( 1055): Could not find Context-only controller for pref: com.android.settings.location.LocationServicesWifiScanningPreferenceController
+11-28 05:57:44.496 D/PrefCtrlListHelper( 1055): Could not find Context-only controller for pref: com.android.settings.location.LocationServicesBluetoothScanningPreferenceController
+11-28 05:57:44.499 D/PrefCtrlListHelper( 1055): Could not find Context-only controller for pref: com.android.settings.location.LocationServicesPreferenceController
+11-28 05:57:44.506 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=143, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 05:57:44.839 I/ActivityTaskManager(  525): START u0 {flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-28 05:57:44.845 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@72310b8 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=140421 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@f565e91} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{dbca1f6 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 05:57:44.901 D/CoreBackPreview(  525): Window{e1c681 u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@1821b67, mPriority=0, mIsAnimationCallback=false}
+11-28 05:57:44.974 I/ActivityManager(  525): Start proc 5475:me.opaq.app.debug/u0a192 for next-top-activity {me.opaq.app.debug/app.opaq.MainActivity}
+11-28 05:57:45.030 W/AlarmManager( 1443): java.lang.IllegalArgumentException: alarm "NetworkLocationLocator" has short window length
+11-28 05:57:45.148 V/WindowManager(  525): Sent Transition #7 createdAt=11-28 05:57:44.801 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=140421 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{881d6 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 05:57:45.149 V/WindowManager(  525):     info={id=7 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} m=OPEN f=NONE leash=Surface(name=Task=8)/@0x5ad105f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 05:57:45.222 W/AiAiAutofill( 1647): java.lang.SecurityException: caller is not user's Augmented Autofill Service
+11-28 05:57:45.319 W/ziparchive( 5475): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 05:57:45.321 W/ziparchive( 5475): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 05:57:45.455 E/SystemServiceRegistry( 1055): android.os.ServiceManager$ServiceNotFoundException: No service published for: ethernet
+11-28 05:57:45.494 E/JavaBinder( 1055): *** Uncaught remote exception! Exceptions are not yet supported across processes. Client PID 4184 UID 10118.
+11-28 05:57:45.494 E/JavaBinder( 1055): android.database.StaleDataException: Attempted to access a cursor after it has been closed.
+11-28 05:57:45.624 D/CarrierSvcBindHelper( 1054): onHandleForceStop: [me.opaq.app.debug]
+11-28 05:57:46.689 D/nativeloader( 5475): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 05:57:46.713 V/GraphicsEnvironment( 5475): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 05:57:46.713 V/GraphicsEnvironment( 5475): me.opaq.app.debug is not listed in per-application setting
+11-28 05:57:47.595 I/ActivityManager(  525): Background started FGS: Allowed [callingPackage: me.opaq.app.debug; callingUid: 10192; uidState: TOP ; uidBFSL: [BFSL]; intent: Intent { cmp=me.opaq.app.debug/app.opaq.LocationService }; code:PROC_STATE_TOP; tempAllowListReason:<null>; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+11-28 05:57:47.627 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:57:48.029 D/Opaq    ( 5475): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:57:48.091 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:57:48.150 D/CoreBackPreview(  525): Window{f2785f8 u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@92018d5, mPriority=0, mIsAnimationCallback=false}
+11-28 05:57:48.534 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:57:48.729 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/5475 activeRequest: null callbackRequest: 145 [NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 05:57:48.731 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:57:48.731 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:57:48.732 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:57:48.732 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:57:48.947 I/AppsFilter(  525): interaction: PackageSetting{9c3c221 me.opaq.app.debug/10192} -> PackageSetting{405e646 com.google.android.contacts/10155} BLOCKED
+11-28 05:57:48.947 I/AppsFilter(  525): interaction: PackageSetting{dccda94 me.opaq.app.debug.test/10193} -> PackageSetting{405e646 com.google.android.contacts/10155} BLOCKED
+11-28 05:57:49.766 I/CompressionUtils( 1443): java.nio.channels.ClosedByInterruptException
+11-28 05:57:49.775 W/CompressionUtils( 1443): java.nio.channels.ClosedByInterruptException
+11-28 05:57:49.776 W/HeterodyneSyncer( 1443): Caused by: java.io.InterruptedIOException: request interrupted
+11-28 05:57:49.908 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:57:50.096 D/Opaq    ( 5475): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:57:50.403 W/ziparchive(  525): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+
+===== B. swipe the sharing notification away (Android 14 lets users dismiss FGS notifications) =====
+notification text bounds: bounds="[179,903][996,956]"
+-- our notifications:
+    NotificationRecord(0x0dff734e: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+... 70 s later:
+-- our notifications:
+    NotificationRecord(0x0dff734e: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+-- logcat (B):
+11-28 05:58:19.813 W/A       ( 1735): DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 05:58:19.962 W/A       ( 1735): DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 05:58:19.987 W/A       ( 1735): com.google.android.apps.search.googleapp.discover.v.i: DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 05:58:19.987 W/A       ( 1735): Caused by: DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 05:58:20.028 V/WindowManager(  525):     info={id=8 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_FRONT f=SHOW_WALLPAPER|MOVE_TO_TOP leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} m=TO_BACK f=NONE leash=Surface(name=Task=8)/@0x5ad105f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{87779aa token=android.os.Binder@823b495})/@0xdf24cc2 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 05:58:20.662 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:58:20.754 W/PeoplePU( 5861): java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+11-28 05:58:20.754 W/PeoplePU( 5861): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-28 05:58:20.754 W/PeoplePU( 5861): 	at android.os.Parcel.createException(Parcel.java:3041)
+11-28 05:58:20.754 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:3024)
+11-28 05:58:20.754 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:2966)
+11-28 05:58:20.754 W/PeoplePU( 5861): Caused by: android.os.RemoteException: Remote stack trace:
+11-28 05:58:20.757 W/PeoplePU( 5861): java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ContactsSyncAdapterService}
+11-28 05:58:20.757 W/PeoplePU( 5861): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-28 05:58:20.757 W/PeoplePU( 5861): 	at android.os.Parcel.createException(Parcel.java:3041)
+11-28 05:58:20.757 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:3024)
+11-28 05:58:20.757 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:2966)
+11-28 05:58:20.758 W/PeoplePU( 5861): java.lang.IllegalArgumentException: Unknown component: ComponentInfo{com.google.android.syncadapters.contacts/com.google.android.syncadapters.contacts.ProxyGalProvider}
+11-28 05:58:20.758 W/PeoplePU( 5861): 	at android.os.Parcel.createExceptionOrNull(Parcel.java:3061)
+11-28 05:58:20.758 W/PeoplePU( 5861): 	at android.os.Parcel.createException(Parcel.java:3041)
+11-28 05:58:20.758 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:3024)
+11-28 05:58:20.758 W/PeoplePU( 5861): 	at android.os.Parcel.readException(Parcel.java:2966)
+11-28 05:58:21.190 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:58:21.541 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:58:21.727 D/Opaq    ( 5475): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:58:23.510 W/NetworkScheduler( 5779): java.lang.IllegalArgumentException: Only the following extra parameter types are supported: Integer, Long, Double, String, Boolean, and nested Bundles with the same restrictions.
+11-28 05:58:23.900 W/TapAndPay( 5779): java.lang.NullPointerException: NfcAdapter is null
+11-28 05:58:24.962 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 05:58:25.325 D/AndroidRuntime( 6319): >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<
+11-28 05:58:25.332 I/AndroidRuntime( 6319): Using default boot image
+11-28 05:58:25.333 I/AndroidRuntime( 6319): Leaving lock profiling enabled
+11-28 05:58:25.575 D/AndroidRuntime( 6319): Calling main entry com.android.commands.uiautomator.Launcher
+11-28 05:58:26.712 D/AndroidRuntime( 6319): Shutting down VM
+11-28 05:58:32.294 E/A       ( 1735): java.util.concurrent.CancellationException: Task was cancelled.
+11-28 05:58:32.298 E/BgTaskExecutorImpl( 1735): java.util.concurrent.CancellationException: Task was cancelled.
+11-28 05:58:33.793 I/AppsFilter(  525): interaction: PackageSetting{9c3c221 me.opaq.app.debug/10192} -> PackageSetting{2af0149 com.google.android.contacts/10155} BLOCKED
+11-28 05:58:33.793 I/AppsFilter(  525): interaction: PackageSetting{dccda94 me.opaq.app.debug.test/10193} -> PackageSetting{2af0149 com.google.android.contacts/10155} BLOCKED
+11-28 05:58:35.484 E/A       ( 1735): java.util.concurrent.CancellationException: Task was cancelled.
+11-28 05:58:35.487 E/BgTaskExecutorImpl( 1735): java.util.concurrent.CancellationException: Task was cancelled.
+11-28 05:58:53.740 D/Opaq    ( 5475): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+
+===== C. process killed while in the background (sticky restart of the sharing service) =====
+killing 5475
+pid: 6452
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=5
+    restartCount=1 restartDelay=-4m48s142ms nextRestartTime=-29s25ms crashCount=0
+-- our notifications:
+    NotificationRecord(0x09ec4faf: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- logcat (C):
+11-28 05:59:43.526 I/ActivityManager(  525): Process me.opaq.app.debug (pid 5475) has died: fg +50 FGS 
+11-28 05:59:43.527 I/WindowManager(  525): WIN DEATH: Window{f2785f8 u0 me.opaq.app.debug/app.opaq.MainActivity}
+11-28 05:59:43.528 W/InputManager-JNI(  525): Input channel object 'f2785f8 me.opaq.app.debug/app.opaq.MainActivity (client)' was disposed without first being removed with the input manager!
+11-28 05:59:43.531 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=146, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 05:59:43.531 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=148, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 05:59:43.531 W/ActivityManager(  525): Scheduling restart of crashed service me.opaq.app.debug/app.opaq.LocationService in 1000ms for start-requested
+11-28 05:59:43.623 W/UsageStatsService(  525): Unexpected activity event reported! (me.opaq.app.debug/app.opaq.MainActivity event : 23 instanceId : 128401157)
+11-28 05:59:44.538 I/ActivityManager(  525): Start proc 6452:me.opaq.app.debug/u0a192 for service {me.opaq.app.debug/app.opaq.LocationService}
+11-28 05:59:44.604 W/ziparchive( 6452): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 05:59:44.604 W/ziparchive( 6452): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 05:59:45.002 D/nativeloader( 6452): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 05:59:45.009 V/GraphicsEnvironment( 6452): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 05:59:45.009 V/GraphicsEnvironment( 6452): me.opaq.app.debug is not listed in per-application setting
+11-28 05:59:45.194 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6452 activeRequest: null callbackRequest: 158 [NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 05:59:45.196 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:59:45.196 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:59:45.197 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:59:45.197 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 05:59:45.331 D/Opaq    ( 6452): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:59:45.341 D/Opaq    ( 6452): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:59:47.353 D/Opaq    ( 6452): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:59:50.250 D/ProfileInstaller( 6452): Installing profile for me.opaq.app.debug
+11-28 05:59:51.364 D/Opaq    ( 6452): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 05:59:59.377 D/Opaq    ( 6452): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:00:11.805 W/TapAndPay( 5779): java.lang.NullPointerException: NfcAdapter is null
+
+===== D. background location taken away while in the background =====
+pid: 6605
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=9
+    restartCount=1 restartDelay=-5m38s583ms nextRestartTime=-26s45ms crashCount=0
+-- our notifications:
+    NotificationRecord(0x0d5dd8c8: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- logcat (D):
+11-28 06:00:36.951 I/ActivityManager(  525): Killing 6452:me.opaq.app.debug/u0a192 (adj 50): permissions revoked
+11-28 06:00:36.952 W/ActivityManager(  525): Scheduling restart of crashed service me.opaq.app.debug/app.opaq.LocationService in 4000ms for start-requested
+11-28 06:00:36.963 W/UsageStatsService(  525): Unexpected activity event reported! (me.opaq.app.debug/app.opaq.MainActivity event : 23 instanceId : 128401157)
+11-28 06:00:37.049 V/ActivityManager(  525): Got obituary of 6452:me.opaq.app.debug
+11-28 06:00:37.050 I/WindowManager(  525): WIN DEATH: Window{ee69533 u0 me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:00:37.050 W/InputManager-JNI(  525): Input channel object 'ee69533 me.opaq.app.debug/app.opaq.MainActivity (client)' was disposed without first being removed with the input manager!
+11-28 06:00:37.050 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=163, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 06:00:37.059 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=159, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 06:00:37.126 W/AlarmManager( 5779): java.lang.IllegalArgumentException: alarm "NetworkLocationLocator" has short window length
+11-28 06:00:40.959 I/ActivityManager(  525): Start proc 6605:me.opaq.app.debug/u0a192 for service {me.opaq.app.debug/app.opaq.LocationService}
+11-28 06:00:41.026 W/ziparchive( 6605): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:00:41.026 W/ziparchive( 6605): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:00:41.392 D/nativeloader( 6605): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 06:00:41.399 V/GraphicsEnvironment( 6605): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 06:00:41.399 V/GraphicsEnvironment( 6605): me.opaq.app.debug is not listed in per-application setting
+11-28 06:00:41.583 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6605 activeRequest: null callbackRequest: 165 [NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:00:41.586 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:00:41.586 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:00:41.586 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:00:41.586 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:00:41.679 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:00:41.690 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:00:43.701 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:00:46.943 D/ProfileInstaller( 6605): Installing profile for me.opaq.app.debug
+11-28 06:00:47.714 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:00:55.725 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+-- now opened again (foreground):
+pid: 6605
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=11
+    restartCount=1 restartDelay=-5m59s217ms nextRestartTime=-46s679ms crashCount=0
+-- our notifications:
+    NotificationRecord(0x0d5dd8c8: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- 40 s after going home with only while-in-use:
+pid: 6605
+-- services:
+  * ServiceRecord{f7cd81a u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=11
+    restartCount=1 restartDelay=-6m39s321ms nextRestartTime=-1m26s783ms crashCount=0
+-- our notifications:
+    NotificationRecord(0x0d5dd8c8: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- location requests:
+        10192/me.opaq.app.debug/71E09B87 Request[PASSIVE, minUpdateInterval=0, WorkSource{10192 me.opaq.app.debug}]
+        10131/com.google.android.gms[fused_location_provider]/262B7A77 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+--
+        1000/android[SensorNotificationService]/A314EB60 Request[PASSIVE, minUpdateInterval=+30m0s0ms, minUpdateDistance=100000.0, WorkSource{1000 android}]
+      service: ProviderRequest[@+30s0ms, WorkSource{10192 me.opaq.app.debug}]
+        10192/me.opaq.app.debug/71E09B87 Request[@+30s0ms BALANCED, WorkSource{10192 me.opaq.app.debug}]
+        1000/android[GnssService]/3A461516 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+--
+      10131/com.google.android.gms[network_location_provider]: min/max interval = passive/passive, total/active/foreground duration = +5m51s596ms/+5m51s481ms/+5m51s508ms, locations = 5
+      10192/me.opaq.app.debug: min/max interval = passive/passive, total/active/foreground duration = +4m12s967ms/+4m12s877ms/+4m12s485ms, locations = 9
+      10192/me.opaq.app.debug: min/max interval = 5s/5s, total/active/foreground duration = +10s233ms/+10s231ms/+9s848ms, locations = 2
+      10125/com.google.android.as: min/max interval = 21600s/21600s, total/active/foreground duration = +6m1s176ms/+5m58s867ms/+6m0s943ms, locations = 0
+      1000/android[GnssService]: min/max interval = passive/passive, total/active/foreground duration = +6m11s457ms/+5m58s871ms/+6m11s457ms, locations = 0
+      10192/me.opaq.app.debug: min/max interval = 15s/30s, total/active/foreground duration = +4m12s974ms/+4m12s356ms/+4m12s491ms, locations = 0
+    11-28 05:55:56.336: network provider +registration 1000/android[GnssService]/3A461516 -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+--
+    11-28 05:56:14.688: passive provider +registration 10131/com.google.android.gms[network_location_provider]/F079FFCC -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+    11-28 05:57:41.751: gps provider +registration 10192/me.opaq.app.debug/D57F2724 -> Request[@+5s0ms HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+    11-28 05:57:41.753: gps provider request = ProviderRequest[@+5s0ms, HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+    11-28 05:57:41.753: network provider +registration 10192/me.opaq.app.debug/D57F2724 -> Request[@+15s0ms BALANCED, WorkSource{10192 me.opaq.app.debug}]
+-- logcat (D2):
+11-28 06:01:07.085 I/ActivityTaskManager(  525): START u0 {flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=2
+11-28 06:01:07.087 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@4d32ab2 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=309442 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@c979a03} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{ecbad80 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:01:07.087 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:01:07.105 D/CoreBackPreview(  525): Window{b8cea5e u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@da8e455, mPriority=0, mIsAnimationCallback=false}
+11-28 06:01:07.276 V/WindowManager(  525): Sent Transition #11 createdAt=11-28 06:01:07.082 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=309442 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{881d6 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:01:07.276 V/WindowManager(  525):     info={id=11 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} m=TO_FRONT f=MOVE_TO_TOP leash=Surface(name=Task=8)/@0x5ad105f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:01:07.571 D/CoreBackPreview(  525): Window{e85a10 u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@7a261a, mPriority=0, mIsAnimationCallback=false}
+11-28 06:01:07.761 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6605 activeRequest: null callbackRequest: 167 [NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:01:07.762 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:01:07.762 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:01:07.762 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:01:07.762 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:01:09.165 W/ziparchive(  525): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:01:09.166 I/ActivityTaskManager(  525): Displayed me.opaq.app.debug/app.opaq.MainActivity for user 0: +2s84ms
+11-28 06:01:09.253 W/InputManager-JNI(  525): Input channel object 'b8cea5e Splash Screen me.opaq.app.debug (client)' was disposed without first being removed with the input manager!
+11-28 06:01:09.256 D/CoreBackPreview(  525): Window{b8cea5e u0 Splash Screen me.opaq.app.debug EXITING}: Setting back callback null
+11-28 06:01:09.568 I/ImeTracker(  525): me.opaq.app.debug:5257ea25: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_UNSPECIFIED_WINDOW
+11-28 06:01:09.568 I/ImeTracker(  525): me.opaq.app.debug:5257ea25: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-28 06:01:09.572 I/GoogleInputMethodService( 1580): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=me.opaq.app.debug fieldId=0 fieldName=null extras=null}, false)
+11-28 06:01:11.742 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:01:27.796 V/WindowManager(  525):     info={id=12 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_FRONT f=SHOW_WALLPAPER|MOVE_TO_TOP leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} m=TO_BACK f=NONE leash=Surface(name=Task=8)/@0x5ad105f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{87779aa token=android.os.Binder@823b495})/@0xdf24cc2 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:01:28.317 W/A       ( 1735): DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 06:01:28.326 W/A       ( 1735): DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 06:01:28.350 W/A       ( 1735): com.google.android.apps.search.googleapp.discover.v.i: DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 06:01:28.350 W/A       ( 1735): Caused by: DiscoverPrecheckException(precheckFailureReason=com.google.android.apps.search.googleapp.discover.w.a.c@63b0ad9)
+11-28 06:01:36.273 E/WifiStaIfaceAidlImpl(  525): installApfPacketFilter failed with service-specific exception: android.os.ServiceSpecificException:  (code 4)
+11-28 06:01:43.763 D/Opaq    ( 6605): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:01:46.109 W/GLSUser ( 5779): [AppCertManager] Exception while requesting key: 
+11-28 06:01:46.109 W/GLSUser ( 5779): java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-28 06:01:46.109 W/GLSUser ( 5779): Caused by: avvw: Parse Proto Exception.
+
+===== E. all location access revoked while sharing in the foreground =====
+pid: 6787
+pid: 6787
+-- services:
+-- our notifications:
+-- logcat (E):
+11-28 06:02:26.308 I/ActivityManager(  525): Killing 6605:me.opaq.app.debug/u0a192 (adj 0): permissions revoked
+11-28 06:02:26.309 W/ActivityManager(  525): Scheduling restart of crashed service me.opaq.app.debug/app.opaq.LocationService in 1000ms for start-requested
+11-28 06:02:26.309 W/ActivityTaskManager(  525): Force removing ActivityRecord{2bfed6f u0 me.opaq.app.debug/app.opaq.MainActivity t8}: app died, no saved state
+11-28 06:02:26.313 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@b4349d0 TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=403459 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@303fdc9} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{27c7cce app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=true isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:02:26.360 V/ActivityManager(  525): Got obituary of 6605:me.opaq.app.debug
+11-28 06:02:26.360 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=168, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 06:02:26.361 D/ConnectivityService(  525): releasing NetworkRequest [ REQUEST id=166, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ] (release request)
+11-28 06:02:26.361 I/ImeTracker(  525): me.opaq.app.debug:2414d837: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_REMOVE_CLIENT
+11-28 06:02:26.361 I/ImeTracker(  525): me.opaq.app.debug:2414d837: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-28 06:02:26.362 I/WindowManager(  525): WIN DEATH: Window{e85a10 u0 me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:02:26.362 W/InputManager-JNI(  525): Input channel object 'e85a10 me.opaq.app.debug/app.opaq.MainActivity (client)' was disposed without first being removed with the input manager!
+11-28 06:02:26.423 W/WindowManager(  525): Failed to deliver inset control state change to w=Window{e85a10 u0 me.opaq.app.debug/app.opaq.MainActivity EXITING}
+11-28 06:02:26.423 W/WindowManager(  525): android.os.DeadObjectException
+11-28 06:02:26.566 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 06:02:26.580 V/WindowManager(  525): Sent Transition #14 createdAt=11-28 06:02:26.309 via request=TransitionRequestInfo { type = CLOSE, triggerTask = TaskInfo{userId=0 taskId=8 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=403459 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{881d6 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=true isVisible=true isVisibleRequested=true isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:02:26.580 V/WindowManager(  525):     info={id=14 t=CLOSE f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{6a851f1 Task{8ea1a7c #8 type=standard A=10192:me.opaq.app.debug}}} m=CLOSE f=NONE leash=Surface(name=Task=8)/@0x5ad105f sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_FRONT f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{null m=TO_FRONT f=IS_WALLPAPER leash=Surface(name=WallpaperWindowToken{87779aa token=android.os.Binder@823b495})/@0xdf24cc2 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:02:26.611 W/WindowManager(  525): Failed to deliver inset control state change to w=Window{e85a10 u0 me.opaq.app.debug/app.opaq.MainActivity EXITING}
+11-28 06:02:26.611 W/WindowManager(  525): android.os.DeadObjectException
+11-28 06:02:26.614 W/WindowManager(  525): Exception thrown during dispatchAppVisibility Window{e85a10 u0 me.opaq.app.debug/app.opaq.MainActivity EXITING}
+11-28 06:02:26.614 W/WindowManager(  525): android.os.DeadObjectException
+11-28 06:02:27.314 I/ActivityManager(  525): Start proc 6787:me.opaq.app.debug/u0a192 for service {me.opaq.app.debug/app.opaq.LocationService}
+11-28 06:02:27.373 W/ziparchive( 6787): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:02:27.373 W/ziparchive( 6787): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:02:27.762 D/nativeloader( 6787): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 06:02:27.769 V/GraphicsEnvironment( 6787): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 06:02:27.769 V/GraphicsEnvironment( 6787): me.opaq.app.debug is not listed in per-application setting
+11-28 06:02:27.985 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6787 activeRequest: null callbackRequest: 169 [NetworkRequest [ REQUEST id=170, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:02:27.991 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=170, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:02:27.991 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=170, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:02:27.991 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=170, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:02:27.991 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=170, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:02:28.060 D/Opaq    ( 6787): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:02:28.070 D/Opaq    ( 6787): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:02:30.081 D/Opaq    ( 6787): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:02:31.601 I/ActivityTaskManager(  525): START u0 {flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-28 06:02:31.603 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@ff6be57 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=9 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=427186 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@857bd44} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{f9e7e2d app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:02:31.648 D/CoreBackPreview(  525): Window{48f0690 u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@398678e, mPriority=0, mIsAnimationCallback=false}
+11-28 06:02:31.714 V/WindowManager(  525): Sent Transition #15 createdAt=11-28 06:02:31.597 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=9 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=427186 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{e8d36f2 Task{87ca078 #9 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{a0a5143 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:02:31.714 V/WindowManager(  525):     info={id=15 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{e8d36f2 Task{87ca078 #9 type=standard A=10192:me.opaq.app.debug}}} m=OPEN f=NONE leash=Surface(name=Task=9)/@0x8f80654 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:02:32.133 D/CoreBackPreview(  525): Window{e521133 u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@a23d269, mPriority=0, mIsAnimationCallback=false}
+
+===== F. malformed and hostile invite links =====
+link 1: opaq://join#... (12 chars)
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 2: opaq://join... (11 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 3: opaq://join/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA... (30012 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 4: https://opaq.me/join#eyJ2IjoyLCJrIjoienoiLCJzIjoiMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY... (132 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 5: opaq://join#eyJ2IjoyLCJrIjoiMDJhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFhYWFh... (26795 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 6: https://carterkeel.github.io/opaq/join#%E0%A4%A%%%23%2523... (57 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+link 7: opaq://join#AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA<b>x</b>... (87 chars)
+Warning: Activity not started, intent has been delivered to currently running top-most instance.
+Status: ok
+Activity: me.opaq.app.debug/app.opaq.MainActivity
+pid: 6914
+explicit intent with a content:// URI:
+Status: ok
+pid: 6914
+-- logcat (F):
+11-28 06:03:11.478 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@e57fa00 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=10 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=467063 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@5a1a239} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{655a07e app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:03:11.479 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-28 06:03:11.495 D/CoreBackPreview(  525): Window{5056ff9 u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@604cd9f, mPriority=0, mIsAnimationCallback=false}
+11-28 06:03:11.519 I/ActivityManager(  525): Start proc 6914:me.opaq.app.debug/u0a192 for next-top-activity {me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:11.553 V/WindowManager(  525): Sent Transition #19 createdAt=11-28 06:03:11.467 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=10 displayId=0 isRunning=true baseIntent=Intent { act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=467063 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{272a4bb Task{468c0fd #10 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{ca34dd8 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:03:11.553 V/WindowManager(  525):     info={id=19 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{272a4bb Task{468c0fd #10 type=standard A=10192:me.opaq.app.debug}}} m=OPEN f=NONE leash=Surface(name=Task=10)/@0xc2412b5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:03:11.674 W/ziparchive( 6914): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:03:11.674 W/ziparchive( 6914): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:03:11.791 E/ApplicationPropertiesBu( 1735): java.lang.NumberFormatException: For input string: "messages"
+11-28 06:03:11.799 W/A       ( 1735): Exception while fetching versionCode for package[com.google.android.apps.tv.dreamx].
+11-28 06:03:11.799 W/A       ( 1735): android.content.pm.PackageManager$NameNotFoundException: com.google.android.apps.tv.dreamx
+11-28 06:03:11.799 W/A       ( 1735): Exception while fetching versionCode for package[com.google.android.apps.tv.launcherx].
+11-28 06:03:11.799 W/A       ( 1735): android.content.pm.PackageManager$NameNotFoundException: com.google.android.apps.tv.launcherx
+11-28 06:03:11.884 W/TapAndPay( 5779): java.lang.NullPointerException: NfcAdapter is null
+11-28 06:03:12.112 W/GLSUser ( 5779): [AppCertManager] Exception while requesting key: 
+11-28 06:03:12.112 W/GLSUser ( 5779): java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-28 06:03:12.112 W/GLSUser ( 5779): Caused by: avvw: Parse Proto Exception.
+11-28 06:03:12.132 D/nativeloader( 6914): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 06:03:12.138 V/GraphicsEnvironment( 6914): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 06:03:12.138 V/GraphicsEnvironment( 6914): me.opaq.app.debug is not listed in per-application setting
+11-28 06:03:12.297 I/ActivityManager(  525): Background started FGS: Allowed [callingPackage: me.opaq.app.debug; callingUid: 10192; uidState: TOP ; uidBFSL: [BFSL]; intent: Intent { cmp=me.opaq.app.debug/app.opaq.LocationService }; code:PROC_STATE_TOP; tempAllowListReason:<null>; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+11-28 06:03:12.426 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:12.592 D/CoreBackPreview(  525): Window{e6d2012 u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@6830c99, mPriority=0, mIsAnimationCallback=false}
+11-28 06:03:12.949 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 06:03:13.000 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 06:03:13.076 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6914 activeRequest: null callbackRequest: 173 [NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:03:13.078 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:13.078 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:13.078 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:13.078 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=174, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:13.119 W/CorpusConfigHelper( 1735): android.util.MalformedJsonException: Use JsonReader.setLenient(true) to accept malformed JSON at line 123 column 2
+11-28 06:03:14.289 W/ziparchive(  525): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:03:14.290 I/ActivityTaskManager(  525): Displayed me.opaq.app.debug/app.opaq.MainActivity for user 0: +2s823ms
+11-28 06:03:14.394 D/CoreBackPreview(  525): Window{5056ff9 u0 Splash Screen me.opaq.app.debug EXITING}: Setting back callback null
+11-28 06:03:14.394 W/InputManager-JNI(  525): Input channel object '5056ff9 Splash Screen me.opaq.app.debug (client)' was disposed without first being removed with the input manager!
+11-28 06:03:14.498 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:14.524 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/6914 activeRequest: null callbackRequest: 175 [NetworkRequest [ REQUEST id=176, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:03:14.525 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=176, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:14.525 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=176, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:14.525 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=176, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:14.525 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=176, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:03:14.555 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:14.839 I/ImeTracker(  525): me.opaq.app.debug:faeb3dbe: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_UNSPECIFIED_WINDOW
+11-28 06:03:14.839 I/ImeTracker(  525): me.opaq.app.debug:faeb3dbe: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-28 06:03:14.842 I/GoogleInputMethodService( 1580): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=me.opaq.app.debug fieldId=0 fieldName=null extras=null}, false)
+11-28 06:03:16.603 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:17.455 D/ProfileInstaller( 6914): Installing profile for me.opaq.app.debug
+11-28 06:03:19.757 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+11-28 06:03:19.758 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:20.620 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:25.666 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+11-28 06:03:25.666 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:28.641 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:03:32.011 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=https://opaq.me/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+11-28 06:03:32.033 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:37.451 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=opaq://join/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+11-28 06:03:37.452 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:42.774 I/ActivityTaskManager(  525): START u0 {act=android.intent.action.VIEW dat=https://carterkeel.github.io/... flg=0x10000000 pkg=me.opaq.app.debug cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=3
+11-28 06:03:42.775 D/WindowManagerShell(  839): onActivityRestartAttempt: ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:03:44.663 D/Opaq    ( 6914): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+
+===== G. the only circle paused on its own: what the notification and GPS do =====
+pid: 7292
+-- services:
+  * ServiceRecord{51791e3 u0 me.opaq.app.debug/app.opaq.LocationService}
+    isForeground=true foregroundId=1 types=00000008 foregroundNoti=Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE)
+    startRequested=true delayedStop=false stopIfKilled=false callStart=true lastStartId=3
+-- our notifications:
+    NotificationRecord(0x0435a7c4: pkg=me.opaq.app.debug user=UserHandle{0} id=1 tag=null importance=2 key=0|me.opaq.app.debug|1|null|10192: Notification(channel=sharing shortcut=null contentView=null vibrate=null sound=null defaults=0x0 flags=0x62 color=0x00000000 actions=1 vis=PRIVATE))
+      flags=0x62
+                android.title=String (Opaq)
+                android.text=String (Sharing your location with 4 people)
+      mAttributes= AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null
+      effectiveNotificationChannel=NotificationChannel{mId='sharing', mName=Location sharing, mDescription=hasDescription , mImportance=2, mBypassDnd=false, mLockscreenVisibility=-1000, mSound=content://settings/system/notification_sound, mLights=false, mLightColor=0, mVibration=null, mUserLockedFields=0, mUserVisibleTaskShown=true, mVibrationEnabled=false, mShowBadge=true, mDeleted=false, mDeletedTimeMs=-1, mGroup='null', mAudioAttributes=AudioAttributes: usage=USAGE_NOTIFICATION content=CONTENT_TYPE_SONIFICATION flags=0x800 tags= bundle=null, mBlockableSystem=false, mAllowBubbles=-1, mImportanceLockedDefaultApp=false, mOriginalImp=2, mParent=null, mConversationId=null, mDemoted=false, mImportantConvo=false}
+-- location requests:
+        10192/me.opaq.app.debug/F23069AF Request[PASSIVE, minUpdateInterval=0, WorkSource{10192 me.opaq.app.debug}]
+        10131/com.google.android.gms[fused_location_provider]/262B7A77 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+--
+        1000/android[SensorNotificationService]/A314EB60 Request[PASSIVE, minUpdateInterval=+30m0s0ms, minUpdateDistance=100000.0, WorkSource{1000 android}]
+      service: ProviderRequest[@+30s0ms, WorkSource{10192 me.opaq.app.debug}]
+        1000/android[GnssService]/3A461516 Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+        10192/me.opaq.app.debug/F23069AF Request[@+30s0ms BALANCED, WorkSource{10192 me.opaq.app.debug}]
+      mFixInterval=5000
+--
+      10131/com.google.android.gms[network_location_provider]: min/max interval = passive/passive, total/active/foreground duration = +8m27s406ms/+8m27s291ms/+8m27s318ms, locations = 7
+      10192/me.opaq.app.debug: min/max interval = passive/passive, total/active/foreground duration = +5m49s938ms/+5m49s784ms/+5m49s245ms, locations = 17
+      10192/me.opaq.app.debug: min/max interval = 5s/5s, total/active/foreground duration = +14s279ms/+14s272ms/+13s891ms, locations = 3
+      10125/com.google.android.as: min/max interval = 21600s/21600s, total/active/foreground duration = +8m36s986ms/+8m34s677ms/+8m36s753ms, locations = 0
+      1000/android[GnssService]: min/max interval = passive/passive, total/active/foreground duration = +8m47s267ms/+8m34s681ms/+8m47s267ms, locations = 0
+      10192/me.opaq.app.debug: min/max interval = 15s/30s, total/active/foreground duration = +5m49s954ms/+5m49s277ms/+5m49s264ms, locations = 0
+    11-28 05:55:56.336: network provider +registration 1000/android[GnssService]/3A461516 -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{1000 android}]
+--
+    11-28 05:56:14.688: passive provider +registration 10131/com.google.android.gms[network_location_provider]/F079FFCC -> Request[PASSIVE, minUpdateInterval=0, hiddenFromAppOps, WorkSource{10131 com.google.android.gms}]
+    11-28 05:57:41.751: gps provider +registration 10192/me.opaq.app.debug/D57F2724 -> Request[@+5s0ms HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+    11-28 05:57:41.753: gps provider request = ProviderRequest[@+5s0ms, HIGH_ACCURACY, WorkSource{10192 me.opaq.app.debug}]
+-- logcat (G):
+11-28 06:04:08.992 W/AlarmManager( 5779): java.lang.IllegalArgumentException: alarm "NetworkLocationLocator" has short window length
+11-28 06:04:08.999 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@733327d TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=11 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=524584 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@3dcc572} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{154fdc3 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:04:08.999 I/ActivityTaskManager(  525): START u0 {flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-28 06:04:09.015 I/ActivityManager(  525): Start proc 7292:me.opaq.app.debug/u0a192 for next-top-activity {me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:04:09.023 D/CoreBackPreview(  525): Window{97ed65a u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@d0dcd81, mPriority=0, mIsAnimationCallback=false}
+11-28 06:04:09.160 V/WindowManager(  525): Sent Transition #28 createdAt=11-28 06:04:08.991 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=11 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=524584 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{cae3014 Task{424d34e #11 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{c48c0bd app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:04:09.160 V/WindowManager(  525):     info={id=28 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{cae3014 Task{424d34e #11 type=standard A=10192:me.opaq.app.debug}}} m=OPEN f=NONE leash=Surface(name=Task=11)/@0x643fe26 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:04:09.262 W/ziparchive( 7292): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:09.262 W/ziparchive( 7292): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:09.591 D/nativeloader( 7292): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 06:04:09.597 V/GraphicsEnvironment( 7292): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 06:04:09.597 V/GraphicsEnvironment( 7292): me.opaq.app.debug is not listed in per-application setting
+11-28 06:04:09.783 I/ActivityManager(  525): Background started FGS: Allowed [callingPackage: me.opaq.app.debug; callingUid: 10192; uidState: TOP ; uidBFSL: [BFSL]; intent: Intent { cmp=me.opaq.app.debug/app.opaq.LocationService }; code:PROC_STATE_TOP; tempAllowListReason:<null>; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+11-28 06:04:09.924 D/Opaq    ( 7292): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:10.022 D/CoreBackPreview(  525): Window{4d9619d u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@fef7a99, mPriority=0, mIsAnimationCallback=false}
+11-28 06:04:10.206 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/7292 activeRequest: null callbackRequest: 181 [NetworkRequest [ REQUEST id=182, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:04:10.207 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=182, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:10.207 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=182, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:10.207 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=182, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:10.207 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=182, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:11.627 W/ziparchive(  525): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:11.628 I/ActivityTaskManager(  525): Displayed me.opaq.app.debug/app.opaq.MainActivity for user 0: +2s637ms
+11-28 06:04:11.730 W/InputManager-JNI(  525): Input channel object '97ed65a Splash Screen me.opaq.app.debug (client)' was disposed without first being removed with the input manager!
+11-28 06:04:11.736 D/CoreBackPreview(  525): Window{97ed65a u0 Splash Screen me.opaq.app.debug EXITING}: Setting back callback null
+11-28 06:04:11.832 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/7292 activeRequest: null callbackRequest: 183 [NetworkRequest [ REQUEST id=184, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:04:11.841 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=184, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:11.841 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=184, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:11.841 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=184, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:11.841 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=184, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:11.906 D/Opaq    ( 7292): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:12.124 I/ImeTracker(  525): me.opaq.app.debug:ca4c54e2: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_UNSPECIFIED_WINDOW
+11-28 06:04:12.124 I/ImeTracker(  525): me.opaq.app.debug:ca4c54e2: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-28 06:04:12.128 I/GoogleInputMethodService( 1580): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=me.opaq.app.debug fieldId=0 fieldName=null extras=null}, false)
+11-28 06:04:12.844 W/GLSUser ( 5779): [AppCertManager] Exception while requesting key: 
+11-28 06:04:12.844 W/GLSUser ( 5779): java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-28 06:04:12.844 W/GLSUser ( 5779): Caused by: avvw: Parse Proto Exception.
+11-28 06:04:13.938 D/Opaq    ( 7292): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:15.424 D/ProfileInstaller( 7292): Installing profile for me.opaq.app.debug
+11-28 06:04:17.958 D/Opaq    ( 7292): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:25.973 D/Opaq    ( 7292): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+
+===== H. storage full =====
+17
+/dev/block/dm-40 5.8G 5.6G     0 100% /data/user/0
+pid: 7508
+-- logcat (H):
+11-28 06:04:44.462 V/WindowManagerShell(  839): Transition requested: android.os.BinderProxy@72cf794 TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=12 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=560047 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{android.window.IWindowContainerToken$Stub$Proxy@20cb23d} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{5e4aa32 app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:04:44.464 I/ActivityTaskManager(  525): START u0 {flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity} with LAUNCH_SINGLE_TOP from uid 2000 (BAL_ALLOW_PERMISSION) result code=0
+11-28 06:04:44.482 I/ActivityManager(  525): Start proc 7508:me.opaq.app.debug/u0a192 for next-top-activity {me.opaq.app.debug/app.opaq.MainActivity}
+11-28 06:04:44.492 D/CoreBackPreview(  525): Window{27e3314 u0 Splash Screen me.opaq.app.debug}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@f0111b2, mPriority=0, mIsAnimationCallback=false}
+11-28 06:04:44.576 V/WindowManager(  525): Sent Transition #30 createdAt=11-28 06:04:44.457 via request=TransitionRequestInfo { type = OPEN, triggerTask = TaskInfo{userId=0 taskId=12 displayId=0 isRunning=true baseIntent=Intent { flg=0x10000000 cmp=me.opaq.app.debug/app.opaq.MainActivity } baseActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} topActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} origActivity=null realActivity=ComponentInfo{me.opaq.app.debug/app.opaq.MainActivity} numActivities=1 lastActiveTime=560047 supportsMultiWindow=true resizeMode=1 isResizeable=true minWidth=-1 minHeight=-1 defaultMinSize=220 token=WCT{RemoteToken{f55250a Task{28df868 #12 type=standard A=10192:me.opaq.app.debug}}} topActivityType=1 pictureInPictureParams=null shouldDockBigOverlays=false launchIntoPipHostTaskId=-1 lastParentTaskIdBeforePip=-1 displayCutoutSafeInsets=null topActivityInfo=ActivityInfo{846017b app.opaq.MainActivity} launchCookies=[] positionInParent=Point(0, 0) parentTaskId=-1 isFocused=false isVisible=false isVisibleRequested=false isSleeping=false topActivityInSizeCompat=false topActivityEligibleForLetterboxEducation= false topActivityLetterboxed= false isFromDoubleTap= false topActivityLetterboxVerticalPosition= -1 topActivityLetterboxHorizontalPosition= -1 topActivityLetterboxWidth=-1 topActivityLetterboxHeight=-1 locusId=null displayAreaFeatureId=1 cameraCompatControlState=hidden}, remoteTransition = null, displayChange = null }
+11-28 06:04:44.577 V/WindowManager(  525):     info={id=30 t=OPEN f=0x0 trk=0 r=[0@Point(0, 0)] c=[{WCT{RemoteToken{f55250a Task{28df868 #12 type=standard A=10192:me.opaq.app.debug}}} m=OPEN f=NONE leash=Surface(name=Task=12)/@0x6956c80 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0},{WCT{RemoteToken{414b7d Task{ec44c59 #1 type=home}}} m=TO_BACK f=SHOW_WALLPAPER leash=Surface(name=Task=1)/@0x60d0df5 sb=Rect(0, 0 - 1080, 2400) eb=Rect(0, 0 - 1080, 2400) d=0}]}
+11-28 06:04:44.655 W/ziparchive( 7508): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:44.655 W/ziparchive( 7508): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:44.925 W/AlarmManager( 5779): java.lang.IllegalArgumentException: alarm "NetworkLocationLocator" has short window length
+11-28 06:04:45.073 D/nativeloader( 7508): Configuring clns-6 for other apk /data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk. target_sdk_version=36, uses_libraries=, library_path=/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/lib/x86_64:/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.apk!/lib/x86_64, permitted_path=/data:/mnt/expand:/data/user/0/me.opaq.app.debug
+11-28 06:04:45.078 V/GraphicsEnvironment( 7508): ANGLE GameManagerService for me.opaq.app.debug: false
+11-28 06:04:45.078 V/GraphicsEnvironment( 7508): me.opaq.app.debug is not listed in per-application setting
+11-28 06:04:45.300 I/ActivityManager(  525): Background started FGS: Allowed [callingPackage: me.opaq.app.debug; callingUid: 10192; uidState: TOP ; uidBFSL: [BFSL]; intent: Intent { cmp=me.opaq.app.debug/app.opaq.LocationService }; code:PROC_STATE_TOP; tempAllowListReason:<null>; targetSdkVersion:36; callerTargetSdkVersion:36; startForegroundCount:0; bindFromPackage:null: isBindService:false]
+11-28 06:04:45.416 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:45.526 D/CoreBackPreview(  525): Window{b58cb74 u0 me.opaq.app.debug/app.opaq.MainActivity}: Setting back callback OnBackInvokedCallbackInfo{mCallback=android.window.IOnBackInvokedCallback$Stub$Proxy@f12ae0, mPriority=0, mIsAnimationCallback=false}
+11-28 06:04:45.714 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/7508 activeRequest: null callbackRequest: 185 [NetworkRequest [ REQUEST id=186, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:04:45.715 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=186, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:45.715 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=186, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:45.715 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=186, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:45.715 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=186, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:47.147 W/ziparchive(  525): Unable to open '/data/app/~~pjWxkpWgAbMUIO3xJ1J66Q==/me.opaq.app.debug-_wFs9_A_6Xwmuvr42LTY8A==/base.dm': No such file or directory
+11-28 06:04:47.148 I/ActivityTaskManager(  525): Displayed me.opaq.app.debug/app.opaq.MainActivity for user 0: +2s691ms
+11-28 06:04:47.157 D/CoreBackPreview(  525): Window{27e3314 u0 Splash Screen me.opaq.app.debug EXITING}: Setting back callback null
+11-28 06:04:47.157 W/InputManager-JNI(  525): Input channel object '27e3314 Splash Screen me.opaq.app.debug (client)' was disposed without first being removed with the input manager!
+11-28 06:04:47.274 D/ConnectivityService(  525): requestNetwork for uid/pid:10192/7508 activeRequest: null callbackRequest: 188 [NetworkRequest [ REQUEST id=189, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]] callback flags: 0 order: 2147483647
+11-28 06:04:47.276 D/WifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=189, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:47.277 D/UntrustedWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=189, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:47.277 D/OemPaidWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=189, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:47.281 D/MultiInternetWifiNetworkFactory(  525): got request NetworkRequest [ REQUEST id=189, [ Capabilities: INTERNET&NOT_RESTRICTED&TRUSTED&NOT_VCN_MANAGED Uid: 10192 RequestorUid: 10192 RequestorPkg: me.opaq.app.debug UnderlyingNetworks: Null] ]
+11-28 06:04:47.333 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:47.540 I/ImeTracker(  525): me.opaq.app.debug:1ae3f665: onRequestHide at ORIGIN_SERVER_HIDE_INPUT reason HIDE_UNSPECIFIED_WINDOW
+11-28 06:04:47.540 I/ImeTracker(  525): me.opaq.app.debug:1ae3f665: onCancelled at PHASE_SERVER_SHOULD_HIDE
+11-28 06:04:47.544 I/GoogleInputMethodService( 1580): GoogleInputMethodService.onStartInput():1877 onStartInput(EditorInfo{inputType=0x0(NULL) imeOptions=0x0 privateImeOptions=null actionName=UNSPECIFIED actionLabel=null actionId=0 initialSelStart=-1 initialSelEnd=-1 initialCapsMode=0x0 hintText=null label=null packageName=me.opaq.app.debug fieldId=0 fieldName=null extras=null}, false)
+11-28 06:04:49.351 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:51.223 D/ProfileInstaller( 7508): Installing profile for me.opaq.app.debug
+11-28 06:04:53.379 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:04:59.666 D/installd(  460): Purging /data/data/me.opaq.app.debug/cache/.javacpp-root/cache size=8192 mod=1795845850 from UID=10192 used=811008 quota=28607599 ratio=283
+11-28 06:04:59.666 D/installd(  460): Purging /data/data/me.opaq.app.debug/cache/.javacpp-root size=8192 mod=1795845850 from UID=10192 used=802816 quota=28607599 ratio=280
+11-28 06:04:59.666 D/installd(  460): Purging /data/data/me.opaq.app.debug/cache/maplibre-cache.db size=770048 mod=1795845888 from UID=10192 used=794624 quota=28607599 ratio=277
+11-28 06:04:59.782 W/DeviceStorageMonitorService(  525): java.io.IOException: Failed to free 622811544 on storage device at /data
+11-28 06:05:01.396 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:05:17.415 D/Opaq    ( 7508): relay ws://127.0.0.1:9: Failed to connect to /127.0.0.1:9
+11-28 06:05:18.507 W/GLSUser ( 5779): [AppCertManager] Exception while requesting key: 
+11-28 06:05:18.507 W/GLSUser ( 5779): java.util.concurrent.ExecutionException: avvw: Parse Proto Exception.
+11-28 06:05:18.507 W/GLSUser ( 5779): Caused by: avvw: Parse Proto Exception.
+/dev/block/dm-40 5.8G 953M  4.7G  17% /data/user/0
