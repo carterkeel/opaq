@@ -24,6 +24,9 @@ case "${SCREENSHOT_SET:-phone}" in
   ) ;;
   # A tapped stack's list popping up over the map.
   group) configs=("1080x2400:420:group:map,group") ;;
+  # The profile and history screens: the profile's map opening history, the stretches scrolling
+  # under the map, and the map full screen.
+  history) configs=("1080x2400:420:history:profile,history,history-scrolled,history-full") ;;
   # Setup's location step on a short and a tall phone, to check it fits without scrolling.
   setup) configs=("1080x1920:420:setup-16x9:setup" "1080x2400:420:setup-20x9:setup") ;;
   # The demo video for Play's background location declaration (StoreScreenshots.demo).
