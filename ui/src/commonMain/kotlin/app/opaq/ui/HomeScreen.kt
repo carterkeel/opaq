@@ -944,7 +944,12 @@ private fun CircleMenu(
                 }
                 val scroll = rememberScrollState()
                 Box(Modifier.graphicsLayer { alpha = ((grow.value - 0.25f) / 0.75f).coerceIn(0f, 1f) }) {
-                    Column(Modifier.heightIn(max = (maxHeight - 48.dp).coerceAtLeast(120.dp)).verticalScroll(scroll).padding(bottom = 8.dp)) {
+                    Column(
+                        Modifier.heightIn(max = (maxHeight - 48.dp).coerceAtLeast(120.dp))
+                            .scrollThumb(scroll, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                            .verticalScroll(scroll)
+                            .padding(bottom = 8.dp),
+                    ) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Spacer(Modifier.height(4.dp))
                         // Everyone from every circle on one map (#147), once there's more than one circle.

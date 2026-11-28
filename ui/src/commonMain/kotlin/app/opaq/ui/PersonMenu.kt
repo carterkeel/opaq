@@ -338,7 +338,11 @@ internal fun GroupBubble(
                 // Four rows at once; more scroll, and the fourth fades out while there's more below.
                 val scroll = rememberScrollState()
                 androidx.compose.foundation.layout.Box {
-                    Column(Modifier.heightIn(max = (GROUP_LIST_ROW_DP * GROUP_LIST_MAX_ROWS).dp).verticalScroll(scroll)) {
+                    Column(
+                        Modifier.heightIn(max = (GROUP_LIST_ROW_DP * GROUP_LIST_MAX_ROWS).dp)
+                            .scrollThumb(scroll, MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f))
+                            .verticalScroll(scroll),
+                    ) {
                         people.forEach { id ->
                             val info = avatarFor(state, id, me, name(id))
                             val loc = location(id)
