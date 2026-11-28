@@ -92,8 +92,8 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
         qrScanner.scan(presenter, onResult)
     }
 
-    // iOS has no persistent notification. The blue location pill can be its sign that sharing is on,
-    // but it's off by default (IosLocationService.showIndicator).
+    // iOS has no persistent notification. The blue location pill is its sign that sharing is on
+    // (IosLocationService.showIndicator); hiding it also lets iOS freeze Opaq while still.
     override val diagnosticsHeader: String
         get() = "${OpaqIos.appVersion()} on iOS ${platform.UIKit.UIDevice.currentDevice.systemVersion}, ${platform.UIKit.UIDevice.currentDevice.model}"
 
@@ -134,7 +134,8 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
 
     /**
      * Settings → Sharing rows: "Always" access keeps sharing going in the background, and the
-     * blue location pill can be hidden (iOS only allows that with Always access).
+     * blue location pill can be hidden (iOS only allows that with Always access), at the cost of
+     * the background session that keeps Opaq running while the phone is still.
      */
     fun sharingSettings(hasAlways: Boolean, showIndicator: Boolean): List<SettingItem> = listOf(
         SettingItem(
@@ -152,8 +153,8 @@ class IosPlatform(private val location: IosLocationService) : PlatformBridge {
         SettingItem(
             "Show blue location pill",
             when {
-                showIndicator -> "Shows at the top of the screen while Opaq shares in the background"
-                hasAlways -> "Hidden. Outside Opaq, nothing at the top of the screen shows that you're sharing."
+                showIndicator -> "Shows at the top of the screen while Opaq shares in the background. It keeps sharing going while your phone is still."
+                hasAlways -> "Hidden. Nothing at the top of the screen shows that you're sharing, and iOS may stop Opaq while your phone is still, so others can see you offline."
                 else -> "iOS keeps showing it until location access is set to Always"
             },
             action = null,

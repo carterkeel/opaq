@@ -137,6 +137,11 @@ private val Interactions = MapInteractions(MapInteractions.Standard) {
     camera { rotate { enabled = false } }
 }
 
+/** Where the home map was looking, so it reopens there after being let go in the background (iOS, `ComposeHost`). */
+private object LastCamera {
+    var position: CameraPosition? = null
+}
+
 /**
  * MapLibre with OpenFreeMap tiles, on Android and iOS. The tile server learns roughly which area
  * is on screen, never anyone's exact location.
@@ -268,15 +273,21 @@ fun MapPane(
     }
 
     // Open at city level around me (or whoever has a location first), once. Switching to another
-    // circle or Everyone keeps the map where it is and as zoomed in as it was.
+    // circle or Everyone keeps the map where it is and as zoomed in as it was, and so does the map
+    // coming back after iOS let the screens go in the background.
     var framedFor by remember { mutableStateOf<Any?>(Unit) }
     LaunchedEffect(mapState, focusKey, markers.isEmpty()) {
         if (markers.isEmpty() || framedFor == focusKey) return@LaunchedEffect
         val first = framedFor == Unit
         framedFor = focusKey
         if (!first) return@LaunchedEffect
+        LastCamera.position?.let { mapState.setCameraPosition(it); return@LaunchedEffect }
         val center = markers.firstOrNull { it.kind == MapMarker.Kind.ME } ?: markers.first()
         mapState.setCameraPosition(CameraPosition(center = clearOfSheet(center.lat, center.lon, CITY_ZOOM), zoom = CITY_ZOOM))
+    }
+    LaunchedEffect(mapState) {
+        // Only once framed: before that it's the default view of the whole world.
+        snapshotFlow { mapState.cameraPosition }.collect { if (framedFor != Unit) LastCamera.position = it }
     }
 
     // Glide to a requested point.
