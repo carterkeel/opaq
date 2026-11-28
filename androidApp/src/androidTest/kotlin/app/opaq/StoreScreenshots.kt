@@ -454,7 +454,12 @@ class StoreScreenshots {
         device.wait(Until.hasObject(By.text(count)), 10_000) || error("the stack's list didn't open")
         Thread.sleep(1_500)
         windows("open")
-        device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes
+        // Tap the map well below the list (which sits above the faces): closes it.
+        val title = device.findObject(By.text(count))?.visibleBounds
+        report.append("list title at: $title, stack at: $box\n")
+        device.click(device.displayWidth / 2, box.bottom + (48 * context.resources.displayMetrics.density).toInt())
+        val gone = device.wait(Until.gone(By.text(count)), 5_000)
+        report.append("list closed after tapping outside: $gone\n")
         Thread.sleep(1_500)
         windows("closed")
         drag("after")
