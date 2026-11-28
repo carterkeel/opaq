@@ -194,6 +194,19 @@ class StoreScreenshots {
             waitFor("Invite")
         }
 
+        if (want("group")) {
+            // Tap the stack of Maya and Leo: their list pops up over the map (#146).
+            val stack = device.wait(Until.findObject(By.desc("2 people here")), 10_000) ?: error("no stack of two on the map")
+            val box = stack.visibleBounds
+            val faceY = box.top + (22 * context.resources.displayMetrics.density).toInt()
+            device.click(box.centerX(), faceY)
+            device.wait(Until.hasObject(By.text("2 people here")), 10_000) || error("the stack's list didn't open")
+            Thread.sleep(2_500) // the map moves, the list pops in
+            shot("group")
+            device.click(device.displayWidth / 2, device.displayHeight / 6) // tap elsewhere: closes
+            Thread.sleep(1_000)
+        }
+
         if (want("invite")) {
             // Invite with its QR code.
             waitFor("Invite").click()

@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -286,6 +288,8 @@ internal fun MapOverlayScope.PeopleOverlay(
                 Modifier
                     .placedAt(org.maplibre.spatialk.geojson.Position(anchor.lon, anchor.lat), Alignment.BottomCenter)
                     .size((half * 2).dp, top.coerceAtLeast(1f).dp)
+                    // Says how many people a stack holds, for screen readers (and the UI tests).
+                    .then(if (g.size > 1) Modifier.semantics { contentDescription = "${g.size} people here" } else Modifier)
                     .drawBehind {
                         translate(size.width / 2f, size.height) {
                             val u = density

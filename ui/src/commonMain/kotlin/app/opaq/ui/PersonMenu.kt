@@ -11,6 +11,8 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -236,5 +238,134 @@ private class Bubble(private val below: Boolean, private val arrowX: Float) : an
         val both = androidx.compose.ui.graphics.Path()
         both.op(card, arrow, androidx.compose.ui.graphics.PathOperation.Union)
         return androidx.compose.ui.graphics.Outline.Generic(both)
+    }
+}
+
+/** Room the list of a stack needs above its faces: its title and padding, and each person's row (dp). */
+internal const val GROUP_LIST_BASE_DP = 64f
+internal const val GROUP_LIST_ROW_DP = 60f
+
+/**
+ * The people in a stack of faces on the map (#146), popping up from the stack like the long-press
+ * menu: above the faces with an arrow pointing down at them (below them when there's no room).
+ * Tap someone to zoom to them, their info button to open their profile, or hold them for the
+ * quick menu. [at] is where the faces' middle is, in this popup's parent (the map). Tapping
+ * anywhere else closes it.
+ */
+@Composable
+internal fun GroupBubble(
+    state: AppState,
+    me: String,
+    ids: List<String>,
+    at: androidx.compose.ui.unit.DpOffset?,
+    now: Long,
+    location: (String) -> app.opaq.core.model.MemberLocation?,
+    name: (String) -> String,
+    ring: (String) -> Format.Ring,
+    onPerson: (String) -> Unit,
+    onProfile: (String) -> Unit,
+    personMenu: @Composable (String, Offset?, () -> Unit) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shown = remember { MutableTransitionState(false) }
+    LaunchedEffect(at != null) { shown.targetState = at != null }
+    // Kept while it shrinks away after closing.
+    var last by remember { mutableStateOf(at) }
+    var lastIds by remember { mutableStateOf(ids) }
+    if (at != null) { last = at; lastIds = ids }
+    val point = last ?: return
+    val people = lastIds
+    if (!shown.currentState && !shown.targetState) return
+    var below by remember { mutableStateOf(false) }
+    var arrowX by remember { mutableStateOf(0f) }
+    var width by remember { mutableStateOf(1f) }
+    val origin = TransformOrigin(arrowX / width, if (below) 0f else 1f)
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val position = remember(density, point) {
+        AtFaces(
+            with(density) { IntOffset(point.x.roundToPx(), point.y.roundToPx()) },
+            above = with(density) { (FACE_DP / 2 + 4f).dp.roundToPx() },
+            belowGap = with(density) { (FACE_DP / 2 + 14f).dp.roundToPx() },
+        ) { b, x, w -> below = b; arrowX = x; width = w }
+    }
+    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = true)) {
+        AnimatedVisibility(
+            visibleState = shown,
+            enter = scaleIn(spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessMediumLow), initialScale = 0.6f, transformOrigin = origin) +
+                fadeIn(tween(110)),
+            exit = scaleOut(tween(130), targetScale = 0.85f, transformOrigin = origin) + fadeOut(tween(130)),
+        ) {
+            Surface(
+                shape = remember(below, arrowX) { Bubble(below, arrowX) },
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 3.dp,
+                shadowElevation = 10.dp,
+                modifier = Modifier.widthIn(min = 264.dp, max = 320.dp),
+            ) {
+                Column(Modifier.padding(top = if (below) ARROW_HEIGHT + 8.dp else 8.dp, bottom = if (below) 8.dp else ARROW_HEIGHT + 8.dp)) {
+                    Text(
+                        "${people.size} people here",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 18.dp, end = 18.dp, top = 4.dp, bottom = 6.dp),
+                    )
+                    // Four rows and a half show at once, so a longer list shows it scrolls.
+                    Column(Modifier.heightIn(max = (GROUP_LIST_ROW_DP * 4.5f).dp).verticalScroll(rememberScrollState())) {
+                        people.forEach { id ->
+                            val info = avatarFor(state, id, me, name(id))
+                            val loc = location(id)
+                            val offline = id != me && Format.isOffline(loc, now)
+                            var menuAt by remember { mutableStateOf<Offset?>(null) }
+                            Row(
+                                Modifier.personPress(enabled = id != me, onClick = { onPerson(id) }, onLongPress = { menuAt = it })
+                                    .heightIn(min = GROUP_LIST_ROW_DP.dp)
+                                    .padding(start = 14.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                if (id != me) personMenu(id, menuAt) { menuAt = null }
+                                Avatar(info, size = 40.dp, dimmed = offline, ring = ring(id))
+                                Spacer(Modifier.width(12.dp))
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        if (id == me) "You" else info.name,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    StatusLine(Format.status(loc, now), Format.battery(loc, now))
+                                }
+                                androidx.compose.material3.IconButton(onClick = { onProfile(id) }) {
+                                    Icon(AppIcons.Info, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Puts a stack's list just above its faces at [point] (in the parent's pixels), or below them
+ * (past their pointer) when there's no room above, with the arrow over the faces, kept on screen.
+ */
+private class AtFaces(
+    private val point: IntOffset,
+    private val above: Int,
+    private val belowGap: Int,
+    private val onPlaced: (below: Boolean, arrowX: Float, width: Float) -> Unit,
+) : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val margin = (windowSize.width * 0.03f).toInt().coerceAtLeast(16)
+        val px = anchorBounds.left + point.x
+        val faceTop = anchorBounds.top + point.y - above
+        val faceBottom = anchorBounds.top + point.y + belowGap
+        val below = faceTop - popupContentSize.height < margin * 3
+        val x = (px - popupContentSize.width / 2).coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin))
+        val y = if (below) faceBottom else faceTop - popupContentSize.height
+        onPlaced(below, (px - x).toFloat().coerceIn(0f, popupContentSize.width.toFloat()), popupContentSize.width.toFloat().coerceAtLeast(1f))
+        return IntOffset(x, y.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)))
     }
 }

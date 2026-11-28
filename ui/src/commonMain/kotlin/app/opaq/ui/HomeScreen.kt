@@ -88,6 +88,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.opaq.core.MotionPolicy
@@ -154,8 +155,8 @@ fun HomeScreen(
         val now = rememberNow()
         var focus by remember { mutableStateOf<MapFocus?>(null) }
         var focusSeq by remember { mutableIntStateOf(0) }
-        // People in one spot, tapped on the map (#146).
-        var together by remember { mutableStateOf<List<String>?>(null) }
+        // People in one spot, tapped on the map (#146), and where their faces are on the map.
+        var together by remember { mutableStateOf<Pair<List<String>, DpOffset>?>(null) }
         val locs = remember(state.locations, state.circles, circle.id) { locationsFor(state, circle.id) }
         // In Everyone, a profile opens in the circle where the person was seen most recently.
         val openProfile: (String) -> Unit = { pubkey -> onOpenProfile(profileCircleFor(state, circle.id, pubkey), pubkey) }
@@ -286,11 +287,26 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                     darkMap = state.darkMap,
                     onPersonClick = openProfile,
-                    onGroupClick = { together = it },
+                    onGroupClick = { ids, at -> together = ids to at },
                     // Alert areas (#151) watching this circle, only on this phone.
                     places = state.places.filter { isEveryone || it.circleId == null || it.circleId == circle.id },
                 )
             }
+            // The people in a tapped stack, popping up from it over the map (#146).
+            GroupBubble(
+                state = state,
+                me = me,
+                ids = together?.first.orEmpty(),
+                at = together?.second,
+                now = now,
+                location = { locs[it] },
+                name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
+                ring = { id -> if (id == me) myRing(state, circle) else Format.ring(locs[id], now) },
+                onPerson = { pubkey -> together = null; if (!flyTo(pubkey)) openProfile(pubkey) },
+                onProfile = { together = null; openProfile(it) },
+                personMenu = personMenu,
+                onDismiss = { together = null },
+            )
 
             // A soft fade behind the status bar keeps the clock, signal and battery readable over the map.
             // The icons follow the app theme, so a dark theme over the light map (white icons on pale
@@ -534,21 +550,6 @@ fun HomeScreen(
                     .background(Brush.verticalGradient(listOf(sheetScrim.copy(alpha = 0f), sheetScrim.copy(alpha = 0.5f), sheetScrim.copy(alpha = 0.9f)))),
             )
             }
-        }
-        together?.let { ids ->
-            TogetherSheet(
-                state = state,
-                me = me,
-                ids = ids,
-                now = now,
-                location = { locs[it] },
-                name = { id -> circle.members.firstOrNull { it.pubkey == id }?.name.orEmpty() },
-                ring = { id -> if (id == me) myRing(state, circle) else Format.ring(locs[id], now) },
-                onPerson = { pubkey -> together = null; if (!flyTo(pubkey)) openProfile(pubkey) },
-                onProfile = { together = null; openProfile(it) },
-                personMenu = personMenu,
-                onDismiss = { together = null },
-            )
         }
     }
 
@@ -920,43 +921,6 @@ private fun NoCircles(state: AppState, onCreate: () -> Unit, onJoin: () -> Unit,
             TonalButton("Join a circle", onJoin, Modifier.fillMaxWidth(), icon = AppIcons.ScanQr)
         }
     }
-    }
-}
-
-/**
- * The people in a group of faces on the map (#146): tap one to zoom the map to them, as in the
- * people list, or their info button to open their profile.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun TogetherSheet(state: AppState, me: String, ids: List<String>, now: Long, location: (String) -> MemberLocation?, name: (String) -> String, ring: (String) -> Format.Ring, onPerson: (String) -> Unit, onProfile: (String) -> Unit, personMenu: @Composable (String, Offset?, () -> Unit) -> Unit, onDismiss: () -> Unit) {
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text("${ids.size} people here", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(start = 24.dp, bottom = 8.dp))
-            ids.forEach { id ->
-                val info = avatarFor(state, id, me, name(id))
-                val loc = location(id)
-                val offline = id != me && Format.isOffline(loc, now)
-                var menuAt by remember { mutableStateOf<Offset?>(null) }
-                Row(
-                    Modifier.fillMaxWidth().personPress(enabled = id != me, onClick = { onPerson(id) }, onLongPress = { menuAt = it })
-                        .padding(start = 24.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (id != me) personMenu(id, menuAt) { menuAt = null }
-                    Avatar(info, size = 48.dp, dimmed = offline, ring = ring(id))
-                    Spacer(Modifier.width(16.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(if (id == me) "You" else info.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        StatusLine(Format.status(loc, now), Format.battery(loc, now))
-                    }
-                    IconButton(onClick = { onProfile(id) }) {
-                        Icon(AppIcons.Info, contentDescription = "Profile", tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-            Spacer(Modifier.height(24.dp))
-        }
     }
 }
 
