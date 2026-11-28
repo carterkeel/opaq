@@ -65,9 +65,10 @@ import platform.darwin.dispatch_get_main_queue
  * iOS suspends apps freely; Opaq stays running only while location updates are on. So
  * updates stay on the whole time sharing is on (GPS while moving, coarse while still) with
  * automatic pausing off, inside a [CLBackgroundActivitySession]: without one, iOS froze Opaq
- * within minutes of the phone going still and the circle saw it offline (#165). iOS shows the blue location indicator while this runs, the
- * counterpart of Android's persistent notification; people can hide it in Settings
- * ([setShowIndicator]), which leaves no sign of sharing at the top of the screen. Significant-change monitoring makes iOS
+ * within minutes of the phone going still and the circle saw it offline (#165). The session makes iOS
+ * show the blue location pill, the counterpart of Android's persistent notification. People with
+ * Always access can hide it in Settings ([setShowIndicator]); that also ends the session, so iOS
+ * may then freeze Opaq while the phone is still. Significant-change monitoring makes iOS
  * relaunch the app after a reboot or force-quit once the phone moves about 500 m.
  *
  * Two things stand in for Android's significant-motion sensor, so a walk or drive is noticed
@@ -138,21 +139,30 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
     val hasAlways: Boolean get() = authorization.value == kCLAuthorizationStatusAuthorizedAlways
 
     private val _showIndicator = MutableStateFlow(
-        NSUserDefaults.standardUserDefaults.boolForKey(SHOW_INDICATOR_KEY),
+        NSUserDefaults.standardUserDefaults.objectForKey(SHOW_INDICATOR_KEY) == null ||
+            NSUserDefaults.standardUserDefaults.boolForKey(SHOW_INDICATOR_KEY),
     )
     /**
-     * Whether to ask iOS for the blue location pill (Dynamic Island or status bar) while sharing
-     * in the background. Off by default (the user can turn it on in Settings → Sharing). iOS only
-     * honours "off" with Always access; with While Using it shows the pill anyway. With it off, nothing at the top of the screen shows that
-     * sharing is on while the app is in the background.
+     * Whether to show the blue location pill (Dynamic Island or status bar) while sharing in the
+     * background, and with it hold the background session that keeps Opaq running while the phone
+     * is still. On unless the person turned it off in Settings → Sharing. iOS only honours "off"
+     * with Always access; with While Using it shows the pill anyway, so the session stays too.
+     * With it off, nothing at the top of the screen shows that sharing is on, and iOS may freeze
+     * Opaq while the phone is still.
      */
     val showIndicator: StateFlow<Boolean> = _showIndicator.asStateFlow()
 
     fun setShowIndicator(show: Boolean) {
         _showIndicator.value = show
         NSUserDefaults.standardUserDefaults.setBool(show, SHOW_INDICATOR_KEY)
-        if (publishJob?.isActive == true && canRunInBackground) manager.showsBackgroundLocationIndicator = show
+        if (publishJob?.isActive == true && canRunInBackground) {
+            manager.showsBackgroundLocationIndicator = show
+            if (wantsSession) startBackgroundSession() else stopBackgroundSession()
+        }
     }
+
+    /** The session brings the pill with it, so it's held only where the pill shows anyway. */
+    private val wantsSession: Boolean get() = showIndicator.value || !hasAlways
 
     init {
         manager.delegate = delegate
@@ -302,11 +312,7 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
         highAccuracy = null
         manager.stopUpdatingLocation()
         manager.stopMonitoringSignificantLocationChanges()
-        backgroundSession?.invalidate()
-        backgroundSession = null
-        serviceSession?.invalidate()
-        serviceSession = null
-        sessionNote = null
+        stopBackgroundSession(log = false)
         stillSpot = null
         if (activityUpdatesOn) activityManager.stopActivityUpdates()
         activityUpdatesOn = false
@@ -323,6 +329,10 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
      */
     private fun startBackgroundSession() {
         if (backgroundSession != null || !canRunInBackground) return
+        if (!wantsSession) {
+            engine.diagnostic("Background session: off (blue pill hidden)")
+            return
+        }
         serviceSession = CLServiceSession.sessionRequiringAuthorization(
             if (hasAlways) CLServiceSessionAuthorizationRequirementAlways
             else CLServiceSessionAuthorizationRequirementWhenInUse,
@@ -343,6 +353,15 @@ class IosLocationService(private val engine: Engine, private val scope: Coroutin
                 engine.diagnostic(if (note.isEmpty()) "Background session: ok" else "Background session: $note")
             }
         }
+    }
+
+    private fun stopBackgroundSession(log: Boolean = true) {
+        if (log && backgroundSession != null) engine.diagnostic("Background session: off (blue pill hidden)")
+        backgroundSession?.invalidate()
+        backgroundSession = null
+        serviceSession?.invalidate()
+        serviceSession = null
+        sessionNote = null
     }
 
     /**
