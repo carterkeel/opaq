@@ -880,14 +880,17 @@ private fun CircleMenu(
     if (!shown.currentState && !shown.targetState) return
     var explain by remember { mutableStateOf(false) }
     val density = LocalDensity.current
-    // Over the button, its top left corner on the button's, and kept on screen.
+    // Over the button, its top left corner on the button's, and kept on screen. The anchor is the
+    // button's content, inside its padding (16 dp at the start, 10 dp at the top), so step back out.
     val position = remember(density) {
+        val start = with(density) { 16.dp.roundToPx() }
+        val top = with(density) { 10.dp.roundToPx() }
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
-                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left else anchorBounds.right - popupContentSize.width
+                val x = if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - start else anchorBounds.right + start - popupContentSize.width
                 return IntOffset(
                     x.coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
-                    anchorBounds.top.coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
+                    (anchorBounds.top - top).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
                 )
             }
         }
