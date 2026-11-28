@@ -22,6 +22,8 @@ case "${SCREENSHOT_SET:-phone}" in
     "1080x1728:420:fold-10x16:map,profile"
     "1656x2208:480:fold-3x4:history,dark-place"
   ) ;;
+  # The circle menu opening out of its button, in light and dark.
+  circles) configs=("1080x2400:420:circles:circles,dark-map") ;;
   # Setup's location step on a short and a tall phone, to check it fits without scrolling.
   setup) configs=("1080x1920:420:setup-16x9:setup" "1080x2400:420:setup-20x9:setup") ;;
   # The demo video for Play's background location declaration (StoreScreenshots.demo).

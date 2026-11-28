@@ -10,7 +10,7 @@ on:
       set:
         description: Which screenshots
         type: choice
-        options: [phone, foldable, video, setup]
+        options: [phone, foldable, video, setup, circles]
         default: phone
 
 # Write access is only for pushing the screenshots to the store-screenshots-<set> branch.

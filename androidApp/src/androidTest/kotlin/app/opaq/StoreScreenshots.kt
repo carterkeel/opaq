@@ -194,6 +194,17 @@ class StoreScreenshots {
             waitFor("Invite")
         }
 
+        if (want("circles")) {
+            // The circle menu, opening out of the circle button (#185).
+            (device.wait(Until.findObject(By.desc("Switch circle")), 10_000) ?: error("no circle button")).click()
+            waitFor("New circle")
+            Thread.sleep(1_500)
+            shot("circles")
+            device.click(device.displayWidth / 2, device.displayHeight * 2 / 3) // tap elsewhere: closes
+            Thread.sleep(1_000)
+            waitFor("Invite")
+        }
+
         if (want("invite")) {
             // Invite with its QR code.
             waitFor("Invite").click()
