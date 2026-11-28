@@ -190,9 +190,11 @@ class StoreScreenshots {
                 shot("history")
                 if (want("history-scrolled")) {
                     // The map stays put and the stretches scroll under it, fading out.
+                    // Dragged from inside the list (a drag from the bottom edge would go home).
                     val still = device.findObjects(By.text("Still")).maxByOrNull { it.visibleBounds.top }
                     if (still != null) {
-                        device.swipe(device.displayWidth / 2, device.displayHeight - 80, device.displayWidth / 2, still.visibleBounds.top, 40)
+                        val y = still.visibleBounds.centerY()
+                        device.swipe(device.displayWidth / 2, y, device.displayWidth / 2, y - 220, 40)
                         Thread.sleep(1_500)
                     }
                     shot("history-scrolled")
